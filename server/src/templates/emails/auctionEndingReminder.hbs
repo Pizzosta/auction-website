@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>{{subject}}</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      line-height: 1.6;
+      color: #333;
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .header {
+      text-align: center;
+      padding: 20px 0;
+      border-bottom: 1px solid #eee;
+    }
+    .content {
+      padding: 20px 0;
+    }
+    .footer {
+      text-align: center;
+      padding: 20px 0;
+      border-top: 1px solid #eee;
+      font-size: 12px;
+      color: #777;
+    }
+    .button {
+      display: inline-block;
+      padding: 10px 20px;
+      background-color: #e74c3c;
+      color: white;
+      text-decoration: none;
+      border-radius: 4px;
+      margin: 15px 0;
+      font-weight: bold;
+    }
+    .auction-details {
+      background-color: #fff5f5;
+      padding: 15px;
+      border-radius: 4px;
+      margin: 15px 0;
+      border-left: 4px solid #e74c3c;
+    }
+    .time-remaining {
+      font-size: 1.2em;
+      color: #e74c3c;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Hurry! Auction Ending Soon</h1>
+  </div>
+  
+  <div class="content">
+    <p>Hello {{username}},</p>
+    
+    <p>This is a friendly reminder that the auction you're watching is ending soon!</p>
+    
+    <div class="auction-details">
+      <h2>{{title}}</h2>
+      <p class="time-remaining">⏰ Ends in less than {{timeRemaining}}!</p>
+      <p><strong>Current Bid:</strong> ${{currentBid}}</p>
+      <p><strong>Your Max Bid:</strong> ${{maxBid}}</p>
+      <p><strong>Ends:</strong> {{formatDate endTime}}</p>
+      
+      <a href="{{appUrl}}/auctions/{{auctionId}}" class="button">Place a Higher Bid Now</a>
+    </div>
+    
+    <p>Don't miss out on this item! If you're still interested, now is the time to place a higher bid.</p>
+    
+    <p>Good luck with your bidding!</p>
+    
+    <p>Best regards,<br>The {{appName}} Team</p>
+  </div>
+  
+  <div class="footer">
+    <p>© {{year}} {{appName}}. All rights reserved.</p>
+    <p>
+      <a href="{{appUrl}}/unsubscribe">Unsubscribe from auction reminders</a> | 
+      <a href="{{appUrl}}/account/notifications">Manage notifications</a>
+    </p>
+  </div>
+</body>
+</html>

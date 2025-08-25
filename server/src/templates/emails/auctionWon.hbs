@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>{{subject}}</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      line-height: 1.6;
+      color: #333;
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .header {
+      text-align: center;
+      padding: 20px 0;
+      border-bottom: 1px solid #eee;
+    }
+    .content {
+      padding: 20px 0;
+    }
+    .footer {
+      text-align: center;
+      padding: 20px 0;
+      border-top: 1px solid #eee;
+      font-size: 12px;
+      color: #777;
+    }
+    .button {
+      display: inline-block;
+      padding: 10px 20px;
+      background-color: #4CAF50;
+      color: white;
+      text-decoration: none;
+      border-radius: 4px;
+      margin: 15px 0;
+    }
+    .auction-details {
+      background-color: #f9f9f9;
+      padding: 15px;
+      border-radius: 4px;
+      margin: 15px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Congratulations! You Won the Auction!</h1>
+  </div>
+  
+  <div class="content">
+    <p>Hello {{username}},</p>
+    
+    <p>Congratulations! You've won the auction for <strong>{{title}}</strong> with a winning bid of <strong>${{amount}}</strong>.</p>
+    
+    <div class="auction-details">
+      <h3>Auction Details:</h3>
+      <p><strong>Seller:</strong> {{seller}}</p>
+      <p><strong>Your Winning Bid:</strong> ${{amount}}</p>
+      <p><strong>Auction Ended:</strong> {{formatDate endTime}}</p>
+    </div>
+    
+    <p>Next steps:</p>
+    <ol>
+      <li>Wait for the seller to contact you with payment instructions (usually within 24-48 hours)</li>
+      <li>Complete the payment as instructed by the seller</li>
+      <li>Once payment is confirmed, the seller will ship your item</li>
+      <li>After receiving the item, please leave feedback for the seller</li>
+    </ol>
+    
+    <p>If you don't hear from the seller within 48 hours, please contact our support team for assistance.</p>
+    
+    <p>Thank you for using {{appName}}!</p>
+  </div>
+  
+  <div class="footer">
+    <p>© {{year}} {{appName}}. All rights reserved.</p>
+    <p><a href="{{appUrl}}/support">Contact Support</a></p>
+  </div>
+</body>
+</html>
