@@ -4,23 +4,47 @@ import { fileURLToPath } from 'url';
 import fs from 'fs';
 import handlebars from 'handlebars';
 import emailConfig from '../config/email.js';
+import logger from '../utils/logger.js';
+
+/**
+ * Detects if an email error is temporary/transient and can be retried
+ * @param {Error} err - The error object from nodemailer
+ * @returns {boolean} True if the error is temporary
+ */
+const isTemporaryEmailError = (err) => {
+  if (!err) return false;
+  const msg = (err.message || "").toLowerCase();
+  const code = err.code ? err.code.toString().toLowerCase() : "";
+
+  // Network / timeout related
+  const networkIssues = [
+    "timeout",
+    "timed out",
+    "connection reset",
+    "econnreset",
+    "econnrefused",
+    "etimedout",
+    "enotfound",
+    "esockettimedout",
+  ];
+
+  // SMTP 4xx temporary failures
+  const smtpTemporary = [
+    "4.0.0", // Generic temporary failure
+    "4.1.0", // Temporary address issue
+    "4.2.0", // Mailbox full / temporarily unavailable
+    "4.4.1", // Connection timed out
+    "4.5.3", // Too many connections
+    "try again later",
+    "server busy",
+  ];
+
+  return networkIssues.some(k => msg.includes(k) || code.includes(k)) ||
+         smtpTemporary.some(k => msg.includes(k) || code.includes(k));
+};
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-import logger from './logger.js';
-
-// Create reusable transporter object
-let transporter = nodemailer.createTransport(emailConfig.smtp);
-
-// Verify transporter connection
-transporter.verify((error) => {
-  if (error) {
-    logger.error('Email transporter failed to connect:', error.message);
-  } else {
-    logger.info('Email transporter connected successfully');
-  }
-});
 
 // Compile email templates
 const compileTemplate = async (templateName, context) => {
@@ -38,11 +62,14 @@ const compileTemplate = async (templateName, context) => {
   }
 };
 
-export const sendEmail = async ({ to, subject, template, context = {} }) => {
+export const sendEmail = async ({ to, subject, template, context = {}, retryCount = 0 }) => {
+  const maxRetries = 2; // Maximum number of retry attempts
+  const retryDelay = 2000; // 2 seconds delay between retries
+
   try {
     // In development, log the email being sent
     if (process.env.NODE_ENV === 'development') {
-      logger.info('Sending email:', { to, subject, template });
+      logger.info(`Sending email (attempt ${retryCount + 1}/${maxRetries + 1}):`, { to, subject, template });
     }
     
     // Use context from config and merge with provided context
@@ -52,7 +79,7 @@ export const sendEmail = async ({ to, subject, template, context = {} }) => {
     const html = await compileTemplate(template, emailContext);
 
     // Send mail with defined transport object
-    const info = await transporter.sendMail({
+    const info = await emailConfig.transporter.sendMail({
       from: `"${emailConfig.from.name}" <${emailConfig.from.address}>`,
       to,
       subject,
@@ -61,13 +88,27 @@ export const sendEmail = async ({ to, subject, template, context = {} }) => {
     });
 
     if (process.env.NODE_ENV === 'development') {
-      console.log('Preview URL: %s', nodemailer.getTestMessageUrl(info));
+      const previewUrl = nodemailer.getTestMessageUrl(info);
+      if (previewUrl) {
+        logger.info(`Email sent. Preview URL: ${previewUrl}`);
+      }
     }
 
     return { success: true, messageId: info.messageId };
   } catch (error) {
-    console.error('Error sending email:', error);
-    throw new Error('Failed to send email');
+    const isTemporary = isTemporaryEmailError(error);
+    const errorMessage = `Error sending email (${isTemporary ? 'temporary' : 'permanent'})`;
+    
+    logger.error(`${errorMessage}:`, error);
+    
+    // Only retry for temporary errors and if we haven't exceeded max retries
+    if (isTemporary && retryCount < maxRetries) {
+      logger.info(`Retrying in ${retryDelay}ms... (${retryCount + 1}/${maxRetries})`);
+      await new Promise(resolve => setTimeout(resolve, retryDelay));
+      return sendEmail({ to, subject, template, context, retryCount: retryCount + 1 });
+    }
+    
+    throw new Error(`${errorMessage}: ${error.message}`);
   }
 };
 
