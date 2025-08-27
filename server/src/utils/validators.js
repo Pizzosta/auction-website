@@ -103,16 +103,17 @@ export const bidValidation = {
   auctionId: idSchema.required(),
 };
 
+export const paramId = Joi.object({
+  id: Joi.string().hex().length(24).required().messages({
+    'string.hex': 'Invalid user ID format',
+    'string.length': 'User ID must be 24 characters long',
+    'any.required': 'User ID is required'
+  })
+});
+
 // User validation
 export const userValidation = {
   deleteUser: Joi.object({
-    id: Joi.string().hex().length(24).required()
-      .messages({
-        'string.hex': 'Invalid user ID format',
-        'string.length': 'User ID must be 24 characters long',
-        'any.required': 'User ID is required'
-      }),
-
     password: Joi.string().min(8)
       .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\da-zA-Z]).{8,}$/)
       .messages({
@@ -124,13 +125,6 @@ export const userValidation = {
   }),
 
   updateUser: Joi.object({
-    id: Joi.string().hex().length(24).required()
-      .messages({
-        'string.hex': 'Invalid user ID format',
-        'string.length': 'User ID must be 24 characters long',
-        'any.required': 'User ID is required'
-      }),
-
     firstname: Joi.string().trim().min(3).max(50)
       .pattern(/^[a-zA-Z\s-']+$/)
       .messages({
@@ -187,15 +181,24 @@ export const userValidation = {
         'string.empty': 'Password is required'
       }),
 
-    confirmPassword: Joi.string().valid(Joi.ref('password'))
+    currentPassword: Joi.string()
       .when('password', {
         is: Joi.exist(),
-        then: Joi.required(),
+        then: Joi.required().messages({
+          'string.empty': 'Current password is required to update password'
+        }),
         otherwise: Joi.optional()
-      })
-      .messages({
-        'any.only': 'Passwords do not match',
-        'any.required': 'Please confirm your new password'
+      }),
+
+    confirmPassword: Joi.string()
+      .valid(Joi.ref('password'))
+      .when('password', {
+        is: Joi.exist(),
+        then: Joi.required().messages({
+          'any.only': 'Passwords do not match',
+          'any.required': 'Please confirm your new password'
+        }),
+        otherwise: Joi.optional()
       }),
 
     role: Joi.string().valid('user', 'admin')
