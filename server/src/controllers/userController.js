@@ -25,6 +25,7 @@ export const getAllUsers = async (req, res) => {
                 { firstname: searchRegex },
                 { lastname: searchRegex },
                 { email: searchRegex },
+                { phone: searchRegex },
                 { username: searchRegex }
             ];
         }
@@ -125,20 +126,19 @@ export const deleteUser = async (req, res) => {
 
 export const getMe = async (req, res) => {
     try {
-        const user = await User.findById(req.user._id).select('-password');
-
+        const user = await User.findById(req.user._id).select('-password -__v');
         if (!user) {
             return res.status(404).json({
                 status: 'error',
-                message: 'User not found',
+                message: 'User not found'
             });
         }
 
-        res.status(200).json({
+        res.json({
             status: 'success',
             data: {
-                user,
-            },
+                user
+            }
         });
     } catch (error) {
         console.error('Get me error:', error);
@@ -150,13 +150,14 @@ export const getMe = async (req, res) => {
     }
 };
 
+
 // Update a user's information
 export const updateUser = async (req, res) => {
     try {
         const { id } = req.params;
         const updateData = req.body;
 
-        // DEFENSIVE CHECK: Ensure the request body is not empty before proceeding
+        // Ensure the request body is not empty before proceeding
         if (!updateData || Object.keys(updateData).length === 0) {
             return res.status(400).json({
                 status: 'fail',
@@ -172,17 +173,60 @@ export const updateUser = async (req, res) => {
             });
         }
 
-        // First, find the user to ensure they exist
-        let user = await User.findById(id);
+        // Find the user and include the password for verification
+        let user = await User.findById(id).select('+password');
 
         if (!user) {
-            return res.status(404).json({ message: 'User not found' });
+            return res.status(404).json({
+                status: 'error',
+                message: 'User not found',
+            });
         }
 
-        // Authorization check: A user can only update their own profile unless they are an admin.
-        // An admin can update anyone's profile.
-        if (req.user.role !== 'admin' && req.user._id.toString() !== id) {
-            return res.status(403).json({ message: 'Not authorized to update this user' });
+        // Check if the user is updating their own profile or is an admin
+        if (user._id.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+            return res.status(403).json({
+                status: 'error',
+                message: 'Not authorized to update this user',
+            });
+        }
+
+        // Prevent role modification unless admin
+        if ('role' in updateData && updateData.role && req.user.role !== 'admin') {
+            return res.status(403).json({
+                status: 'error',
+                message: 'Not authorized to modify user role',
+            });
+        }
+
+        // Handle password update with enhanced validation
+        if (updateData.password) {
+            if (!updateData.currentPassword) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'Current password is required to update password',
+                });
+            }
+
+            const isPasswordValid = await user.matchPassword(updateData.currentPassword);
+            if (!isPasswordValid) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'Current password is incorrect',
+                });
+            }
+
+            const isSamePassword = await user.matchPassword(updateData.password);
+            if (isSamePassword) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'New password must be different from current password',
+                });
+            }
+
+            delete updateData.currentPassword;
+        } else {
+            delete updateData.currentPassword;
         }
 
         // Check if the email is being updated and if it's already in use by another user
