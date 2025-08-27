@@ -1,6 +1,8 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import zxcvbn from 'zxcvbn';
+import { sendTemplateEmail } from '../utils/emailService.js';
+import { addToQueue } from '../services/emailQueue.js';
 
 // Password strength checker
 const checkPasswordStrength = (password) => {
@@ -94,6 +96,19 @@ export const register = async (req, res) => {
 
         await user.save();
 
+        // Add welcome email to queue
+        try {
+            await addToQueue('welcome', user.email, {
+                name: user.firstname,
+                email: user.email,
+                username: user.username
+            });
+            console.log(`Welcome email queued for ${user.email}`);
+        } catch (error) {
+            console.error('Failed to queue welcome email:', error);
+            // Continue with registration even if queueing fails
+        }
+
         // Generate JWT token
         const token = jwt.sign({ userId: user._id, email: user.email, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1d' });
 
@@ -150,39 +165,6 @@ export const login = async (req, res) => {
                     role: user.role
                 },
                 token,
-            }
-        });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: 'Server error' });
-    }
-};
-
-export const getProfile = async (req, res) => {
-    try {
-        const user = await User.findById(req.user._id).select('-password');
-        if (!user) {
-            return res.status(404).json({
-                status: 'error',
-                message: 'User not found'
-            });
-        }
-
-        res.json({
-            status: 'success',
-            data: {
-                user: {
-                    _id: user._id,
-                    firstname: user.firstname,
-                    middlename: user.middlename,
-                    lastname: user.lastname,
-                    username: user.username,
-                    email: user.email,
-                    phone: user.phone,
-                    role: user.role,
-                    createdAt: user.createdAt,
-                    updatedAt: user.updatedAt
-                }
             }
         });
     } catch (error) {
