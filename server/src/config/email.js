@@ -1,18 +1,34 @@
-const emailConfig = {
-  // SMTP configuration
-  smtp: {
-    host: process.env.EMAIL_HOST || 'smtp.ethereal.email',
-    port: process.env.EMAIL_PORT || 587,
-    secure: process.env.EMAIL_SECURE === 'true',
-    auth: {
-      user: process.env.EMAIL_USER || 'eslcqauj67dpeag6@ethereal.email',
-      pass: process.env.EMAIL_PASS || 'pabgW62TYtg37qmkPS',
-    },
-    connectionTimeout: 30000, // 30 seconds
-    greetingTimeout: 20000,   // 20 seconds
-    socketTimeout: 30000
+import nodemailer from 'nodemailer';
+import logger from '../utils/logger.js';
+
+// SMTP configuration
+const smtp = {
+  host: process.env.EMAIL_HOST || 'smtp.ethereal.email',
+  port: process.env.EMAIL_PORT || 587,
+  secure: process.env.EMAIL_SECURE === 'true',
+  auth: {
+    user: process.env.EMAIL_USER || 'eslcqauj67dpeag6@ethereal.email',
+    pass: process.env.EMAIL_PASS || 'pabgW62TYtg37qmkPS',
   },
-  
+  connectionTimeout: 30000, // 30 seconds
+  greetingTimeout: 20000,   // 20 seconds
+  socketTimeout: 30000
+};
+
+// Create and verify transporter
+const transporter = nodemailer.createTransport(smtp);
+
+transporter.verify((error) => {
+  if (error) {
+    logger.error('Email transporter failed to connect:', error.message);
+  } else {
+    logger.info('Email transporter connected successfully');
+  }
+});
+
+const emailConfig = {
+  smtp,
+  transporter,
   // Default from address
   from: {
     name: process.env.EMAIL_FROM_NAME || 'Kawodze Auctions',
