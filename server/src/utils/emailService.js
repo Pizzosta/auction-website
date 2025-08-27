@@ -114,9 +114,9 @@ export const sendEmail = async ({ to, subject, template, context = {}, retryCoun
 
 // Email templates
 const emailTemplates = {
-  welcome: {
+  welcomeUser: {
     subject: 'Welcome to Kawodze Auctions!',
-    template: 'welcome',
+    template: 'welcomeUser',
   },
   resetPassword: {
     subject: 'Password Reset Request',

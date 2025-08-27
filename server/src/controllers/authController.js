@@ -98,14 +98,14 @@ export const register = async (req, res) => {
 
         // Add welcome email to queue
         try {
-            await addToQueue('welcome', user.email, {
+            await addToQueue('welcomeUser', user.email, {
                 name: user.firstname,
                 email: user.email,
                 username: user.username
             });
-            console.log(`Welcome email queued for ${user.email}`);
+            console.log(`Welcome User email queued for ${user.email}`);
         } catch (error) {
-            console.error('Failed to queue welcome email:', error);
+            console.error('Failed to queue welcome user email:', error);
             // Continue with registration even if queueing fails
         }
 
