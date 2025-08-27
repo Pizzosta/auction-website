@@ -1,9 +1,6 @@
 import Bid from '../models/Bid.js';
 import Auction from '../models/Auction.js';
 
-// @desc    Place a bid
-// @route   POST /api/bids
-// @access  Private
 export const placeBid = async (req, res) => {
   try {
     const { auctionId, amount } = req.body;
@@ -83,9 +80,6 @@ export const placeBid = async (req, res) => {
   }
 };
 
-// @desc    Get bids for an auction
-// @route   GET /api/bids/auction/:auctionId
-// @access  Public
 export const getBidsByAuction = async (req, res) => {
   try {
     const { auctionId } = req.params;
@@ -110,9 +104,6 @@ export const getBidsByAuction = async (req, res) => {
   }
 };
 
-// @desc    Get user's bids
-// @route   GET /api/bids/my-bids
-// @access  Private
 export const getMyBids = async (req, res) => {
   try {
     const { page = 1, limit = 10 } = req.query;

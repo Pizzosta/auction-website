@@ -1,8 +1,7 @@
 import express from 'express';
 import helmet from 'helmet';
 import { rateLimit } from 'express-rate-limit';
-import mongoSanitize from 'express-mongo-sanitize';
-import xss from 'xss-clean';
+import xss from 'xss';
 import hpp from 'hpp';
 
 // Rate limiting
@@ -12,7 +11,7 @@ const limiter = rateLimit({
   message: 'Too many requests from this IP, please try again later.',
 });
 
-// Security middleware
+// Security middleware stack
 const securityMiddleware = [
   // Set security HTTP headers
   helmet({
@@ -31,11 +30,7 @@ const securityMiddleware = [
     crossOriginEmbedderPolicy: false,
     crossOriginOpenerPolicy: false,
     crossOriginResourcePolicy: false,
-    dnsPrefetchControl: false,
-    expectCt: false,
-    frameguard: {
-      action: 'deny',
-    },
+    frameguard: { action: 'deny' },
     hidePoweredBy: true,
     hsts: {
       maxAge: 60 * 60 * 24 * 365, // 1 year in seconds
@@ -44,32 +39,42 @@ const securityMiddleware = [
     },
     ieNoOpen: true,
     noSniff: true,
-    permittedCrossDomainPolicies: {
-      permittedPolicies: 'none',
-    },
-    referrerPolicy: {
-      policy: 'no-referrer',
-    },
-    xssFilter: true,
+    permittedCrossDomainPolicies: { permittedPolicies: 'none' },
+    referrerPolicy: { policy: 'no-referrer' },
   }),
 
   // Limit requests from same API
   limiter,
 
-  // Body parser, reading data from body into req.body
-  (req, res, next) => {
-    if (req.originalUrl === '/api/v1/webhook') {
-      next();
-    } else {
-      express.json({ limit: '10kb' })(req, res, next);
-    }
-  },
-
-  // Data sanitization against NoSQL query injection
-  mongoSanitize(),
+  // Body parser
+  express.json({ limit: '10kb' }),
 
   // Data sanitization against XSS
-  xss(),
+  (req, res, next) => {
+    // Skip XSS for webhook endpoints
+    if (req.originalUrl === '/api/v1/webhook') return next();
+    
+    // Sanitize request body, query, and params
+    const sanitizeInput = (data) => {
+      if (!data || typeof data !== 'object') return data;
+      
+      Object.keys(data).forEach(key => {
+        if (typeof data[key] === 'string') {
+          data[key] = xss(data[key]);
+        } else if (data[key] !== null && typeof data[key] === 'object') {
+          sanitizeInput(data[key]);
+        }
+      });
+      
+      return data;
+    };
+    
+    sanitizeInput(req.body);
+    sanitizeInput(req.query);
+    sanitizeInput(req.params);
+    
+    next();
+  },
 
   // Prevent parameter pollution
   hpp({
@@ -83,7 +88,7 @@ const securityMiddleware = [
     ],
   }),
 
-  // CORS
+  // Basic CORS
   (req, res, next) => {
     res.header('Access-Control-Allow-Origin', process.env.CLIENT_URL || '*');
     res.header(
@@ -93,7 +98,6 @@ const securityMiddleware = [
     res.header('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
     res.header('Access-Control-Allow-Credentials', 'true');
 
-    // Handle preflight
     if (req.method === 'OPTIONS') {
       return res.sendStatus(200);
     }

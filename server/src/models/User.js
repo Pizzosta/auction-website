@@ -4,6 +4,34 @@ import crypto from 'crypto';
 
 const userSchema = new mongoose.Schema(
   {
+    firstname: {
+      type: String,
+      required: [true, 'Please add a first name'],
+      trim: true,
+      minlength: [3, 'First name must be at least 3 characters long'],
+      maxlength: [50, 'First name cannot be more than 50 characters'],
+      match: [/^[a-zA-Z\s-']+$/],
+    },
+    middlename: {
+      type: String,
+      trim: true,
+      maxlength: [50, 'Middle name cannot be more than 50 characters'],
+      match: [/^[a-zA-Z\s-']*$/],
+    },
+    lastname: {
+      type: String,
+      required: [true, 'Please add a last name'],
+      trim: true,
+      minlength: [3, 'Last name must be at least 3 characters long'],
+      maxlength: [50, 'Last name cannot be more than 50 characters'],
+      match: [/^[a-zA-Z\s-']+$/],
+    },
+    phone: {
+      type: String,
+      trim: true,
+      unique: true,
+      match: [/^(?:\+?233|0?)[235]\d{8}$/, 'Please add a valid Ghanaian phone number starting with 233, +233, 0, or nothing, followed by 2, 3, or 5 and 8 more digits']
+    },
     username: {
       type: String,
       required: [true, 'Please add a username'],
@@ -25,15 +53,22 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: [true, 'Please add a password'],
       minlength: [8, 'Password must be at least 8 characters long'],
+      validate: {
+        validator: function (v) {
+          return /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\da-zA-Z]).{8,}$/.test(v);
+        },
+        message: 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character',
+      },
       select: false, // Don't return password in query results
     },
-    isAdmin: {
-      type: Boolean,
-      default: false,
+    role: {
+      type: String,
+      enum: ['user', 'admin'],
+      default: 'user',
     },
     avatar: {
-      type: String,
-      default: 'default-avatar.png',
+      url: String,
+      publicId: String,
     },
     rating: {
       type: Number,
@@ -67,6 +102,18 @@ const userSchema = new mongoose.Schema(
   }
 );
 
+// Virtual for isAdmin (backward compatibility)
+userSchema.virtual('isAdmin').get(function() {
+  return this.role === 'admin';
+});
+
+// Virtual for full name
+userSchema.virtual('fullName').get(function () {
+  return [this.firstname, this.middlename, this.lastname]
+    .filter(Boolean)
+    .join(' ');
+});
+
 // Virtual for user's auctions
 userSchema.virtual('auctions', {
   ref: 'Auction',
@@ -94,7 +141,16 @@ userSchema.virtual('wonAuctions', {
 
 // Match user entered password to hashed password in database
 userSchema.methods.matchPassword = async function (enteredPassword) {
-  return await bcrypt.compare(enteredPassword, this.password);
+  if (!enteredPassword || !this.password) {
+    console.warn('Missing password input or stored hash');
+    return false;
+  }
+  try {
+    return await bcrypt.compare(enteredPassword, this.password);
+  } catch (error) {
+    console.error('Password comparison failed:', error);
+    return false;
+  }
 };
 
 // Generate and hash password reset token
@@ -125,22 +181,39 @@ userSchema.methods.getEmailVerificationToken = function () {
   return verificationToken;
 };
 
-// Encrypt password using bcrypt before saving
+// Hash password before saving
 userSchema.pre('save', async function (next) {
-  if (!this.isModified('password')) {
-    next();
-  }
-
+  if (!this.isModified('password')) return next();
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
+
+  // Clear reset tokens when password is changed
+  this.resetPasswordToken = undefined;
+  this.resetPasswordExpires = undefined;
+  next();
 });
 
 // Cascade delete user's auctions and bids when user is deleted
-userSchema.pre('remove', async function (next) {
+userSchema.pre('deleteOne', { document: true, query: false }, async function (next) {
+  // This will only work with document.remove()
   await this.model('Auction').deleteMany({ seller: this._id });
   await this.model('Bid').deleteMany({ bidder: this._id });
   next();
 });
+
+// For static deleteOne()
+userSchema.pre('deleteOne', { document: false, query: true }, async function (next) {
+  const docToDelete = await this.model.findOne(this.getFilter());
+  if (docToDelete) {
+    await mongoose.model('Auction').deleteMany({ seller: docToDelete._id });
+    await mongoose.model('Bid').deleteMany({ bidder: docToDelete._id });
+  }
+  next();
+});
+
+userSchema.index({ createdAt: -1 });
+userSchema.index({ role: 1 });
+userSchema.index({ isVerified: 1 });
 
 const User = mongoose.model('User', userSchema);
 

@@ -94,7 +94,7 @@ export const updateAuction = async (req, res) => {
     }
 
     // Check if user is the owner or admin
-    if (auction.seller.toString() !== req.user._id.toString() && !req.user.isAdmin) {
+    if (auction.seller.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
       return res.status(401).json({ message: 'Not authorized to update this auction' });
     }
 
@@ -123,14 +123,15 @@ export const deleteAuction = async (req, res) => {
     }
 
     // Check if user is the owner or admin
-    if (auction.seller.toString() !== req.user._id.toString() && !req.user.isAdmin) {
+    if (auction.seller.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
       return res.status(401).json({ message: 'Not authorized to delete this auction' });
     }
 
     // Delete all bids associated with this auction
     await Bid.deleteMany({ auction: auction._id });
 
-    await auction.remove();
+    // Delete the auction
+    await Auction.deleteOne({ _id: auction._id });
     res.json({ message: 'Auction removed' });
   } catch (error) {
     console.error(error);

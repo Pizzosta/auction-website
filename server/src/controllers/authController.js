@@ -1,90 +1,192 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
+import zxcvbn from 'zxcvbn';
 
-// @desc    Register a new user
-// @route   POST /api/auth/register
-// @access  Public
+// Password strength checker
+const checkPasswordStrength = (password) => {
+    const hasMinLength = password.length >= 8;
+    const hasUpperCase = /[A-Z]/.test(password);
+    const hasLowerCase = /[a-z]/.test(password);
+    const hasNumbers = /\d/.test(password);
+    const hasSpecialChar = /[^A-Za-z0-9]/.test(password);
+
+    return {
+        isValid: hasMinLength && hasUpperCase && hasLowerCase && hasNumbers && hasSpecialChar,
+        issues: {
+            minLength: !hasMinLength ? 'Must be at least 8 characters' : null,
+            upperCase: !hasUpperCase ? 'Must contain at least one uppercase letter' : null,
+            lowerCase: !hasLowerCase ? 'Must contain at least one lowercase letter' : null,
+            numbers: !hasNumbers ? 'Must contain at least one number' : null,
+            specialChar: !hasSpecialChar ? 'Must contain at least one special character' : null
+        }
+    };
+};
+
 export const register = async (req, res) => {
-  try {
-    const { username, email, password } = req.body;
+    try {
+        const {
+            firstname,
+            middlename,
+            lastname,
+            phone,
+            username,
+            email,
+            password,
+            confirmPassword
+        } = req.body;
 
-    // Check if user exists
-    let user = await User.findOne({ email });
-    if (user) {
-      return res.status(400).json({ message: 'User already exists' });
+        // Check password match
+        if (password !== confirmPassword) {
+            return res.status(400).json({
+                status: 'error',
+                message: 'Passwords do not match',
+            });
+        }
+
+        // Check password strength
+        const passwordCheck = checkPasswordStrength(password);
+        if (!passwordCheck.isValid) {
+            return res.status(400).json({
+                status: 'error',
+                message: 'Password does not meet requirements',
+                issues: Object.values(passwordCheck.issues).filter(Boolean)
+            });
+        }
+
+        const strength = zxcvbn(password);
+        if (strength.score < 3) {
+            return res.status(400).json({
+                status: 'error',
+                message: 'Password is too weak',
+                suggestions: strength.feedback?.suggestions || []
+            });
+        }
+
+        const normalizedEmail = email?.trim().toLowerCase();
+
+        // Check if user exists
+        const userByEmail = await User.findOne({ email: normalizedEmail });
+        if (userByEmail) {
+            return res.status(400).json({
+                status: 'error',
+                message: 'Email is already in use'
+            });
+        }
+
+        const userByUsername = await User.findOne({ username });
+        if (userByUsername) {
+            return res.status(400).json({
+                status: 'error',
+                message: 'Username is already taken'
+            });
+        }
+
+        // Create user
+        const user = await User.create({
+            firstname,
+            middlename,
+            lastname,
+            phone,
+            username,
+            email,
+            password,
+        });
+
+        await user.save();
+
+        // Generate JWT token
+        const token = jwt.sign({ userId: user._id, email: user.email, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1d' });
+
+        res.status(201).json({
+            status: 'success',
+            data: {
+                user: {
+                    _id: user._id,
+                    firstname: user.firstname,
+                    lastname: user.lastname,
+                    username: user.username,
+                    email: user.email,
+                    phone: user.phone,
+                    role: user.role
+                },
+                token,
+            }
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Server error' });
     }
-
-    // Create new user
-    user = new User({
-      username,
-      email,
-      password,
-    });
-
-    // Save user to database
-    await user.save();
-
-    // Generate JWT token
-    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '1d' });
-
-    res.status(201).json({
-      _id: user._id,
-      username: user.username,
-      email: user.email,
-      token,
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server error' });
-  }
 };
 
-// @desc    Authenticate user & get token
-// @route   POST /api/auth/login
-// @access  Public
 export const login = async (req, res) => {
-  try {
-    const { email, password } = req.body;
+    try {
+        const { email, password } = req.body;
 
-    // Check if user exists
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(400).json({ message: 'Invalid credentials' });
+        // Check if user exists
+        const user = await User.findOne({ email: email?.trim().toLowerCase() }).select('+password');
+        if (!user) {
+            return res.status(400).json({ message: 'Invalid credentials' });
+        }
+
+        // Check password
+        const isMatch = await user.matchPassword(password);
+        if (!isMatch) {
+            return res.status(400).json({ message: 'Invalid credentials' });
+        }
+
+        // Generate JWT token
+        const token = jwt.sign({ userId: user._id, email: user.email, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1d' });
+
+        res.json({
+            status: 'success',
+            data: {
+                user: {
+                    _id: user._id,
+                    firstname: user.firstname,
+                    lastname: user.lastname,
+                    username: user.username,
+                    email: user.email,
+                    phone: user.phone,
+                    role: user.role
+                },
+                token,
+            }
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Server error' });
     }
-
-    // Check password
-    const isMatch = await user.matchPassword(password);
-    if (!isMatch) {
-      return res.status(400).json({ message: 'Invalid credentials' });
-    }
-
-    // Generate JWT token
-    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: '1d' });
-
-    res.json({
-      _id: user._id,
-      username: user.username,
-      email: user.email,
-      token,
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server error' });
-  }
 };
 
-// @desc    Get user profile
-// @route   GET /api/auth/profile
-// @access  Private
 export const getProfile = async (req, res) => {
-  try {
-    const user = await User.findById(req.user._id).select('-password');
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+    try {
+        const user = await User.findById(req.user._id).select('-password');
+        if (!user) {
+            return res.status(404).json({
+                status: 'error',
+                message: 'User not found'
+            });
+        }
+
+        res.json({
+            status: 'success',
+            data: {
+                user: {
+                    _id: user._id,
+                    firstname: user.firstname,
+                    middlename: user.middlename,
+                    lastname: user.lastname,
+                    username: user.username,
+                    email: user.email,
+                    phone: user.phone,
+                    role: user.role,
+                    createdAt: user.createdAt,
+                    updatedAt: user.updatedAt
+                }
+            }
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: 'Server error' });
     }
-    res.json(user);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server error' });
-  }
 };

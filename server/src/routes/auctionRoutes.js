@@ -7,6 +7,8 @@ import {
   deleteAuction,
 } from '../controllers/auctionController.js';
 import { protect } from '../middleware/authMiddleware.js';
+import { validate } from '../middleware/validationMiddleware.js';
+import { auctionValidation } from '../utils/validators.js';
 
 const router = express.Router();
 
@@ -15,8 +17,8 @@ router.get('/', getAuctions);
 router.get('/:id', getAuctionById);
 
 // Protected routes
-router.post('/', protect, createAuction);
-router.put('/:id', protect, updateAuction);
+router.post('/', protect, validate(auctionValidation.create), createAuction);
+router.put('/:id', protect, validate(auctionValidation.update), updateAuction);
 router.delete('/:id', protect, deleteAuction);
 
 export default router;

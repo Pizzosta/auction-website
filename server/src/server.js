@@ -31,10 +31,11 @@ import connectDB from './config/db.js';
 // Initialize database connection
 connectDB();
 
-// Import routes (we'll create these next)
-import authRoutes from './routes/auth.js';
-import auctionRoutes from './routes/auctions.js';
-import bidRoutes from './routes/bids.js';
+// Import routes
+import authRoutes from './routes/authRoutes.js';
+import auctionRoutes from './routes/auctionRoutes.js';
+import bidRoutes from './routes/bidRoutes.js';
+import userRoutes from './routes/userRoutes.js';
 
 const app = express();
 const server = http.createServer(app);
@@ -45,10 +46,19 @@ const io = new SocketIO(server, {
   },
 });
 
-// Trust first proxy (important for rate limiting behind proxies like nginx)
-app.enable('trust proxy');
+// Middleware to parse JSON bodies. This is crucial for req.body to not be undefined.
+app.use(express.json());
 
-// Security middleware
+// Configure trust proxy for production
+if (process.env.NODE_ENV === 'production') {
+  // Trust only the specific proxy in production
+  app.set('trust proxy', 1); // trust first proxy
+} else {
+  // Disable trust proxy in development for safety
+  app.disable('trust proxy');
+}
+
+// Apply security middleware
 app.use(securityMiddleware);
 
 // Request logging
@@ -69,13 +79,14 @@ app.get('/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/auctions', auctionRoutes);
 app.use('/api/bids', bidRoutes);
+app.use('/api/users', userRoutes);
 
 // Serve static assets in production
 if (process.env.NODE_ENV === 'production') {
   // Set static folder
   app.use(express.static(join(__dirname, '../../client/build')));
 
-  app.get('*', (req, res) => {
+  app.use((req, res) => {
     res.sendFile(join(__dirname, '../../client/build', 'index.html'));
   });
 }
@@ -109,7 +120,7 @@ io.on('connection', socket => {
 app.set('io', io);
 
 // 404 handler
-app.all('*', (req, res, next) => {
+app.use((req, res, next) => {
   next(new AppError(`Can't find ${req.originalUrl} on this server!`, 404));
 });
 
