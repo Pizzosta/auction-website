@@ -79,7 +79,7 @@ const emailConfig = {
   // Sender information
   from: {
     name: process.env.EMAIL_FROM_NAME || 'Kawodze Auctions',
-    address: process.env.EMAIL_FROM || 'no-reply@kawodze-auctions.com',
+    address: process.env.EMAIL_FROM || 'no-reply@kawodze.com',
   },
   
   // Email templates configuration
@@ -92,7 +92,8 @@ const emailConfig = {
   templateVars: {
     appName: process.env.APP_NAME || 'Kawodze Auctions',
     appUrl: process.env.CLIENT_URL || 'http://localhost:3000',
-    year: new Date().getFullYear()
+    year: new Date().getFullYear(),
+    supportEmail: process.env.SUPPORT_EMAIL || 'support@kawodze.com',
   }
 };
 
