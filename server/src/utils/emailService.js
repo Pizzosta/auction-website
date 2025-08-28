@@ -122,6 +122,10 @@ const emailTemplates = {
     subject: 'Password Reset Request',
     template: 'resetPassword',
   },
+  passwordResetConfirmation: {
+    subject: 'Your Password Has Been Reset',
+    template: 'passwordResetConfirmation',
+  },
   auctionEndedSeller: {
     subject: 'Your Auction Has Ended',
     template: 'auctionEndedSeller',
