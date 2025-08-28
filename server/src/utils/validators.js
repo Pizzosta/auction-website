@@ -75,6 +75,33 @@ export const authValidation = {
         'string.empty': 'Password is required',
       }),
   }),
+  
+  forgotPassword: Joi.object({
+    email: Joi.string().email().required()
+      .messages({
+        'string.email': 'Please provide a valid email',
+        'string.empty': 'Email is required',
+      }),
+  }),
+
+  resetPassword: Joi.object({
+    password: Joi.string()
+      .min(8)
+      .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\da-zA-Z]).{8,}$/)
+      .required()
+      .messages({
+        'string.empty': 'Password is required',
+        'string.min': 'Password must be at least 8 characters long',
+        'string.pattern.base': 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character',
+      }),
+    confirmPassword: Joi.string()
+      .valid(Joi.ref('password'))
+      .required()
+      .messages({
+        'any.only': 'Passwords do not match',
+        'string.empty': 'Please confirm your password',
+      }),
+  }),
 };
 
 // Auction schemas
