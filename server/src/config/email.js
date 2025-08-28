@@ -1,5 +1,11 @@
 import nodemailer from 'nodemailer';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import logger from '../utils/logger.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Default SMTP configuration for development
 const DEFAULT_SMTP = {
@@ -30,15 +36,37 @@ const getSmtpConfig = () => {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
       },
+      // DKIM configuration
+      dkim: (() => {
+        try {
+          const dkimPrivateKey = fs.readFileSync(path.join(__dirname, 'config/keys/dkim-private.pem'), 'utf8');
+          
+          return {
+            domainName: 'kawodze.com',
+            keySelector: 'default',
+            privateKey: dkimPrivateKey,
+            cacheDir: path.resolve('tmp/dkim'),
+            cacheThreshold: 100 * 1024, // 100KB
+            keyBuffer: Buffer.from(dkimPrivateKey),
+            skipFields: process.env.NODE_ENV !== 'production' ? 'message-id:date' : '',
+          };
+        } catch (error) {
+          logger.warn('Failed to load DKIM private key. DKIM signing will be disabled.', {
+            error: error.message,
+            path: './keys/dkim-private.pem'
+          });
+          return null;
+        }
+      })()
     };
   }
-  
+
   if (process.env.NODE_ENV === 'production') {
     logger.warn('Using default SMTP configuration in production. This is not recommended.');
   } else {
     logger.info('Using development SMTP configuration');
   }
-  
+
   return DEFAULT_SMTP;
 };
 
@@ -46,7 +74,7 @@ const getSmtpConfig = () => {
 const createTransporter = () => {
   const smtpConfig = getSmtpConfig();
   const transporter = nodemailer.createTransport(smtpConfig);
-  
+
   // Verify connection on startup
   transporter.verify((error) => {
     if (error) {
@@ -65,29 +93,29 @@ const createTransporter = () => {
       });
     }
   });
-  
+
   return transporter;
 };
 
 const emailConfig = {
   // Expose SMTP config for reference
   getSmtpConfig,
-  
+
   // Initialize transporter
   transporter: createTransporter(),
-  
+
   // Sender information
   from: {
     name: process.env.EMAIL_FROM_NAME || 'Kawodze Auctions',
     address: process.env.EMAIL_FROM || 'no-reply@kawodze.com',
   },
-  
+
   // Email templates configuration
   templates: {
     dir: 'src/templates/emails',  // Relative to project root
     viewEngine: 'handlebars'
   },
-  
+
   // Default template variables
   templateVars: {
     appName: process.env.APP_NAME || 'Kawodze Auctions',
