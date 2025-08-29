@@ -152,6 +152,32 @@ export const bidSchema = {
   }),
 };
 
+// Webhook schema validation
+export const webhookSchema = {
+  headers: Joi.object({
+    'x-webhook-event': Joi.string().required(),
+    'x-webhook-signature': Joi.string().required(),
+    'x-webhook-delivery': Joi.string().guid().required(),
+    'user-agent': Joi.string()
+      .pattern(/^KawodzeAuction\/\d+\.\d+(?:\.\d+)?(?:-[a-zA-Z0-9.-]+)?(?:\+[a-zA-Z0-9.-]+)?$/)
+      .required()
+      .messages({
+        'string.pattern.base': 'User-Agent must be in format: AuctionWebhookService/x.y.z',
+        'any.required': 'User-Agent header is required'
+      }),
+    'content-type': Joi.string().valid('application/json').required(),
+    'x-request-timestamp': Joi.number().integer().required()
+  }).options({ allowUnknown: true }), // Allow other headers
+  
+  validateTimestamp: (timestamp, maxAge = 300) => {
+    const now = Math.floor(Date.now() / 1000);
+    if (Math.abs(now - timestamp) > maxAge) {
+      throw new Error('Webhook timestamp is too old');
+    }
+    return true;
+  }
+};
+
 // User schema validation
 export const userSchema = {
   deleteUser: Joi.object({

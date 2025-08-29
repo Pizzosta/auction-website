@@ -19,7 +19,7 @@ const __dirname = dirname(__filename);
 dotenv.config();
 
 // Validate required environment variables
-const requiredEnvVars = ['MONGODB_URI', 'JWT_SECRET', 'NODE_ENV', 'PORT', 'CLIENT_URL'];
+const requiredEnvVars = ['MONGODB_URI', 'JWT_SECRET', 'NODE_ENV', 'PORT', 'CLIENT_URL', 'WEBHOOK_SECRET', ];
 
 const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
 if (missingVars.length > 0) {
@@ -38,6 +38,7 @@ import authRoutes from './routes/authRoutes.js';
 import auctionRoutes from './routes/auctionRoutes.js';
 import bidRoutes from './routes/bidRoutes.js';
 import userRoutes from './routes/userRoutes.js';
+import webhookRoutes from './routes/webhookRoutes.js';
 
 const app = express();
 const server = http.createServer(app);
@@ -83,11 +84,12 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Routes
+// API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/auctions', auctionRoutes);
 app.use('/api/bids', bidRoutes);
 app.use('/api/users', userRoutes);
+app.use('/webhook', webhookRoutes);
 
 // Serve static assets in production
 if (process.env.NODE_ENV === 'production') {
