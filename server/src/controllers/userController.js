@@ -5,10 +5,19 @@ import User from '../models/User.js';
 // @access  Private/Admin
 export const getAllUsers = async (req, res) => {
     try {
-        // Pagination
-        const page = parseInt(req.query.page, 10) || 1;
-        const limit = parseInt(req.query.limit, 10) || 10;
+        // Get pagination parameters (already validated by middleware)
+        const { page = 1, limit = 10, sort } = req.query;
         const skip = (page - 1) * limit;
+        
+        // Build sort object if sort parameter is provided
+        const sortOptions = {};
+        if (sort) {
+            const [field, order] = sort.split(':');
+            sortOptions[field] = order === 'desc' ? -1 : 1;
+        } else {
+            // Default sort by creation date (newest first)
+            sortOptions.createdAt = -1;
+        }
 
         // Build query
         const query = {};
@@ -30,12 +39,12 @@ export const getAllUsers = async (req, res) => {
             ];
         }
 
-        // Execute query with pagination
+        // Execute query with pagination and sorting
         const users = await User.find(query)
             .select('-password -__v')
             .skip(skip)
             .limit(limit)
-            .sort({ createdAt: -1 });
+            .sort(sortOptions);
 
         // Get total count for pagination
         const total = await User.countDocuments(query);
