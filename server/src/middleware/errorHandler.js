@@ -22,8 +22,25 @@ const handleCastErrorDB = err => {
 };
 
 const handleDuplicateFieldsDB = err => {
-  const value = err.errmsg.match(/(["'])(?:(?=(\?))\2.)*?\1/)[0];
-  const message = `Duplicate field value: ${value}. Please use another value!`;
+  // Extract the duplicate field key and value
+  const fieldName = Object.keys(err.keyPattern || {})[0] || 'field';
+  const fieldValue = err.keyValue ? err.keyValue[fieldName] : 'unknown';
+
+  let message;
+  switch (fieldName) {
+    case 'email':
+      message = 'An account with this email already exists.';
+      break;
+    case 'username':
+      message = 'This username is already taken.';
+      break;
+    case 'phone':
+      message = 'This phone number is already registered.';
+      break;
+    default:
+      message = `Duplicate value for ${fieldName}: "${fieldValue}". Please use another value!`;
+  }
+
   return new AppError(message, 400);
 };
 
@@ -45,36 +62,39 @@ const globalErrorHandler = (err, req, res, _next) => {
   err.statusCode = err.statusCode || 500;
   err.status = err.status || 'error';
 
-  // Log error in development
-  if (process.env.NODE_ENV === 'development') {
-    logger.error('Error 💥', {
-      status: err.status,
-      message: err.message,
-      stack: err.stack,
-      error: err,
-    });
-  }
-
-  // Handle specific error types
+  // Normalize the error object
   let error = { ...err };
   error.message = err.message;
   error.stack = err.stack;
 
+  // Handle specific error types
   if (error.name === 'CastError') error = handleCastErrorDB(error);
   if (error.code === 11000) error = handleDuplicateFieldsDB(error);
   if (error.name === 'ValidationError') error = handleValidationErrorDB(error);
   if (error.name === 'JsonWebTokenError') error = handleJWTError();
   if (error.name === 'TokenExpiredError') error = handleJWTExpiredError();
 
-  // Log operational errors in production
-  if (process.env.NODE_ENV === 'production' && !error.isOperational) {
-    logger.error('Error 💥', {
-      status: error.status,
-      message: error.message,
-      stack: error.stack,
-      error,
-    });
-  }
+  // Always log structured error with request context
+  logger.error('Unhandled error', {
+    status: error.status,
+    statusCode: error.statusCode,
+    message: error.message,
+    stack: error.stack,
+    path: req.originalUrl,
+    method: req.method,
+    ip: req.ip,
+    // Include original error object for debugging
+    originalError: {
+      name: err.name,
+      message: err.message,
+      code: err.code,
+      ...(
+        process.env.NODE_ENV === 'development'
+          ? { full: err } // only log the full raw error in dev
+          : {}
+      )
+    }
+  });
 
   // Send response to client
   res.status(error.statusCode || 500).json({
