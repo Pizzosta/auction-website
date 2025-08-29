@@ -2,6 +2,8 @@ import winston from 'winston';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import morgan from 'morgan';
+import { getRequestContext } from '../middleware/requestContext.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -12,8 +14,18 @@ if (!fs.existsSync(logDir)) {
   fs.mkdirSync(logDir);
 }
 
+// Custom format to inject requestId
+const requestIdFormat = winston.format((info) => {
+  const context = getRequestContext();
+  if (context.requestId) {
+    info.requestId = context.requestId;
+  }
+  return info;
+});
+
 // Define log format
 const logFormat = winston.format.combine(
+  requestIdFormat(),
   winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
   winston.format.errors({ stack: true }),
   winston.format.splat(),
@@ -51,8 +63,8 @@ if (process.env.NODE_ENV !== 'production') {
       format: winston.format.combine(
         winston.format.colorize(),
         winston.format.simple(),
-        winston.format.printf(({ level, message, ...meta }) => {
-          return `${level}: ${message} ${Object.keys(meta).length ? JSON.stringify(meta, null, 2) : ''}`;
+        winston.format.printf(({ level, message, requestId, ...meta }) => {
+          return `${requestId} ${level}: ${message} ${Object.keys(meta).length ? JSON.stringify(meta, null, 2) : ''}`;
         })
       ),
       level: 'debug',
@@ -60,11 +72,33 @@ if (process.env.NODE_ENV !== 'production') {
   );
 }
 
-// Create a stream for morgan (HTTP request logging)
-export const stream = {
-  write: message => {
-    logger.info(message.trim());
+// Create a Morgan token for requestId
+morgan.token('requestId', (req) => req.requestId || 'no-id');
+
+// Define Morgan format string
+const morganFormat =
+  ':requestId :method :url :status :res[content-length] - :response-time ms';
+
+// Create a Morgan middleware that logs via Winston
+export const httpLogger = morgan(morganFormat, {
+  stream: {
+    write: (message) => {
+      logger.http(message.trim());
+    },
   },
-};
+});
+
+// Patch logger methods so requestId is always included (error, warn, info, etc.)
+const levelsToPatch = ['error', 'warn', 'info', 'debug', 'http'];
+for (const level of levelsToPatch) {
+  const originalFn = logger[level].bind(logger);
+  logger[level] = (msg, meta = {}) => {
+    const context = getRequestContext();
+    if (context?.requestId && !meta.requestId) {
+      meta.requestId = context.requestId;
+    }
+    return originalFn(msg, meta);
+  };
+}
 
 export default logger;
