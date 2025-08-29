@@ -74,8 +74,11 @@ const globalErrorHandler = (err, req, res, _next) => {
   if (error.name === 'JsonWebTokenError') error = handleJWTError();
   if (error.name === 'TokenExpiredError') error = handleJWTExpiredError();
 
-  // Always log structured error with request context
-  logger.error('Unhandled error', {
+  // Determine log level based on error type
+  const logLevel = error.isOperational ? 'warn' : 'error';
+
+  // Log structured error with request context
+  logger.error[logLevel]('Unhandled error', {
     status: error.status,
     statusCode: error.statusCode,
     message: error.message,
@@ -83,17 +86,21 @@ const globalErrorHandler = (err, req, res, _next) => {
     path: req.originalUrl,
     method: req.method,
     ip: req.ip,
-    // Include original error object for debugging
-    originalError: {
-      name: err.name,
-      message: err.message,
-      code: err.code,
-      ...(
-        process.env.NODE_ENV === 'development'
-          ? { full: err } // only log the full raw error in dev
-          : {}
-      )
-    }
+    isOperational: error.isOperational,
+    // Only include stack for non-operational errors in production
+    ...(!error.isOperational && { stack: error.stack }),
+    // Include original error object for debugging in development
+    ...(
+      process.env.NODE_ENV === 'development'
+      && {
+        stack: error.stack,
+        originalError: {
+          name: err.name,
+          message: err.message,
+          code: err.code,
+          full: err
+        }
+      })
   });
 
   // Send response to client
