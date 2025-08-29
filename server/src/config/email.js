@@ -46,7 +46,6 @@ const getSmtpConfig = () => {
             keySelector: 'default',
             privateKey: dkimPrivateKey,
             cacheDir: path.resolve('tmp/dkim'),
-            cacheThreshold: 100 * 1024, // 100KB
             keyBuffer: Buffer.from(dkimPrivateKey),
             skipFields: process.env.NODE_ENV !== 'production' ? 'message-id:date' : '',
           };
@@ -84,12 +83,19 @@ const createTransporter = () => {
         // e.g., send a notification to monitoring service
       }
     } else {
-      logger.info('Email transporter connected successfully');
+      const dkimStatus = smtpConfig.dkim ? 'active' : 'inactive';
+      logger.info(`Email transporter connected successfully (DKIM: ${dkimStatus})`);
+      
       logger.debug('SMTP Configuration:', {
         host: smtpConfig.host,
         port: smtpConfig.port,
         secure: smtpConfig.secure,
         user: smtpConfig.auth.user,
+        dkim: dkimStatus,
+        ...(smtpConfig.dkim && {
+          dkimDomain: smtpConfig.dkim.domainName,
+          dkimSelector: smtpConfig.dkim.keySelector
+        })
       });
     }
   });
