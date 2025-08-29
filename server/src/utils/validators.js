@@ -1,16 +1,34 @@
 import Joi from 'joi';
 
-// Common validation schemas
-const idSchema = Joi.string().pattern(/^[0-9a-fA-F]{24}$/).messages({
-  'string.pattern.base': 'Invalid ID format',
-});
-
-const paginationSchema = {
+// Pagination validation
+export const paginationSchema = Joi.object({
   page: Joi.number().integer().min(1).default(1),
   limit: Joi.number().integer().min(1).max(100).default(10),
-  sort: Joi.string(),
-  fields: Joi.string(),
-};
+  sort: Joi.string()
+    .pattern(/^(firstname|lastname|email|username|createdAt):(asc|desc)$/)
+    .optional(),
+  fields: Joi.string().pattern(/^[a-zA-Z0-9_, ]*$/).optional(),
+  role: Joi.string().valid('user', 'admin').optional(),
+  search: Joi.string().max(100).optional()
+});
+
+// ID validation
+export const paramId = Joi.object({
+  id: Joi.string().hex().length(24).required().messages({
+    'string.hex': 'Invalid user ID format',
+    'string.length': 'User ID must be 24 characters long',
+    'any.required': 'User ID is required'
+  })
+});
+
+// Token validation
+export const paramToken = Joi.object({
+  token: Joi.string().length(64).hex().required().messages({
+    'string.length': 'Invalid token format',
+    'string.hex': 'Invalid token format',
+    'string.empty': 'Reset token is required',
+  }),
+});
 
 // Auth schemas
 export const authValidation = {
@@ -75,7 +93,7 @@ export const authValidation = {
         'string.empty': 'Password is required',
       }),
   }),
-  
+
   forgotPassword: Joi.object({
     email: Joi.string().email().required()
       .messages({
@@ -127,16 +145,12 @@ export const auctionValidation = {
 // Bid schemas
 export const bidValidation = {
   amount: Joi.number().min(0.01).required(),
-  auctionId: idSchema.required(),
+  auctionId: Joi.string().hex().length(24).required().messages({
+    'string.hex': 'Invalid auction ID format',
+    'string.length': 'Auction ID must be 24 characters long',
+    'any.required': 'Auction ID is required'
+  }),
 };
-
-export const paramId = Joi.object({
-  id: Joi.string().hex().length(24).required().messages({
-    'string.hex': 'Invalid user ID format',
-    'string.length': 'User ID must be 24 characters long',
-    'any.required': 'User ID is required'
-  })
-});
 
 // User validation
 export const userValidation = {
