@@ -2,8 +2,8 @@ import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import zxcvbn from 'zxcvbn';
 import crypto from 'crypto';
-import { sendTemplateEmail } from '../utils/emailService.js';
 import { addToQueue } from '../services/emailQueue.js';
+import logger from '../utils/logger.js';
 
 // Password strength checker
 const checkPasswordStrength = (password) => {
@@ -180,7 +180,7 @@ export const forgotPassword = async (req, res) => {
 
         // Find user by email
         const user = await User.findOne({ email: email?.trim().toLowerCase() });
-        
+
         // Don't reveal if user doesn't exist (security best practice)
         if (!user) {
             return res.status(200).json({
@@ -238,6 +238,35 @@ export const resetPassword = async (req, res) => {
         const { token } = req.params;
         const { password, confirmPassword } = req.body;
 
+        // Check if token is valid
+        if (!token || typeof token !== 'string' || token.length !== 64) {
+            logger.warn('Reset token validation failed', {
+                reason: 'Invalid token type',
+                tokenType: typeof token,
+                tokenLength: typeof token === 'string' ? token.length : 'N/A',
+                ip: req.ip,
+                route: req.originalUrl,
+                timestamp: new Date().toISOString(),
+            });
+
+            return res.status(400).json({
+                status: 'error',
+                message: 'Invalid reset token format',
+                details: `Expected 64-character hex string, got ${typeof token === 'string' ? token.length : 'N/A'} characters`
+            });
+        }
+        
+        // Decode URL-encoded characters in the token
+        const decodedToken = decodeURIComponent(token);
+        
+        // Log token details for debugging
+        logger.info('Reset token received', {
+            originalToken: token,
+            decodedToken,
+            tokenLength: decodedToken.length,
+            isHex: /^[0-9a-fA-F]+$/.test(decodedToken)
+        });
+
         // Check if passwords match
         if (password !== confirmPassword) {
             return res.status(400).json({
@@ -265,10 +294,10 @@ export const resetPassword = async (req, res) => {
             });
         }
 
-        // Get hashed token
+        // Get hashed token using the decoded token
         const resetPasswordToken = crypto
             .createHash('sha256')
-            .update(token)
+            .update(decodedToken)
             .digest('hex');
 
         // Find user by reset token and check expiration
