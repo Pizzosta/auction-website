@@ -156,7 +156,7 @@ userSchema.methods.matchPassword = async function (enteredPassword) {
 // Generate and hash password reset token
 userSchema.methods.getResetPasswordToken = function () {
   // Generate token
-  const resetToken = crypto.randomBytes(20).toString('hex');
+  const resetToken = crypto.randomBytes(32).toString('hex');
 
   // Hash token and set to resetPasswordToken field
   this.resetPasswordToken = crypto.createHash('sha256').update(resetToken).digest('hex');
@@ -170,7 +170,7 @@ userSchema.methods.getResetPasswordToken = function () {
 // Generate email verification token
 userSchema.methods.getEmailVerificationToken = function () {
   // Generate token
-  const verificationToken = crypto.randomBytes(20).toString('hex');
+  const verificationToken = crypto.randomBytes(32).toString('hex');
 
   // Hash token and set to emailVerificationToken field
   this.emailVerificationToken = crypto.createHash('sha256').update(verificationToken).digest('hex');
