@@ -1,7 +1,7 @@
 import Joi from 'joi';
 
-// Pagination validation
-export const paginationSchema = Joi.object({
+// Query schema validation
+export const querySchema = Joi.object({
   page: Joi.number().integer().min(1).default(1),
   limit: Joi.number().integer().min(1).max(100).default(10),
   sort: Joi.string()
@@ -12,8 +12,8 @@ export const paginationSchema = Joi.object({
   search: Joi.string().max(100).optional()
 });
 
-// ID validation
-export const paramId = Joi.object({
+// ID schema validation
+export const idSchema = Joi.object({
   id: Joi.string().hex().length(24).required().messages({
     'string.hex': 'Invalid user ID format',
     'string.length': 'User ID must be 24 characters long',
@@ -21,8 +21,8 @@ export const paramId = Joi.object({
   })
 });
 
-// Token validation
-export const paramToken = Joi.object({
+// Token schema validation
+export const tokenSchema = Joi.object({
   token: Joi.string().length(64).hex().required().messages({
     'string.length': 'Invalid token format',
     'string.hex': 'Invalid token format',
@@ -30,8 +30,8 @@ export const paramToken = Joi.object({
   }),
 });
 
-// Auth schemas
-export const authValidation = {
+// Auth schema validation
+export const authSchema = {
   register: Joi.object({
     firstname: Joi.string().min(3).max(50).required()
       .messages({
@@ -122,8 +122,8 @@ export const authValidation = {
   }),
 };
 
-// Auction schemas
-export const auctionValidation = {
+// Auction schema validation
+export const auctionSchema = {
   create: Joi.object({
     title: Joi.string().required(),
     description: Joi.string().required(),
@@ -142,8 +142,8 @@ export const auctionValidation = {
   }).min(1), // At least one field required for update
 };
 
-// Bid schemas
-export const bidValidation = {
+// Bid schema validation
+export const bidSchema = {
   amount: Joi.number().min(0.01).required(),
   auctionId: Joi.string().hex().length(24).required().messages({
     'string.hex': 'Invalid auction ID format',
@@ -152,8 +152,8 @@ export const bidValidation = {
   }),
 };
 
-// User validation
-export const userValidation = {
+// User schema validation
+export const userSchema = {
   deleteUser: Joi.object({
     password: Joi.string().min(8)
       .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\da-zA-Z]).{8,}$/)

@@ -1,16 +1,16 @@
 import express from 'express';
 import { register, login, forgotPassword, resetPassword } from '../controllers/authController.js';
 import { validate } from '../middleware/validationMiddleware.js';
-import { authValidation } from '../utils/validators.js';
+import { authSchema, tokenSchema } from '../utils/validators.js';
 
 const router = express.Router();
 
 // Public routes
-router.post('/register', validate(authValidation.register, 'body'), register);
-router.post('/login', validate(authValidation.login, 'body'), login);
+router.post('/register', validate(authSchema.register, 'body'), register);
+router.post('/login', validate(authSchema.login, 'body'), login);
 
 // Password reset routes
-router.post('/forgot-password', validate(authValidation.forgotPassword, 'body'), forgotPassword);
-router.post('/reset-password/:token', validate(authValidation.resetPassword, 'body'), resetPassword);
+router.post('/forgot-password', validate(authSchema.forgotPassword, 'body'), forgotPassword);
+router.post('/reset-password/:token', validate(tokenSchema, 'params'), validate(authSchema.resetPassword, 'body'), resetPassword);
 
 export default router;
