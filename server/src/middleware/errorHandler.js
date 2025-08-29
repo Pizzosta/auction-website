@@ -78,7 +78,7 @@ const globalErrorHandler = (err, req, res, _next) => {
   const logLevel = error.isOperational ? 'warn' : 'error';
 
   // Log structured error with request context
-  logger.error[logLevel]('Unhandled error', {
+  logger[logLevel]('Unhandled error', {
     status: error.status,
     statusCode: error.statusCode,
     message: error.message,
