@@ -39,7 +39,9 @@ const getSmtpConfig = () => {
       // DKIM configuration
       dkim: (() => {
         try {
-          const dkimPrivateKey = fs.readFileSync(path.join(__dirname, 'config/keys/dkim-private.pem'), 'utf8');
+          const dkimKeyPath = path.join(__dirname, 'keys/dkim-private.pem');
+          logger.debug(`Loading DKIM key from: ${dkimKeyPath}`);
+          const dkimPrivateKey = fs.readFileSync(dkimKeyPath, 'utf8');
           
           return {
             domainName: 'kawodze.com',
@@ -52,7 +54,7 @@ const getSmtpConfig = () => {
         } catch (error) {
           logger.warn('Failed to load DKIM private key. DKIM signing will be disabled.', {
             error: error.message,
-            path: './keys/dkim-private.pem'
+            path: path.join(__dirname, 'keys/dkim-private.pem')
           });
           return null;
         }
