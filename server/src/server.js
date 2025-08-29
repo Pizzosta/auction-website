@@ -9,6 +9,8 @@ import requestLogger from './middleware/requestLogger.js';
 import securityMiddleware from './middleware/security.js';
 import { globalErrorHandler, AppError } from './middleware/errorHandler.js';
 import './jobs/index.js'; // Import jobs to start the scheduler
+import { requestContextMiddleware } from './middleware/requestContext.js';
+import { httpLogger } from './utils/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -60,6 +62,12 @@ if (process.env.NODE_ENV === 'production') {
 
 // Apply security middleware
 app.use(securityMiddleware);
+
+// Apply requestId context middleware
+app.use(requestContextMiddleware);
+
+// Apply HTTP logger
+app.use(httpLogger);
 
 // Request logging
 app.use(requestLogger);
