@@ -1,5 +1,17 @@
 export const validate = (schema, property = "body") => {
     return (req, res, next) => {
+        // For file uploads, check if files exist instead of the property
+        if (property === 'file') {
+            if (!req.file && !req.files) {
+                return res.status(400).json({
+                    status: "fail",
+                    message: "Validation error",
+                    details: ["No file was uploaded"]
+                });
+            }
+            return next();
+        }
+
         // Handle cases where the property might not exist on the request
         if (!req[property]) {
             req[property] = {};
