@@ -74,7 +74,7 @@ export const createAuction = async (req, res) => {
 export const getAuctions = async (req, res) => {
   try {
     // Get pagination parameters (already validated by middleware)
-    const { status, category, search, page = 1, limit = 10, sort } = req.query;
+    const { status, category, minPrice, maxPrice, search, endingSoon, page = 1, limit = 10, sort } = req.query;
     const skip = (page - 1) * limit;
 
     // Build sort object if sort parameter is provided
@@ -92,9 +92,24 @@ export const getAuctions = async (req, res) => {
 
     // Filter by status if provided
     if (status) query.status = status;
-    
+
     // Filter by category if provided
     if (category) query.category = category;
+
+    // Filter by price range if provided
+    if (minPrice || maxPrice) {
+      query.currentPrice = {};
+      if (minPrice) query.currentPrice.$gte = Number(minPrice);
+      if (maxPrice) query.currentPrice.$lte = Number(maxPrice);
+    }
+
+    // Filter for auctions ending soon (next 24 hours)
+    if (endingSoon === 'true') {
+      query.endDate = { 
+        $gte: new Date(), 
+        $lte: new Date(Date.now() + 24 * 60 * 60 * 1000) // Next 24 hours
+      };
+    }
 
     // Search by title, description, or category if search query is provided
     if (search) {

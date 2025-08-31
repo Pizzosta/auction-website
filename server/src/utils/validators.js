@@ -6,6 +6,7 @@ export const userQuerySchema = Joi.object({
   limit: Joi.number().integer().min(1).max(100).default(10),
   sort: Joi.string()
     .pattern(/^(firstname|lastname|email|phone|username|createdAt):(asc|desc)$/)
+    .default('createdAt:desc')
     .optional(),
   fields: Joi.string().pattern(/^[a-zA-Z0-9_, ]*$/).optional(),
   search: Joi.string().optional(),
@@ -18,13 +19,17 @@ export const auctionQuerySchema = Joi.object({
   limit: Joi.number().integer().min(1).max(100).default(10),
   sort: Joi.string()
     .pattern(/^(title|description|startingPrice|currentPrice|endDate|createdAt|bidCount):(asc|desc)$/)
+    .default('createdAt:desc')
     .optional(),
   status: Joi.string().valid('active', 'upcoming', 'ended', 'sold').optional(),
   category: Joi.string().optional(),
   search: Joi.string().optional(),
+  endingSoon: Joi.boolean().optional().description('Filter for auctions ending in the next 24 hours'),
   seller: Joi.string().pattern(/^[0-9a-fA-F]{24}$/).optional(),
   winner: Joi.string().pattern(/^[0-9a-fA-F]{24}$/).optional(),
-  fields: Joi.string().pattern(/^[a-zA-Z0-9_, ]*$/).optional()
+  fields: Joi.string().pattern(/^[a-zA-Z0-9_, ]*$/).optional(),
+  minPrice: Joi.number().min(0).optional(),
+  maxPrice: Joi.number().min(0).optional(),
 });
 
 // ID schema validation
