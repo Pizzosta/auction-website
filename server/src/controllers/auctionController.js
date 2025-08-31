@@ -1,29 +1,71 @@
 import Auction from '../models/Auction.js';
 import Bid from '../models/Bid.js';
+import { v2 as cloudinary } from 'cloudinary';
+import getCloudinary from '../config/cloudinary.js';
 
 // @desc    Create a new auction
 // @route   POST /api/auctions
 // @access  Private
 export const createAuction = async (req, res) => {
   try {
-    const { title, description, startingPrice, endDate, image, category } = req.body;
+    const { title, description, startingPrice, endDate, category } = req.body;
+
+    // Ensure at least one image is uploaded
+    if (!req.uploadedFiles || req.uploadedFiles.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'At least one image is required for the auction',
+      });
+    }
+
+    const images = req.uploadedFiles;
 
     const auction = new Auction({
       title,
       description,
       startingPrice,
       currentPrice: startingPrice,
-      endDate,
-      image,
+      endDate: new Date(endDate),
+      images: images.map(file => ({
+        url: file.url,
+        publicId: file.publicId,
+      })),
       category,
       seller: req.user._id,
     });
 
     const createdAuction = await auction.save();
-    res.status(201).json(createdAuction);
+    
+    // Populate seller details
+    await createdAuction.populate('seller', 'username email');
+    
+    res.status(201).json({
+      success: true,
+      message: 'Auction created successfully',
+      data: createdAuction
+    });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Error creating auction:', error);
+    
+    // If there was an error, clean up any uploaded files
+    if (req.uploadedFiles && req.uploadedFiles.length > 0) {
+      try {
+        const cloudinary = await getCloudinary();
+        await Promise.all(
+          req.uploadedFiles.map(file => 
+            cloudinary.uploader.destroy(file.publicId).catch(console.error)
+          )
+        );
+      } catch (cleanupError) {
+        console.error('Error cleaning up uploaded files:', cleanupError);
+      }
+    }
+    
+    res.status(500).json({
+      success: false,
+      message: 'Server error while creating auction',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 };
 
@@ -86,7 +128,7 @@ export const getAuctionById = async (req, res) => {
 // @access  Private/Owner or Admin
 export const updateAuction = async (req, res) => {
   try {
-    const { title, description, image, category } = req.body;
+    const { title, description, images, category } = req.body;
     const auction = await Auction.findById(req.params.id);
 
     if (!auction) {
@@ -100,7 +142,7 @@ export const updateAuction = async (req, res) => {
 
     auction.title = title || auction.title;
     auction.description = description || auction.description;
-    auction.image = image || auction.image;
+    auction.images = images || auction.images;
     auction.category = category || auction.category;
 
     const updatedAuction = await auction.save();
