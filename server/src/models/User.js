@@ -28,6 +28,7 @@ const userSchema = new mongoose.Schema(
     },
     phone: {
       type: String,
+      required: [true, 'Please add a phone number'],
       trim: true,
       unique: true,
       match: [/^(?:\+?233|0?)[235]\d{8}$/, 'Please add a valid Ghanaian phone number starting with 233, +233, 0, or nothing, followed by 2, 3, or 5 and 8 more digits']
@@ -61,14 +62,28 @@ const userSchema = new mongoose.Schema(
       },
       select: false, // Don't return password in query results
     },
+    profilePicture: {
+      url: {
+        type: String,
+        default: '',
+        trim: true,
+        validate: {
+          validator: function (v) {
+            return !v || /^(https?:\/\/.*\.(?:png|jpg|jpeg|webp))$/.test(v);
+          },
+          message: (props) => `${props.value} is not a valid image URL!`,
+        },
+      },
+      publicId: {
+        type: String,
+        default: '',
+        trim: true
+      }
+    },
     role: {
       type: String,
       enum: ['user', 'admin'],
       default: 'user',
-    },
-    avatar: {
-      url: String,
-      publicId: String,
     },
     rating: {
       type: Number,
@@ -112,6 +127,15 @@ userSchema.virtual('fullName').get(function () {
   return [this.firstname, this.middlename, this.lastname]
     .filter(Boolean)
     .join(' ');
+});
+
+// Virtual field to get avatar URL with fallback
+userSchema.virtual('avatarUrl').get(function () {
+  if (this.profilePicture?.url) {
+    return this.profilePicture.url;
+  }
+  const identifier = this.email || this.username;
+  return `https://robohash.org/${identifier}?bgset=bg1`;
 });
 
 // Virtual for user's auctions
