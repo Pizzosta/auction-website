@@ -19,7 +19,7 @@ const __dirname = dirname(__filename);
 dotenv.config();
 
 // Validate required environment variables
-const requiredEnvVars = ['MONGODB_URI', 'JWT_SECRET', 'NODE_ENV', 'PORT', 'CLIENT_URL', 'WEBHOOK_SECRET', ];
+const requiredEnvVars = ['MONGODB_URI', 'JWT_SECRET', 'NODE_ENV', 'PORT', 'CLIENT_URL', 'WEBHOOK_SECRET', 'CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET'];
 
 const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
 if (missingVars.length > 0) {
@@ -29,9 +29,21 @@ if (missingVars.length > 0) {
 
 // Import database connection
 import connectDB from './config/db.js';
-
 // Initialize database connection
 connectDB();
+
+// Then import and initialize Cloudinary
+import initializeCloudinary from './config/cloudinary.js';
+// Initialize Cloudinary
+try {
+  await initializeCloudinary();
+  logger.info('Cloudinary initialized successfully');
+} catch (error) {
+  logger.error('Failed to initialize Cloudinary. Image uploads will not work.');
+  if (process.env.NODE_ENV === 'production') {
+    process.exit(1); // Fail fast in production
+  }
+}
 
 // Import routes
 import authRoutes from './routes/authRoutes.js';
