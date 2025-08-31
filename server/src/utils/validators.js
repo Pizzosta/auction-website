@@ -33,32 +33,32 @@ export const tokenSchema = Joi.object({
 // Auth schema validation
 export const authSchema = {
   register: Joi.object({
-    firstname: Joi.string().min(3).max(50).required()
+    firstname: Joi.string().trim().min(3).max(20).required()
       .messages({
         'string.empty': 'First name is required',
         'string.min': 'First name must be at least 3 characters long',
-        'string.max': 'First name cannot be more than 50 characters',
+        'string.max': 'First name cannot be more than 20 characters',
       }),
-    middlename: Joi.string().max(50).allow('')
+    middlename: Joi.string().trim().max(20).allow('')
       .messages({
-        'string.max': 'Middle name cannot be more than 50 characters',
+        'string.max': 'Middle name cannot be more than 20 characters',
       }),
-    lastname: Joi.string().min(3).max(50).required()
+    lastname: Joi.string().trim().min(3).max(20).required()
       .messages({
         'string.empty': 'Last name is required',
         'string.min': 'Last name must be at least 3 characters long',
-        'string.max': 'Last name cannot be more than 50 characters',
+        'string.max': 'Last name cannot be more than 20 characters',
       }),
     phone: Joi.string()
       .pattern(/^[+]?[(]?[0-9]{1,4}[)]?[-\s./0-9]*$/, 'phone')
       .message('Please provide a valid phone number')
-      .allow(''),
-    username: Joi.string().alphanum().min(3).max(30).required()
+      .required(),
+    username: Joi.string().alphanum().trim().min(3).max(20).required()
       .messages({
         'string.empty': 'Username is required',
         'string.alphanum': 'Username can only contain letters and numbers',
         'string.min': 'Username must be at least 3 characters long',
-        'string.max': 'Username cannot be more than 30 characters',
+        'string.max': 'Username cannot be more than 20 characters',
       }),
     email: Joi.string().email().required()
       .messages({
@@ -125,20 +125,53 @@ export const authSchema = {
 // Auction schema validation
 export const auctionSchema = {
   create: Joi.object({
-    title: Joi.string().required(),
-    description: Joi.string().required(),
+    title: Joi.string().trim().min(3).max(50).required(),
+    description: Joi.string().trim().min(3).max(500).required(),
     startingPrice: Joi.number().min(0).required(),
     currentPrice: Joi.number().min(0),
     endDate: Joi.date().iso().greater('now').required(),
-    category: Joi.string().required(),
+    category: Joi.string().required()
+    .valid(
+      ...[
+        "Electronics",
+        "Fashion",
+        "Home & Garden",
+        "Collectibles",
+        "Sports",
+        "Automotive",
+        "Art",
+        "Books",
+        "Jewelry",
+        "Toys",
+      ]
+    )
+    .required(),
     images: Joi.array().items(Joi.string().uri()),
   }),
 
   update: Joi.object({
-    title: Joi.string(),
-    description: Joi.string(),
+    title: Joi.string().trim().min(3).max(50).required(),
+    description: Joi.string().trim().min(3).max(500).required(),
+    startingPrice: Joi.number().min(0).required(),
     currentPrice: Joi.number().min(0),
-    status: Joi.string().valid('active', 'sold', 'cancelled'),
+    endDate: Joi.date().iso().greater('now').required(),
+    category: Joi.string().required()
+    .valid(
+      ...[
+        "Electronics",
+        "Fashion",
+        "Home & Garden",
+        "Collectibles",
+        "Sports",
+        "Automotive",
+        "Art",
+        "Books",
+        "Jewelry",
+        "Toys",
+      ]
+    )
+    .required(),
+    images: Joi.array().items(Joi.string().uri()),
   }).min(1), // At least one field required for update
 };
 
@@ -192,29 +225,29 @@ export const userSchema = {
   }),
 
   updateUser: Joi.object({
-    firstname: Joi.string().trim().min(3).max(50)
+    firstname: Joi.string().trim().min(3).max(20)
       .pattern(/^[a-zA-Z\s-']+$/)
       .messages({
         'string.pattern.base': 'First name can only contain letters, spaces, hyphens, and apostrophes',
         'string.min': 'First name must be at least 3 characters long',
-        'string.max': 'First name cannot be more than 50 characters',
+        'string.max': 'First name cannot be more than 20 characters',
         'string.empty': 'First name is required'
       }),
 
-    lastname: Joi.string().trim().min(3).max(50)
+    lastname: Joi.string().trim().min(3).max(20)
       .pattern(/^[a-zA-Z\s-']+$/)
       .messages({
         'string.pattern.base': 'Last name can only contain letters, spaces, hyphens, and apostrophes',
         'string.min': 'Last name must be at least 3 characters long',
-        'string.max': 'Last name cannot be more than 50 characters',
+        'string.max': 'Last name cannot be more than 20 characters',
         'string.empty': 'Last name is required'
       }),
 
-    middlename: Joi.string().trim().allow('').max(50)
+    middlename: Joi.string().trim().allow('').max(20)
       .pattern(/^[a-zA-Z\s-']*$/)
       .messages({
         'string.pattern.base': 'Middle name can only contain letters, spaces, hyphens, and apostrophes',
-        'string.max': 'Middle name cannot be more than 50 characters'
+        'string.max': 'Middle name cannot be more than 20 characters'
       }),
 
     phone: Joi.string().trim()
@@ -222,14 +255,15 @@ export const userSchema = {
       .messages({
         'string.pattern.base': 'Please enter a valid Ghanaian phone number',
         'string.empty': 'Phone number is required'
-      }),
+      })
+      .required(),
 
-    username: Joi.string().trim().min(3).max(30)
+    username: Joi.string().trim().min(3).max(20)
       .pattern(/^[a-zA-Z0-9_]+$/)
       .messages({
         'string.pattern.base': 'Username can only contain letters, numbers, and underscores',
         'string.min': 'Username must be at least 3 characters long',
-        'string.max': 'Username cannot be more than 30 characters',
+        'string.max': 'Username cannot be more than 20 characters',
         'string.empty': 'Username is required'
       }),
 
@@ -293,5 +327,18 @@ export const userSchema = {
     isVerified: Joi.boolean().default(false)
   }).min(1).messages({
     'object.min': 'At least one field must be provided to update'
+  }),
+  
+  // Profile picture validation
+  profilePicture: Joi.object({
+    profilePicture: Joi.any().required().messages({
+      'any.required': 'Profile picture is required',
+      'any.empty': 'Profile picture cannot be empty'
+    })
+  }),
+  
+  // Delete profile picture validation
+  deleteProfilePicture: Joi.object({}).empty().messages({
+    'object.base': 'No additional data should be sent with this request'
   })
 };
