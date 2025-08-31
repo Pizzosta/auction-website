@@ -1,4 +1,5 @@
 import User from '../models/User.js';
+import { getCloudinary } from '../config/cloudinary.js';
 
 // @desc    Get all users (admin only)
 // @route   GET /api/users
@@ -6,9 +7,9 @@ import User from '../models/User.js';
 export const getAllUsers = async (req, res) => {
     try {
         // Get pagination parameters (already validated by middleware)
-        const { page = 1, limit = 10, sort } = req.query;
+        const { role, isVerified, rating, search, page = 1, limit = 10, sort } = req.query;
         const skip = (page - 1) * limit;
-        
+
         // Build sort object if sort parameter is provided
         const sortOptions = {};
         if (sort) {
@@ -23,13 +24,23 @@ export const getAllUsers = async (req, res) => {
         const query = {};
 
         // Filter by role if provided
-        if (req.query.role) {
-            query.role = req.query.role;
+        if (role) {
+            query.role = role;
+        }
+
+        // Filter by verified status if provided
+        if (isVerified) {
+            query.isVerified = isVerified;
+        }
+
+        //filter by rating if provided
+        if (rating) {
+            query.rating = rating;
         }
 
         // Search by name, email, or username if search query is provided
-        if (req.query.search) {
-            const searchRegex = new RegExp(req.query.search, 'i');
+        if (search) {
+            const searchRegex = new RegExp(search, 'i');
             query.$or = [
                 { firstname: searchRegex },
                 { lastname: searchRegex },
@@ -42,26 +53,32 @@ export const getAllUsers = async (req, res) => {
         // Execute query with pagination and sorting
         const users = await User.find(query)
             .select('-password -__v')
+            .sort(sortOptions)
+            .limit(parseInt(limit))
             .skip(skip)
-            .limit(limit)
-            .sort(sortOptions);
 
         // Get total count for pagination
-        const total = await User.countDocuments(query);
-        const pages = Math.ceil(total / limit);
+        const count = await User.countDocuments(query);
+        const totalPages = Math.ceil(count / limit);
 
         res.status(200).json({
             status: 'success',
-            count: users.length,
-            page,
-            pages,
-            total,
+            currentPage: parseInt(page),
+            totalUsers: count,
+            totalPages,
+            hasNext: page < totalPages,
+            hasPrev: page > 1,
             data: {
                 users
             }
         });
     } catch (error) {
-        console.error('Get all users error:', error);
+        logger.error('Get all users error:', {
+            error: error.message,
+            stack: error.stack,
+            query: req.query
+        });
+
         res.status(500).json({
             status: 'error',
             message: 'Server error',
@@ -179,11 +196,17 @@ export const uploadProfilePicture = async (req, res) => {
 
         const uploadedFile = req.uploadedFiles[0];
         const user = await User.findById(req.user._id);
+        if (!user) {
+            return res.status(404).json({
+                status: 'error',
+                message: 'User not found'
+            });
+        }
 
         // Delete old profile picture if exists
         if (user.profilePicture && user.profilePicture.publicId) {
             try {
-                const cloudinary = (await import('../config/cloudinary.js')).default;
+                const cloudinary = await getCloudinary();
                 await cloudinary.uploader.destroy(user.profilePicture.publicId);
             } catch (error) {
                 console.error('Error deleting old profile picture:', error);
@@ -219,6 +242,12 @@ export const uploadProfilePicture = async (req, res) => {
 export const deleteProfilePicture = async (req, res) => {
     try {
         const user = await User.findById(req.user._id);
+        if (!user) {
+            return res.status(404).json({
+                status: 'error',
+                message: 'User not found'
+            });
+        }
 
         if (!user.profilePicture || !user.profilePicture.publicId) {
             return res.status(400).json({
@@ -229,7 +258,7 @@ export const deleteProfilePicture = async (req, res) => {
 
         // Delete from Cloudinary
         try {
-            const cloudinary = (await import('../config/cloudinary.js')).default;
+            const cloudinary = await getCloudinary();
             await cloudinary.uploader.destroy(user.profilePicture.publicId);
         } catch (error) {
             console.error('Error deleting profile picture from Cloudinary:', error);

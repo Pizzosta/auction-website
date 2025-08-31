@@ -1,7 +1,7 @@
 import express from 'express';
 import { protect, admin } from '../middleware/authMiddleware.js';
 import { validate } from '../middleware/validationMiddleware.js';
-import { userSchema, idSchema, querySchema } from '../utils/validators.js';
+import { userSchema, idSchema, userQuerySchema } from '../utils/validators.js';
 import { 
     deleteUser, 
     updateUser, 
@@ -15,7 +15,7 @@ import { uploadProfileImageMiddleware } from '../middleware/uploadMiddleware.js'
 const router = express.Router();
 
 // Get all users (admin only)
-router.get('/', protect, admin, validate(querySchema, 'query'), getAllUsers);
+router.get('/', protect, admin, validate(userQuerySchema, 'query'), getAllUsers);
 
 // Protected routes
 router.get('/me', protect, getMe);

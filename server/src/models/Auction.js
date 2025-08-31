@@ -90,12 +90,18 @@ const auctionSchema = new mongoose.Schema(
     },
   },
   {
-    timestamps: true
+    timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
   }
 );
 
 // Add text index for search functionality
-auctionSchema.index({ title: 'text', description: 'text' });
+auctionSchema.index({ title: 'text', description: 'text', category: 'text' });
+
+// Frequent sort / pagination queries
+auctionSchema.index({ createdAt: -1 });
+auctionSchema.index({ status: 1 });
 
 // Virtual for time remaining (in seconds)
 auctionSchema.virtual('timeRemaining').get(function () {

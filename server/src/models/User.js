@@ -117,6 +117,18 @@ const userSchema = new mongoose.Schema(
   }
 );
 
+// Add text index for search functionality
+userSchema.index({ firstname: 'text', lastname: 'text', email: 'text', phone: 'text', username: 'text'});
+
+// Frequent sort / pagination queries
+userSchema.index({ email: 1 });
+userSchema.index({ phone: 1 });
+userSchema.index({ username: 1 });
+userSchema.index({ createdAt: -1 });
+userSchema.index({ role: 1 });
+userSchema.index({ isVerified: 1 });
+userSchema.index({ rating: 1 });
+
 // Virtual for isAdmin (backward compatibility)
 userSchema.virtual('isAdmin').get(function() {
   return this.role === 'admin';
@@ -234,10 +246,6 @@ userSchema.pre('deleteOne', { document: false, query: true }, async function (ne
   }
   next();
 });
-
-userSchema.index({ createdAt: -1 });
-userSchema.index({ role: 1 });
-userSchema.index({ isVerified: 1 });
 
 const User = mongoose.model('User', userSchema);
 

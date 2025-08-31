@@ -8,13 +8,13 @@ import {
 } from '../controllers/auctionController.js';
 import { protect } from '../middleware/authMiddleware.js';
 import { validate } from '../middleware/validationMiddleware.js';
-import { auctionSchema, idSchema } from '../utils/validators.js';
+import { auctionSchema, idSchema, auctionQuerySchema } from '../utils/validators.js';
 import { uploadAuctionImagesMiddleware } from '../middleware/uploadMiddleware.js';
 
 const router = express.Router();
 
 // Public routes
-router.get('/', getAuctions);
+router.get('/', validate(auctionQuerySchema, 'query'), getAuctions);
 router.get('/:id', getAuctionById);
 
 // Protected routes

@@ -2,7 +2,7 @@ import { v2 as cloudinary } from 'cloudinary';
 import logger from '../utils/logger.js';
 
 
-const getCloudinary = async () => {
+export const getCloudinary = async () => {
     // Validate required environment variables
     const required = ['CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET'];
     const missingVars = required.filter(varName => !process.env[varName]);

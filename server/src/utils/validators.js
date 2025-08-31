@@ -1,15 +1,30 @@
 import Joi from 'joi';
 
-// Query schema validation
-export const querySchema = Joi.object({
+// User query schema validation
+export const userQuerySchema = Joi.object({
   page: Joi.number().integer().min(1).default(1),
   limit: Joi.number().integer().min(1).max(100).default(10),
   sort: Joi.string()
-    .pattern(/^(firstname|lastname|email|username|createdAt):(asc|desc)$/)
+    .pattern(/^(firstname|lastname|email|phone|username|createdAt):(asc|desc)$/)
     .optional(),
   fields: Joi.string().pattern(/^[a-zA-Z0-9_, ]*$/).optional(),
+  search: Joi.string().optional(),
   role: Joi.string().valid('user', 'admin').optional(),
-  search: Joi.string().max(100).optional()
+});
+
+// Auction query schema validation
+export const auctionQuerySchema = Joi.object({
+  page: Joi.number().integer().min(1).default(1),
+  limit: Joi.number().integer().min(1).max(100).default(10),
+  sort: Joi.string()
+    .pattern(/^(title|description|startingPrice|currentPrice|endDate|createdAt|bidCount):(asc|desc)$/)
+    .optional(),
+  status: Joi.string().valid('active', 'upcoming', 'ended', 'sold').optional(),
+  category: Joi.string().optional(),
+  search: Joi.string().optional(),
+  seller: Joi.string().pattern(/^[0-9a-fA-F]{24}$/).optional(),
+  winner: Joi.string().pattern(/^[0-9a-fA-F]{24}$/).optional(),
+  fields: Joi.string().pattern(/^[a-zA-Z0-9_, ]*$/).optional()
 });
 
 // ID schema validation
