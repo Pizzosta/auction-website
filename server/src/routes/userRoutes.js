@@ -15,12 +15,32 @@ import { uploadProfileImageMiddleware } from '../middleware/uploadMiddleware.js'
 const router = express.Router();
 
 // Get all users (admin only)
-router.get('/', protect, admin, validate(userQuerySchema, 'query'), getAllUsers);
+router.get(
+  '/', 
+  protect, 
+  admin, 
+  validate(userQuerySchema, 'query'), 
+  getAllUsers
+);
 
 // Protected routes
 router.get('/me', protect, getMe);
-router.delete('/:id', protect, validate(idSchema, 'params'), validate(userSchema.deleteUser, 'body'), deleteUser);
-router.patch('/:id', protect, validate(idSchema, 'params'), validate(userSchema.updateUser, 'body'), updateUser);
+
+router.delete(
+  '/:id', 
+  protect, 
+  validate(idSchema, 'params', { key: 'id' }), 
+  validate(userSchema.deleteUser, 'body'), 
+  deleteUser
+);
+
+router.patch(
+  '/:id', 
+  protect, 
+  validate(idSchema, 'params', { key: 'id' }), 
+  validate(userSchema.updateUser, 'body'), 
+  updateUser
+);
 
 // Profile picture routes
 router.post(
@@ -34,7 +54,7 @@ router.post(
 router.delete(
   '/me/remove-picture',
   protect,
-  validate(userSchema.deleteProfilePicture),
+  validate(userSchema.deleteProfilePicture, 'body'),
   deleteProfilePicture
 );
 

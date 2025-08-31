@@ -7,18 +7,19 @@ import { getCloudinary } from '../config/cloudinary.js';
 export const getAllUsers = async (req, res) => {
     try {
         // Get pagination parameters (already validated by middleware)
-        const { role, isVerified, rating, search, page = 1, limit = 10, sort } = req.query;
-        const skip = (page - 1) * limit;
+        const { role, isVerified, rating, search, page = 1, limit = 10, sort = 'createdAt:desc' } = req.query;
+        
+        // Parse pagination parameters
+        const pageNum = Math.max(1, parseInt(page));
+        const limitNum = Math.min(Math.max(1, parseInt(limit)), 100); // Cap at 100
+        const skip = (pageNum - 1) * limitNum;
+
 
         // Build sort object if sort parameter is provided
-        const sortOptions = {};
-        if (sort) {
-            const [field, order] = sort.split(':');
-            sortOptions[field] = order === 'desc' ? -1 : 1;
-        } else {
-            // Default sort by creation date (newest first)
-            sortOptions.createdAt = -1;
-        }
+        const [field, order] = sort.split(':');
+        const sortOptions = {
+            [field]: order === 'desc' ? -1 : 1
+        };
 
         // Build query
         const query = {};
@@ -54,20 +55,23 @@ export const getAllUsers = async (req, res) => {
         const users = await User.find(query)
             .select('-password -__v')
             .sort(sortOptions)
-            .limit(parseInt(limit))
+            .limit(limitNum)
             .skip(skip)
+            .lean();
 
         // Get total count for pagination
         const count = await User.countDocuments(query);
-        const totalPages = Math.ceil(count / limit);
+        const totalPages = Math.ceil(count / limitNum);
 
         res.status(200).json({
             status: 'success',
-            currentPage: parseInt(page),
-            totalUsers: count,
-            totalPages,
-            hasNext: page < totalPages,
-            hasPrev: page > 1,
+            pagination: {
+                currentPage: pageNum,
+                totalUsers: count,
+                totalPages,
+                hasNext: pageNum < totalPages,
+                hasPrev: pageNum > 1,
+            },
             data: {
                 users
             }

@@ -74,18 +74,18 @@ export const createAuction = async (req, res) => {
 export const getAuctions = async (req, res) => {
   try {
     // Get pagination parameters (already validated by middleware)
-    const { status, category, minPrice, maxPrice, search, endingSoon, page = 1, limit = 10, sort } = req.query;
-    const skip = (page - 1) * limit;
+    const { status, category, minPrice, maxPrice, search, endingSoon, page = 1, limit = 10, sort = 'createdAt:desc' } = req.query;
+
+    // Parse pagination parameters
+    const pageNum = Math.max(1, parseInt(page));
+    const limitNum = Math.min(Math.max(1, parseInt(limit)), 100); // Cap at 100
+    const skip = (pageNum - 1) * limitNum;
 
     // Build sort object if sort parameter is provided
-    const sortOptions = {};
-    if (sort) {
-      const [field, order] = sort.split(':');
-      sortOptions[field] = order === 'desc' ? -1 : 1;
-    } else {
-      // Default sort by creation date (newest first)
-      sortOptions.createdAt = -1;
-    }
+    const [field, order] = sort.split(':');
+    const sortOptions = {
+      [field]: order === 'desc' ? -1 : 1
+    };
 
     // Build query
     const query = {};
@@ -105,8 +105,8 @@ export const getAuctions = async (req, res) => {
 
     // Filter for auctions ending soon (next 24 hours)
     if (endingSoon === 'true') {
-      query.endDate = { 
-        $gte: new Date(), 
+      query.endDate = {
+        $gte: new Date(),
         $lte: new Date(Date.now() + 24 * 60 * 60 * 1000) // Next 24 hours
       };
     }
@@ -125,22 +125,24 @@ export const getAuctions = async (req, res) => {
     // Execute query with pagination and sorting
     const auctions = await Auction.find(query)
       .sort(sortOptions)
-      .limit(parseInt(limit))
+      .limit(limitNum)
       .skip(skip)
       .populate('seller', 'username avatarUrl')
       .populate('winner', 'username avatarUrl');
 
     // Get total count for pagination
     const count = await Auction.countDocuments(query);
-    const totalPages = Math.ceil(count / limit);
+    const totalPages = Math.ceil(count / limitNum);
 
     res.status(200).json({
       status: 'success',
-      currentPage: parseInt(page),
-      totalAuctions: count,
-      totalPages,
-      hasNext: page < totalPages,
-      hasPrev: page > 1,
+      pagination: {
+        currentPage: pageNum,
+        totalAuctions: count,
+        totalPages,
+        hasNext: pageNum < totalPages,
+        hasPrev: pageNum > 1,
+      },
       data: {
         auctions
       }

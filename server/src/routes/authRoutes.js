@@ -6,11 +6,30 @@ import { authSchema, tokenSchema } from '../utils/validators.js';
 const router = express.Router();
 
 // Public routes
-router.post('/register', validate(authSchema.register, 'body'), register);
-router.post('/login', validate(authSchema.login, 'body'), login);
+router.post(
+  '/register', 
+  validate(authSchema.register, 'body'), 
+  register
+);
+
+router.post(
+  '/login', 
+  validate(authSchema.login, 'body'), 
+  login
+);
 
 // Password reset routes
-router.post('/forgot-password', validate(authSchema.forgotPassword, 'body'), forgotPassword);
-router.post('/reset-password/:token', validate(tokenSchema, 'params'), validate(authSchema.resetPassword, 'body'), resetPassword);
+router.post(
+  '/forgot-password', 
+  validate(authSchema.forgotPassword, 'body'), 
+  forgotPassword
+);
+
+router.post(
+  '/reset-password/:token', 
+  validate(tokenSchema, 'params', { key: 'token' }), 
+  validate(authSchema.resetPassword, 'body'), 
+  resetPassword
+);
 
 export default router;

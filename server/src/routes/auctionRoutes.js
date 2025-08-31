@@ -14,19 +14,40 @@ import { uploadAuctionImagesMiddleware } from '../middleware/uploadMiddleware.js
 const router = express.Router();
 
 // Public routes
-router.get('/', validate(auctionQuerySchema, 'query'), getAuctions);
-router.get('/:id', getAuctionById);
+router.get(
+  '/', 
+  validate(auctionQuerySchema, 'query'), 
+  getAuctions
+);
+
+router.get(
+  '/:id', 
+  validate(idSchema, 'params', { key: 'id' }), 
+  getAuctionById
+);
 
 // Protected routes
 router.post(
   '/', 
   protect, 
   uploadAuctionImagesMiddleware,
-  validate(auctionSchema.create), 
+  validate(auctionSchema.create, 'body'), 
   createAuction
 );
 
-router.put('/:id', protect, validate(idSchema, 'params'), validate(auctionSchema.update), updateAuction);
-router.delete('/:id', protect, validate(idSchema, 'params'), deleteAuction);
+router.put(
+  '/:id', 
+  protect, 
+  validate(idSchema, 'params', { key: 'id' }), 
+  validate(auctionSchema.update, 'body'), 
+  updateAuction
+);
+
+router.delete(
+  '/:id', 
+  protect, 
+  validate(idSchema, 'params', { key: 'id' }), 
+  deleteAuction
+);
 
 export default router;

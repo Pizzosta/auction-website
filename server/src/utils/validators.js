@@ -32,6 +32,17 @@ export const auctionQuerySchema = Joi.object({
   maxPrice: Joi.number().min(0).optional(),
 });
 
+// Bid query schema validation
+export const bidQuerySchema = Joi.object({
+  page: Joi.number().integer().min(1).default(1),
+  limit: Joi.number().integer().min(1).max(100).default(20),
+  sort: Joi.string()
+    .pattern(/^(amount|createdAt):(asc|desc)$/)
+    .default('createdAt:desc')
+    .optional(),
+  status: Joi.string().valid('active', 'won', 'lost', 'outbid').optional()
+});
+
 // ID schema validation
 export const idSchema = Joi.object({
   id: Joi.string().hex().length(24).required().messages({
