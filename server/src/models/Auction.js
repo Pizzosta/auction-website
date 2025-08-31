@@ -1,17 +1,33 @@
 import mongoose from 'mongoose';
 
+const predefinedCategories = [
+  "Electronics",
+  "Fashion",
+  "Home & Garden",
+  "Collectibles",
+  "Sports",
+  "Automotive",
+  "Art",
+  "Books",
+  "Jewelry",
+  "Toys",
+];
+
 const auctionSchema = new mongoose.Schema(
   {
     title: {
       type: String,
       required: [true, 'Please add a title'],
       trim: true,
-      maxlength: [100, 'Title cannot be more than 100 characters'],
+      minlength: [3, 'Title must be at least 3 characters long'],
+      maxlength: [50, 'Title cannot be more than 50 characters'],
     },
     description: {
       type: String,
       required: [true, 'Please add a description'],
-      maxlength: [2000, 'Description cannot be more than 2000 characters'],
+      trim: true,
+      minlength: [3, 'Description must be at least 3 characters long'],
+      maxlength: [500, 'Description cannot be more than 500 characters'],
     },
     startingPrice: {
       type: Number,
@@ -37,12 +53,25 @@ const auctionSchema = new mongoose.Schema(
     },
     images: [
       {
-        url: String,
-        publicId: String,
-      },
+        url: {
+          type: String,
+          required: [true, "Image URL is required"],
+          validate: {
+            validator: function (v) {
+              return /^(https?:\/\/.*\.(?:png|jpg|jpeg))$/.test(v);
+            },
+            message: (props) => `${props.value} is not a valid image URL!`,
+          },
+        },
+        publicId: {
+          type: String,
+          required: [true, "Image public ID is required"],
+        },
+      }
     ],
     category: {
       type: String,
+      enum: predefinedCategories,
       required: true,
     },
     status: {
