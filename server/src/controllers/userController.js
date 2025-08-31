@@ -70,6 +70,9 @@ export const getAllUsers = async (req, res) => {
     }
 };
 
+// @desc    Delete a user
+// @route   DELETE /api/users/:id
+// @access  Private/Admin
 export const deleteUser = async (req, res) => {
     try {
         const { password } = req.body;
@@ -133,6 +136,9 @@ export const deleteUser = async (req, res) => {
     }
 };
 
+// @desc    Get current user
+// @route   GET /api/users/me
+// @access  Private
 export const getMe = async (req, res) => {
     try {
         const user = await User.findById(req.user._id).select('-password -__v');
@@ -159,8 +165,98 @@ export const getMe = async (req, res) => {
     }
 };
 
+// @desc    Upload profile picture
+// @route   POST /api/users/me/upload-picture
+// @access  Private
+export const uploadProfilePicture = async (req, res) => {
+    try {
+        if (!req.uploadedFiles || req.uploadedFiles.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'No file uploaded or file upload failed',
+            });
+        }
 
-// Update a user's information
+        const uploadedFile = req.uploadedFiles[0];
+        const user = await User.findById(req.user._id);
+
+        // Delete old profile picture if exists
+        if (user.profilePicture && user.profilePicture.publicId) {
+            try {
+                const cloudinary = (await import('../config/cloudinary.js')).default;
+                await cloudinary.uploader.destroy(user.profilePicture.publicId);
+            } catch (error) {
+                console.error('Error deleting old profile picture:', error);
+            }
+        }
+
+        // Update user with new profile picture
+        user.profilePicture = {
+            url: uploadedFile.url,
+            publicId: uploadedFile.publicId
+        };
+
+        await user.save();
+
+        res.status(200).json({
+            success: true,
+            message: 'Profile picture uploaded successfully',
+            data: user.profilePicture
+        });
+    } catch (error) {
+        console.error('Error uploading profile picture:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error while uploading profile picture',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+};
+
+// @desc    Delete profile picture
+// @route   DELETE /api/users/me/remove-picture
+// @access  Private
+export const deleteProfilePicture = async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id);
+
+        if (!user.profilePicture || !user.profilePicture.publicId) {
+            return res.status(400).json({
+                success: false,
+                message: 'No profile picture found to delete'
+            });
+        }
+
+        // Delete from Cloudinary
+        try {
+            const cloudinary = (await import('../config/cloudinary.js')).default;
+            await cloudinary.uploader.destroy(user.profilePicture.publicId);
+        } catch (error) {
+            console.error('Error deleting profile picture from Cloudinary:', error);
+            // Continue even if Cloudinary deletion fails to update the database
+        }
+
+        // Clear profile picture in database
+        user.profilePicture = { url: '', publicId: '' };
+        await user.save();
+
+        res.status(200).json({
+            success: true,
+            message: 'Profile picture removed successfully'
+        });
+    } catch (error) {
+        console.error('Error removing profile picture:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Server error while removing profile picture',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+};
+
+// @desc    Update a user
+// @route   PATCH /api/users/:id
+// @access  Private/Admin
 export const updateUser = async (req, res) => {
     try {
         const { id } = req.params;
