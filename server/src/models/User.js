@@ -30,14 +30,12 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: [true, 'Please add a phone number'],
       trim: true,
-      unique: true,
       match: [/^(?:\+?233|0?)[235]\d{8}$/, 'Please add a valid Ghanaian phone number starting with 233, +233, 0, or nothing, followed by 2, 3, or 5 and 8 more digits']
     },
     username: {
       type: String,
       required: [true, 'Please add a username'],
       trim: true,
-      unique: true,
       minlength: [3, 'Username must be at least 3 characters long'],
       maxlength: [30, 'Username cannot be more than 30 characters'],
       match: [/^[a-zA-Z0-9_]+$/, 'Username can only contain letters, numbers, and underscores'],
@@ -45,7 +43,6 @@ const userSchema = new mongoose.Schema(
     email: {
       type: String,
       required: [true, 'Please add an email'],
-      unique: true,
       lowercase: true,
       trim: true,
       match: [/^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/, 'Please add a valid email'],
