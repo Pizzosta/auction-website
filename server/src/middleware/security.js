@@ -51,8 +51,8 @@ const securityMiddleware = [
 
   // Data sanitization against XSS
   (req, res, next) => {
-    // Skip XSS for webhook endpoints
-    if (req.originalUrl === '/api/v1/webhook') return next();
+    // Skip XSS for versioned webhook endpoints (e.g., /api/v1/webhook, /api/v2/webhook)
+    if (/^\/api\/v\d+\/webhook\/?$/.test(req.path)) return next();
     
     // Sanitize request body, query, and params
     const sanitizeInput = (data) => {
