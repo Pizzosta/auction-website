@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import logger from '../utils/logger.js';
+import { env } from './env.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,54 +22,66 @@ const DEFAULT_SMTP = {
   greetingTimeout: 20000,   // 20 seconds
   socketTimeout: 30000,     // 30 seconds
   // Enable debug in development
-  debug: process.env.NODE_ENV === 'development',
+  debug: env.isDev,
+};
+
+// Attempt to load DKIM configuration (supports env or file sources)
+const loadDkimConfig = () => {
+  try {
+    const inlineKey = (env.email.dkim.privateKey || '').trim();
+    const dkimKeyPath = env.email.dkim.keyPath || path.join(__dirname, 'keys/dkim-private.pem');
+    const source = inlineKey ? 'env' : 'file';
+
+    const dkimPrivateKey = inlineKey || fs.readFileSync(dkimKeyPath, 'utf8');
+
+    // Derive domain from env or sender address if possible
+    const fromAddress = env.email.from || '';
+    const derivedDomain = fromAddress.includes('@') ? fromAddress.split('@')[1] : undefined;
+
+    return {
+      domainName: env.email.dkim.domain || derivedDomain || 'kawodze.com',
+      keySelector: env.email.dkim.selector || 'default',
+      privateKey: dkimPrivateKey,
+      cacheDir: path.resolve('tmp/dkim'),
+      keyBuffer: Buffer.from(dkimPrivateKey),
+      skipFields: env.isProd ? '' : 'message-id:date',
+      _source: source, // for debugging visibility only
+    };
+  } catch (error) {
+    logger.warn('Failed to load DKIM private key. DKIM signing will be disabled.', {
+      error: error.message,
+      triedEnv: Boolean((env.email.dkim.privateKey || '').trim()),
+      triedPath: env.email.dkim.keyPath || path.join(__dirname, 'keys/dkim-private.pem'),
+    });
+    return null;
+  }
 };
 
 // Get SMTP config from environment or use defaults
 const getSmtpConfig = () => {
-  if (process.env.EMAIL_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+  if (env.email.host && env.email.user && env.email.pass) {
     return {
       ...DEFAULT_SMTP,
-      host: process.env.EMAIL_HOST,
-      port: parseInt(process.env.EMAIL_PORT, 10) || DEFAULT_SMTP.port,
-      secure: process.env.EMAIL_SECURE === 'true',
+      host: env.email.host,
+      port: env.email.port || DEFAULT_SMTP.port,
+      secure: env.email.secure,
       auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
+        user: env.email.user,
+        pass: env.email.pass,
       },
       // DKIM configuration
-      dkim: (() => {
-        try {
-          const dkimKeyPath = path.join(__dirname, 'keys/dkim-private.pem');
-          logger.debug(`Loading DKIM key from: ${dkimKeyPath}`);
-          const dkimPrivateKey = fs.readFileSync(dkimKeyPath, 'utf8');
-          
-          return {
-            domainName: 'kawodze.com',
-            keySelector: 'default',
-            privateKey: dkimPrivateKey,
-            cacheDir: path.resolve('tmp/dkim'),
-            keyBuffer: Buffer.from(dkimPrivateKey),
-            skipFields: process.env.NODE_ENV !== 'production' ? 'message-id:date' : '',
-          };
-        } catch (error) {
-          logger.warn('Failed to load DKIM private key. DKIM signing will be disabled.', {
-            error: error.message,
-            path: path.join(__dirname, 'keys/dkim-private.pem')
-          });
-          return null;
-        }
-      })()
+      dkim: loadDkimConfig()
     };
   }
 
-  if (process.env.NODE_ENV === 'production') {
+  if (env.isProd) {
     logger.warn('Using default SMTP configuration in production. This is not recommended.');
   } else {
     logger.info('Using development SMTP configuration');
   }
 
-  return DEFAULT_SMTP;
+  // Attach DKIM in development/default mode too if the key exists
+  return { ...DEFAULT_SMTP, dkim: loadDkimConfig() };
 };
 
 // Create and configure transporter
@@ -80,7 +93,7 @@ const createTransporter = () => {
   transporter.verify((error) => {
     if (error) {
       logger.error('Email transporter failed to connect:', error.message);
-      if (process.env.NODE_ENV === 'production') {
+      if (env.isProd) {
         // In production, we might want to trigger an alert here
         // e.g., send a notification to monitoring service
       }
@@ -115,7 +128,7 @@ const emailConfig = {
   // Sender information
   from: {
     name: process.env.EMAIL_FROM_NAME || 'Kawodze Auctions',
-    address: process.env.EMAIL_FROM || 'no-reply@kawodze.com',
+    address: env.email.from || 'no-reply@kawodze.com',
   },
 
   // Email templates configuration
@@ -127,7 +140,7 @@ const emailConfig = {
   // Default template variables
   templateVars: {
     appName: process.env.APP_NAME || 'Kawodze Auctions',
-    appUrl: process.env.CLIENT_URL || 'http://localhost:3000',
+    appUrl: env.clientUrl || 'http://localhost:3000',
     year: new Date().getFullYear(),
     supportEmail: process.env.SUPPORT_EMAIL || 'support@kawodze.com',
   }

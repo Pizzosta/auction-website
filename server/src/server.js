@@ -1,4 +1,3 @@
-import dotenv from 'dotenv';
 import express from 'express';
 import http from 'http';
 import { Server as SocketIO } from 'socket.io';
@@ -11,17 +10,13 @@ import { globalErrorHandler, AppError } from './middleware/errorHandler.js';
 import './jobs/index.js'; // Import jobs to start the scheduler
 import { requestContextMiddleware } from './middleware/requestContext.js';
 import { httpLogger } from './utils/logger.js';
+import { env, validateEnv } from './config/env.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// Load environment variables
-dotenv.config();
-
-// Validate required environment variables
-const requiredEnvVars = ['MONGODB_URI', 'JWT_SECRET', 'NODE_ENV', 'PORT', 'CLIENT_URL', 'WEBHOOK_SECRET', 'CLOUDINARY_CLOUD_NAME', 'CLOUDINARY_API_KEY', 'CLOUDINARY_API_SECRET'];
-
-const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
+// Validate required environment variables once at startup
+const missingVars = validateEnv();
 if (missingVars.length > 0) {
   logger.error(`Missing required environment variables: ${missingVars.join(', ')}`);
   process.exit(1);
@@ -40,7 +35,7 @@ try {
   logger.info('Cloudinary initialized successfully');
 } catch (error) {
   logger.error('Failed to initialize Cloudinary. Image uploads will not work.');
-  if (process.env.NODE_ENV === 'production') {
+  if (env.isProd) {
     process.exit(1); // Fail fast in production
   }
 }
@@ -56,7 +51,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new SocketIO(server, {
   cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:3000',
+    origin: env.clientUrl || 'http://localhost:3000',
     methods: ['GET', 'POST'],
   },
 });
@@ -65,7 +60,7 @@ const io = new SocketIO(server, {
 app.use(express.json());
 
 // Configure trust proxy for production
-if (process.env.NODE_ENV === 'production') {
+if (env.isProd) {
   // Trust only the specific proxy in production
   app.set('trust proxy', 1); // trust first proxy
 } else {
@@ -92,7 +87,7 @@ app.get('/health', (req, res) => {
     message: 'Server is running',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    environment: process.env.NODE_ENV || 'development',
+    environment: env.nodeEnv || 'development',
   });
 });
 
@@ -101,10 +96,10 @@ app.use('/api/auth', authRoutes);
 app.use('/api/auctions', auctionRoutes);
 app.use('/api/bids', bidRoutes);
 app.use('/api/users', userRoutes);
-app.use('/webhook', webhookRoutes);
+app.use('/api/v1/webhook', webhookRoutes);
 
 // Serve static assets in production
-if (process.env.NODE_ENV === 'production') {
+if (env.isProd) {
   // Set static folder
   app.use(express.static(join(__dirname, '../../client/build')));
 
@@ -153,7 +148,7 @@ app.use(globalErrorHandler);
 process.on('uncaughtException', error => {
   logger.error('Uncaught Exception:', error);
   // In production, you might want to gracefully shut down
-  if (process.env.NODE_ENV === 'production') {
+  if (env.isProd) {
     process.exit(1);
   }
 });
@@ -161,15 +156,15 @@ process.on('uncaughtException', error => {
 process.on('unhandledRejection', (reason, promise) => {
   logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
   // In production, you might want to gracefully shut down
-  if (process.env.NODE_ENV === 'production') {
+  if (env.isProd) {
     process.exit(1);
   }
 });
 
 // Start server
-const PORT = process.env.PORT || 5001;
+const PORT = env.port || 5001;
 server.listen(PORT, () => {
-  logger.info(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`);
+  logger.info(`Server running in ${env.nodeEnv} mode on port ${PORT}`);
   logger.info(`API Documentation available at: http://localhost:${PORT}/api-docs`);
 });
 
