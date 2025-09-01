@@ -1,12 +1,20 @@
 import Queue from 'bull';
 import logger from '../utils/logger.js';
 import { sendTemplateEmail } from '../utils/emailService.js';
+import { env, validateEnv } from '../config/env.js';
+
+// Validate required environment variables
+const missingVars = validateEnv();
+if (missingVars.length > 0) {
+  logger.error(`Missing required environment variables: ${missingVars.join(', ')}`);
+  process.exit(1);
+}
 
 // Create a new queue
 const emailQueue = new Queue('email', {
   redis: {
-    host: process.env.REDIS_HOST || '127.0.0.1',
-    port: process.env.REDIS_PORT || 6379,
+    host: env.redis.host || '127.0.0.1',
+    port: env.redis.port || 6379,
   },
   defaultJobOptions: {
     attempts: 3,

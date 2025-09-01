@@ -2,15 +2,14 @@ import { v2 as cloudinary } from 'cloudinary';
 import logger from '../utils/logger.js';
 import { env, validateEnv } from '../config/env.js';
 
+// Validate required environment variables
+const missingVars = validateEnv();
+if (missingVars.length > 0) {
+  logger.error(`Missing required environment variables: ${missingVars.join(', ')}`);
+  process.exit(1);
+}
 
 export const getCloudinary = async () => {
-    // Validate required environment variables
-    const missingVars = validateEnv();
-    if (missingVars.length > 0) {
-      logger.error(`Missing required environment variables: ${missingVars.join(', ')}`);
-      process.exit(1);
-    }
-    
     // Configure Cloudinary
     cloudinary.config({
         cloud_name: env.cloudinary.cloudName,

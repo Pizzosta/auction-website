@@ -10,10 +10,29 @@ const DEFAULT_REQUIRED_VARS = [
   'NODE_ENV',
   'PORT',
   'CLIENT_URL',
+  'JWT_EXPIRE',
+  'RESET_TOKEN_EXPIRE',
   'WEBHOOK_SECRET',
   'CLOUDINARY_CLOUD_NAME',
   'CLOUDINARY_API_KEY',
   'CLOUDINARY_API_SECRET',
+  'EMAIL_HOST',
+  'EMAIL_USER',
+  'EMAIL_PASS',
+  'EMAIL_PORT',
+  'EMAIL_SECURE',
+  'EMAIL_FROM',
+  'EMAIL_FROM_NAME',
+  'APP_NAME',
+  'SUPPORT_EMAIL',
+  'DKIM_PRIVATE_KEY',
+  'DKIM_KEY_PATH',
+  'DKIM_DOMAIN',
+  'DKIM_SELECTOR',
+  'REDIS_HOST',
+  'REDIS_PORT',
+  'RATE_LIMIT_WINDOW_MS',
+  'RATE_LIMIT_MAX',
 ];
 
 export function validateEnv(requiredVars = DEFAULT_REQUIRED_VARS) {
@@ -33,7 +52,19 @@ export const env = {
 
   mongodbUri: process.env.MONGODB_URI,
   jwtSecret: process.env.JWT_SECRET,
+  jwtExpire: process.env.JWT_EXPIRE, // e.g., '7d' or seconds
+  resetTokenExpire: process.env.RESET_TOKEN_EXPIRE, // e.g., minutes or ISO duration
   webhookSecret: process.env.WEBHOOK_SECRET,
+
+  redis: {
+    host: process.env.REDIS_HOST,
+    port: process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT, 10) : undefined,
+  },
+
+  rateLimit: {
+    windowMs: process.env.RATE_LIMIT_WINDOW_MS ? parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) : undefined,
+    max: process.env.RATE_LIMIT_MAX ? parseInt(process.env.RATE_LIMIT_MAX, 10) : undefined,
+  },
 
   cloudinary: {
     cloudName: process.env.CLOUDINARY_CLOUD_NAME,

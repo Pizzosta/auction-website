@@ -5,7 +5,14 @@ import {
   sendAuctionEndingReminders,
 } from '../utils/auctionCleanup.js';
 import logger from '../utils/logger.js';
-import { env } from '../config/env.js';
+import { env, validateEnv } from '../config/env.js';
+
+// Validate required environment variables
+const missingVars = validateEnv();
+if (missingVars.length > 0) {
+  logger.error(`Missing required environment variables: ${missingVars.join(', ')}`);
+  process.exit(1);
+}
 
 // Only schedule jobs if not in test or development environment
 if (!env.isTest && !env.isDev) {

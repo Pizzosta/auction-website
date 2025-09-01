@@ -4,6 +4,22 @@ import zxcvbn from 'zxcvbn';
 import crypto from 'crypto';
 import { addToQueue } from '../services/emailQueue.js';
 import logger from '../utils/logger.js';
+import { env, validateEnv } from '../config/env.js';
+import rateLimit from 'express-rate-limit';
+
+// Validate required environment variables
+const missingVars = validateEnv();
+if (missingVars.length > 0) {
+  logger.error(`Missing required environment variables: ${missingVars.join(', ')}`);
+  process.exit(1);
+}
+
+// Rate limit for forgot password to mitigate abuse
+const forgotLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  max: 5, // 5 attempts per window per IP
+  message: 'Too many forgot password requests from this IP, please try again later.',
+});
 
 // Password strength checker
 const checkPasswordStrength = (password) => {
@@ -175,62 +191,65 @@ export const login = async (req, res) => {
 };
 
 export const forgotPassword = async (req, res) => {
+  // Execute limiter first; on success, run the handler logic
+  return forgotLimiter(req, res, async () => {
     try {
-        const { email } = req.body;
+      const { email } = req.body;
 
-        // Find user by email
-        const user = await User.findOne({ email: email?.trim().toLowerCase() });
+      // Find user by email
+      const user = await User.findOne({ email: email?.trim().toLowerCase() });
 
-        // Don't reveal if user doesn't exist (security best practice)
-        if (!user) {
-            return res.status(200).json({
-                status: 'success',
-                message: 'If an account with that email exists, a password reset link has been sent.'
-            });
-        }
+      // Don't reveal if user doesn't exist (security best practice)
+      if (!user) {
+        return res.status(200).json({
+          status: 'success',
+          message: 'If an account with that email exists, a password reset link has been sent.'
+        });
+      }
 
-        // Generate reset token and save hashed version to database
-        const resetToken = user.getResetPasswordToken();
+      // Generate reset token and save hashed version to database
+      const resetToken = user.getResetPasswordToken();
+      await user.save({ validateBeforeSave: false });
+
+      // Create reset URL - use the unhashed token in the URL
+      const resetUrl = `${env.clientUrl}/reset-password/${resetToken}`;
+
+      // Send email
+      try {
+        const rawExpire = env.resetTokenExpire;
+        const expireInMinutes = rawExpire.endsWith('m')
+          ? `${rawExpire.replace('m', '')} minutes`
+          : rawExpire;
+
+        await addToQueue('resetPassword', user.email, {
+          name: user.firstname,
+          resetUrl,
+          expiresIn: expireInMinutes
+        });
+
+        return res.status(200).json({
+          status: 'success',
+          message: 'Password reset link sent to email'
+        });
+      } catch (error) {
+        console.error('Error sending password reset email:', error);
+        user.resetPasswordToken = undefined;
+        user.resetPasswordExpire = undefined;
         await user.save({ validateBeforeSave: false });
 
-        // Create reset URL - use the unhashed token in the URL
-        const resetUrl = `${process.env.CLIENT_URL}/reset-password/${resetToken}`;
-
-        // Send email
-        try {
-            const rawExpire = process.env.RESET_TOKEN_EXPIRE;
-            const expireInMinutes = rawExpire.endsWith('m')
-                ? `${rawExpire.replace('m', '')} minutes`
-                : rawExpire;
-
-            await addToQueue('resetPassword', user.email, {
-                name: user.firstname,
-                resetUrl,
-                expiresIn: expireInMinutes
-            });
-
-            res.status(200).json({
-                status: 'success',
-                message: 'Password reset link sent to email'
-            });
-        } catch (error) {
-            console.error('Error sending password reset email:', error);
-            user.resetPasswordToken = undefined;
-            user.resetPasswordExpire = undefined;
-            await user.save({ validateBeforeSave: false });
-
-            res.status(500).json({
-                status: 'error',
-                message: 'Email could not be sent'
-            });
-        }
-    } catch (error) {
-        console.error('Forgot password error:', error);
-        res.status(500).json({
-            status: 'error',
-            message: 'Server error'
+        return res.status(500).json({
+          status: 'error',
+          message: 'Email could not be sent'
         });
+      }
+    } catch (error) {
+      console.error('Forgot password error:', error);
+      return res.status(500).json({
+        status: 'error',
+        message: 'Server error'
+      });
     }
+  });
 };
 
 export const resetPassword = async (req, res) => {
@@ -342,8 +361,8 @@ export const resetPassword = async (req, res) => {
         // Generate new JWT token
         const authToken = jwt.sign(
             { userId: user._id, email: user.email, role: user.role },
-            process.env.JWT_SECRET,
-            { expiresIn: process.env.JWT_EXPIRE }
+            env.jwtSecret,
+            { expiresIn: env.jwtExpire }
         );
 
         res.status(200).json({
