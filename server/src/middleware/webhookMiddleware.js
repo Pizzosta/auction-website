@@ -34,15 +34,19 @@ export const verifyWebhook = (options = {}) => {
         // Rest of your verification logic...
         webhookSchema.validateTimestamp(timestamp, maxAge);
 
+        // Use the raw body for signature verification when available
+        const payloadForSig = req.rawBody ?? JSON.stringify(req.body);
+
         const expectedSignature = crypto
           .createHmac('sha256', secret)
-          .update(`${timestamp}.${JSON.stringify(req.body)}`)
+          .update(`${timestamp}.${payloadForSig}`)
           .digest('hex');
 
-        const isValid = crypto.timingSafeEqual(
-          Buffer.from(signature),
-          Buffer.from(expectedSignature)
-        );
+        // Make timing-safe comparison robust by ensuring equal buffer lengths
+        const receivedBuf = Buffer.from(signature || '', 'utf8');
+        const expectedBuf = Buffer.from(expectedSignature, 'utf8');
+        const isValid = receivedBuf.length === expectedBuf.length &&
+          crypto.timingSafeEqual(receivedBuf, expectedBuf);
 
         if (!isValid) {
           logger.warn('Invalid webhook signature', {
@@ -118,28 +122,86 @@ const validateWebhookHeaders = (allowedEvents = []) => {
  * Middleware to parse raw request body for webhooks
  */
 export const rawBodyParser = (req, res, next) => {
-  if (req.path === '/webhook' && req.method === 'POST') {
-    let data = '';
-    req.setEncoding('utf8');
-    req.on('data', (chunk) => {
-      data += chunk;
-    });
-    req.on('end', () => {
-      try {
-        req.rawBody = data;
-        if (req.headers['content-type'] === 'application/json') {
-          req.body = JSON.parse(data);
-        }
-        next();
-      } catch (error) {
-        logger.error('Error parsing webhook body', { error: error.message });
-        return res.status(400).json({ 
-          status: 'error',
-          message: 'Invalid JSON payload' 
-        });
+  if (req.method !== 'POST') return next();
+
+  // Only care about JSON payloads for this webhook
+  const contentType = (req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+  if (contentType !== 'application/json') return next();
+
+  // If another middleware (e.g., express.json) already consumed the stream,
+  // avoid waiting on 'end' and synthesize rawBody from the parsed body.
+  if (req.readableEnded || typeof req.body === 'object') {
+    try {
+      if (!req.rawBody) {
+        req.rawBody = JSON.stringify(req.body ?? {});
       }
-    });
-  } else {
-    next();
+      return next();
+    } catch (error) {
+      logger.error('Error synthesizing raw body from parsed JSON', { error: error.message });
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid JSON payload'
+      });
+    }
   }
+
+  // Otherwise, collect the raw body safely
+  let data = '';
+  let aborted = false;
+  const MAX_BYTES = 1_000_000; // 1MB safety limit
+  const TIMEOUT_MS = 5000; // 5s timeout to prevent hanging
+
+  req.setEncoding('utf8');
+
+  const onAbort = () => {
+    aborted = true;
+    cleanup();
+    logger.warn('Webhook body parsing aborted');
+    return res.status(408).json({ status: 'error', message: 'Request timeout while parsing body' });
+  };
+
+  const timeout = setTimeout(onAbort, TIMEOUT_MS);
+
+  const cleanup = () => {
+    clearTimeout(timeout);
+    req.removeListener('data', onData);
+    req.removeListener('end', onEnd);
+    req.removeListener('error', onError);
+    req.removeListener('aborted', onAbort);
+  };
+
+  const onError = (err) => {
+    if (aborted) return; // already handled
+    cleanup();
+    logger.error('Error reading webhook body', { error: err?.message });
+    return res.status(400).json({ status: 'error', message: 'Invalid request body' });
+  };
+
+  const onData = (chunk) => {
+    data += chunk;
+    if (data.length > MAX_BYTES) {
+      aborted = true;
+      cleanup();
+      logger.warn('Webhook payload too large');
+      return res.status(413).json({ status: 'error', message: 'Payload too large' });
+    }
+  };
+
+  const onEnd = () => {
+    if (aborted) return;
+    cleanup();
+    try {
+      req.rawBody = data;
+      req.body = JSON.parse(data);
+      return next();
+    } catch (error) {
+      logger.error('Error parsing webhook body', { error: error.message });
+      return res.status(400).json({ status: 'error', message: 'Invalid JSON payload' });
+    }
+  };
+
+  req.on('aborted', onAbort);
+  req.on('error', onError);
+  req.on('data', onData);
+  req.on('end', onEnd);
 };
