@@ -3,10 +3,17 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import logger from '../utils/logger.js';
-import { env } from './env.js';
+import { env, validateEnv } from './env.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Validate required environment variables
+const missingVars = validateEnv();
+if (missingVars.length > 0) {
+  logger.error(`Missing required environment variables: ${missingVars.join(', ')}`);
+  process.exit(1);
+}
 
 // Default SMTP configuration for development
 const DEFAULT_SMTP = {
@@ -127,7 +134,7 @@ const emailConfig = {
 
   // Sender information
   from: {
-    name: process.env.EMAIL_FROM_NAME || 'Kawodze Auctions',
+    name: env.email.fromName || 'Kawodze Auctions',
     address: env.email.from || 'no-reply@kawodze.com',
   },
 
@@ -139,10 +146,10 @@ const emailConfig = {
 
   // Default template variables
   templateVars: {
-    appName: process.env.APP_NAME || 'Kawodze Auctions',
+    appName: env.email.appName || 'Kawodze Auctions',
     appUrl: env.clientUrl || 'http://localhost:3000',
     year: new Date().getFullYear(),
-    supportEmail: process.env.SUPPORT_EMAIL || 'support@kawodze.com',
+    supportEmail: env.email.supportEmail || 'support@kawodze.com',
   }
 };
 
