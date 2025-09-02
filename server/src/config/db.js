@@ -1,5 +1,13 @@
 import mongoose from 'mongoose';
 import logger from '../utils/logger.js';
+import { env, validateEnv } from '../config/env.js';
+
+// Validate required environment variables
+const missingVars = validateEnv();
+if (missingVars.length > 0) {
+  logger.error(`Missing required environment variables: ${missingVars.join(', ')}`);
+  process.exit(1);
+}
 
 // Exit application on error
 mongoose.connection.on('error', err => {
@@ -19,7 +27,7 @@ mongoose.connection.on('disconnected', () => {
 
 const connectDB = async () => {
   try {
-    await mongoose.connect(process.env.MONGODB_URI, {
+    await mongoose.connect(env.mongodbUri, {
       serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
       socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
     });
