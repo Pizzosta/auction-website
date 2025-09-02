@@ -32,7 +32,7 @@ const signature = crypto
 
 console.log('Webhook Test Configuration:');
 console.log('--------------------------');
-console.log(`Endpoint: http://localhost:${PORT}/webhook`);
+console.log(`Endpoint: http://localhost:${PORT}/api/v1/webhook`);
 console.log(`Timestamp: ${timestamp} (${new Date(timestamp * 1000).toISOString()})`);
 console.log('Payload:', JSON.stringify(payload, null, 2));
 console.log('Signature Payload:', signaturePayload);
@@ -41,7 +41,7 @@ console.log('--------------------------\n');
 
 const userAgent = 'KawodzeAuction/1.0.0';
 
-const curlCommand = `curl -X POST http://localhost:${PORT}/webhook \\
+const curlCommand = `curl -X POST http://localhost:${PORT}/api/v1/webhook \\
   -H "Content-Type: application/json" \\
   -H "User-Agent: ${userAgent}" \\
   -H "X-Webhook-Event: ${event}" \\
@@ -60,7 +60,7 @@ import fetch from 'node-fetch';
 
 const userAgent = 'KawodzeAuction/1.0.0';
 
-fetch('http://localhost:${PORT}/webhook', {
+fetch('http://localhost:${PORT}/api/v1/webhook', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
