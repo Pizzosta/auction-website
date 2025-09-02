@@ -169,28 +169,78 @@ server.listen(PORT, () => {
 });
 
 // Graceful shutdown
+let isShuttingDown = false;
 const shutdown = async () => {
+  if (isShuttingDown) {
+    // Prevent duplicate shutdown attempts (e.g., SIGINT and SIGTERM both firing)
+    logger.info('Shutdown already in progress, ignoring duplicate signal');
+    return;
+  }
+  isShuttingDown = true;
+
   logger.info('Shutting down server...');
 
-  // Close the server
-  server.close(async err => {
-    if (err) {
-      logger.error('Error during server shutdown:', err);
-      process.exit(1);
-    }
-
+  const completeShutdown = async () => {
     // Close database connection
     try {
-      const { connection } = await import('mongoose');
-      await connection.close();
-      logger.info('MongoDB connection closed');
+      const mongooseModule = await import('mongoose');
+      const mongoose = mongooseModule.default || mongooseModule;
+      const conn = mongoose.connection;
+      if (conn && typeof conn.close === 'function') {
+        await conn.close();
+        logger.info('MongoDB connection closed');
+      } else {
+        logger.warn('MongoDB connection not available or already closed');
+      }
     } catch (dbError) {
       logger.error('Error closing MongoDB connection:', dbError);
     }
 
+    // Close Redis/Bull queues
+    try {
+      const { emailQueue } = await import('./services/emailQueue.js');
+      if (emailQueue && typeof emailQueue.close === 'function') {
+        // Wait for active jobs to finish; pass true to not wait if you want faster exits
+        await emailQueue.close();
+        logger.info('Email queue closed');
+      } else {
+        logger.warn('Email queue not available or already closed');
+      }
+    } catch (queueError) {
+      logger.error('Error closing email queue:', queueError);
+    }
+
+    // Final confirmation log
     logger.info('Server successfully shut down');
+
+    // Flush logger transports before exiting to ensure final logs are written
+    try {
+      for (const transport of logger.transports) {
+        if (typeof transport.close === 'function') transport.close();
+      }
+    } catch (e) {
+      // ignore transport close errors
+    }
+
+    // Allow I/O to flush
+    await new Promise(resolve => setTimeout(resolve, 50));
+
     process.exit(0);
-  });
+  };
+
+  // Close the server if listening, otherwise proceed directly
+  if (server.listening) {
+    server.close(async err => {
+      if (err) {
+        logger.error('Error during server shutdown:', err);
+        process.exit(1);
+      }
+      await completeShutdown();
+    });
+  } else {
+    logger.info('HTTP server not running, proceeding with shutdown');
+    await completeShutdown();
+  }
 
   // Force close server after 5 seconds
   setTimeout(() => {
