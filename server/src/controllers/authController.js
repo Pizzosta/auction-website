@@ -5,21 +5,14 @@ import crypto from 'crypto';
 import { addToQueue } from '../services/emailQueue.js';
 import logger from '../utils/logger.js';
 import { env, validateEnv } from '../config/env.js';
-import rateLimit from 'express-rate-limit';
+import { forgotLimiter, loginLimiter } from '../middleware/security.js';
 
 // Validate required environment variables
 const missingVars = validateEnv();
 if (missingVars.length > 0) {
-  logger.error(`Missing required environment variables: ${missingVars.join(', ')}`);
-  process.exit(1);
+    logger.error(`Missing required environment variables: ${missingVars.join(', ')}`);
+    process.exit(1);
 }
-
-// Rate limit for forgot password to mitigate abuse
-const forgotLimiter = rateLimit({
-  windowMs: 5 * 60 * 1000, // 5 minutes
-  max: 5, // 5 attempts per window per IP
-  message: 'Too many forgot password requests from this IP, please try again later.',
-});
 
 // Password strength checker
 const checkPasswordStrength = (password) => {
@@ -127,7 +120,7 @@ export const register = async (req, res) => {
         }
 
         // Generate JWT token
-        const token = jwt.sign({ userId: user._id, email: user.email, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1d' });
+        const token = jwt.sign({ userId: user._id, email: user.email, role: user.role }, env.jwtSecret, { expiresIn: '1d' });
 
         res.status(201).json({
             status: 'success',
@@ -151,105 +144,108 @@ export const register = async (req, res) => {
 };
 
 export const login = async (req, res) => {
-    try {
-        const { email, password } = req.body;
+    // Execute limiter first; on success, run the handler logic
+    return loginLimiter(req, res, async () => {
+        try {
+            const { email, password } = req.body;
 
-        // Check if user exists
-        const user = await User.findOne({ email: email?.trim().toLowerCase() }).select('+password');
-        if (!user) {
-            return res.status(400).json({ message: 'Invalid credentials' });
-        }
-
-        // Check password
-        const isMatch = await user.matchPassword(password);
-        if (!isMatch) {
-            return res.status(400).json({ message: 'Invalid credentials' });
-        }
-
-        // Generate JWT token
-        const token = jwt.sign({ userId: user._id, email: user.email, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1d' });
-
-        res.json({
-            status: 'success',
-            data: {
-                user: {
-                    _id: user._id,
-                    firstname: user.firstname,
-                    lastname: user.lastname,
-                    username: user.username,
-                    email: user.email,
-                    phone: user.phone,
-                    role: user.role
-                },
-                token,
+            // Check if user exists
+            const user = await User.findOne({ email: email?.trim().toLowerCase() }).select('+password');
+            if (!user) {
+                return res.status(400).json({ message: 'Invalid credentials' });
             }
-        });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: 'Server error' });
-    }
+
+            // Check password
+            const isMatch = await user.matchPassword(password);
+            if (!isMatch) {
+                return res.status(400).json({ message: 'Invalid credentials' });
+            }
+
+            // Generate JWT token
+            const token = jwt.sign({ userId: user._id, email: user.email, role: user.role }, env.jwtSecret, { expiresIn: '1d' });
+
+            res.json({
+                status: 'success',
+                data: {
+                    user: {
+                        _id: user._id,
+                        firstname: user.firstname,
+                        lastname: user.lastname,
+                        username: user.username,
+                        email: user.email,
+                        phone: user.phone,
+                        role: user.role
+                    },
+                    token,
+                }
+            });
+        } catch (error) {
+            console.error(error);
+            res.status(500).json({ message: 'Server error' });
+        }
+    });
 };
 
 export const forgotPassword = async (req, res) => {
-  // Execute limiter first; on success, run the handler logic
-  return forgotLimiter(req, res, async () => {
-    try {
-      const { email } = req.body;
+    // Execute limiter first; on success, run the handler logic
+    return forgotLimiter(req, res, async () => {
+        try {
+            const { email } = req.body;
 
-      // Find user by email
-      const user = await User.findOne({ email: email?.trim().toLowerCase() });
+            // Find user by email
+            const user = await User.findOne({ email: email?.trim().toLowerCase() });
 
-      // Don't reveal if user doesn't exist (security best practice)
-      if (!user) {
-        return res.status(200).json({
-          status: 'success',
-          message: 'If an account with that email exists, a password reset link has been sent.'
-        });
-      }
+            // Don't reveal if user doesn't exist (security best practice)
+            if (!user) {
+                return res.status(200).json({
+                    status: 'success',
+                    message: 'If an account with that email exists, a password reset link has been sent.'
+                });
+            }
 
-      // Generate reset token and save hashed version to database
-      const resetToken = user.getResetPasswordToken();
-      await user.save({ validateBeforeSave: false });
+            // Generate reset token and save hashed version to database
+            const resetToken = user.getResetPasswordToken();
+            await user.save({ validateBeforeSave: false });
 
-      // Create reset URL - use the unhashed token in the URL
-      const resetUrl = `${env.clientUrl}/reset-password/${resetToken}`;
+            // Create reset URL - use the unhashed token in the URL
+            const resetUrl = `${env.clientUrl}/reset-password/${resetToken}`;
 
-      // Send email
-      try {
-        const rawExpire = env.resetTokenExpire;
-        const expireInMinutes = rawExpire.endsWith('m')
-          ? `${rawExpire.replace('m', '')} minutes`
-          : rawExpire;
+            // Send email
+            try {
+                const rawExpire = env.resetTokenExpire;
+                const expireInMinutes = rawExpire.endsWith('m')
+                    ? `${rawExpire.replace('m', '')} minutes`
+                    : rawExpire;
 
-        await addToQueue('resetPassword', user.email, {
-          name: user.firstname,
-          resetUrl,
-          expiresIn: expireInMinutes
-        });
+                await addToQueue('resetPassword', user.email, {
+                    name: user.firstname,
+                    resetUrl,
+                    expiresIn: expireInMinutes
+                });
 
-        return res.status(200).json({
-          status: 'success',
-          message: 'Password reset link sent to email'
-        });
-      } catch (error) {
-        console.error('Error sending password reset email:', error);
-        user.resetPasswordToken = undefined;
-        user.resetPasswordExpire = undefined;
-        await user.save({ validateBeforeSave: false });
+                return res.status(200).json({
+                    status: 'success',
+                    message: 'Password reset link sent to email'
+                });
+            } catch (error) {
+                console.error('Error sending password reset email:', error);
+                user.resetPasswordToken = undefined;
+                user.resetPasswordExpire = undefined;
+                await user.save({ validateBeforeSave: false });
 
-        return res.status(500).json({
-          status: 'error',
-          message: 'Email could not be sent'
-        });
-      }
-    } catch (error) {
-      console.error('Forgot password error:', error);
-      return res.status(500).json({
-        status: 'error',
-        message: 'Server error'
-      });
-    }
-  });
+                return res.status(500).json({
+                    status: 'error',
+                    message: 'Email could not be sent'
+                });
+            }
+        } catch (error) {
+            console.error('Forgot password error:', error);
+            return res.status(500).json({
+                status: 'error',
+                message: 'Server error'
+            });
+        }
+    });
 };
 
 export const resetPassword = async (req, res) => {
@@ -274,10 +270,10 @@ export const resetPassword = async (req, res) => {
                 details: `Expected 64-character hex string, got ${typeof token === 'string' ? token.length : 'N/A'} characters`
             });
         }
-        
+
         // Decode URL-encoded characters in the token
         const decodedToken = decodeURIComponent(token);
-        
+
         // Log token details for debugging
         logger.info('Reset token received', {
             originalToken: token,
