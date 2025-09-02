@@ -161,6 +161,22 @@ process.on('unhandledRejection', (reason, promise) => {
   }
 });
 
+// Health-check: ensure Redis/Bull queue connectivity
+try {
+  const { emailQueue } = await import('./services/emailQueue.js');
+  const { redisOptions } = await import('./config/redis.js');
+  await emailQueue.isReady();
+  logger.info('Redis (Bull) connected', {
+    host: redisOptions.host,
+    port: redisOptions.port,
+  });
+} catch (redisErr) {
+  logger.error('Redis (Bull) not ready or failed to connect:', redisErr);
+  if (env.isProd) {
+    process.exit(1);
+  }
+}
+
 // Start server
 const PORT = env.port || 5001;
 server.listen(PORT, () => {
