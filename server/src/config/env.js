@@ -31,8 +31,8 @@ const DEFAULT_REQUIRED_VARS = [
   'DKIM_SELECTOR',
   'REDIS_HOST',
   'REDIS_PORT',
-  'RATE_LIMIT_WINDOW_MS',
-  'RATE_LIMIT_MAX',
+  'DEFAULT_RATE_LIMIT_WINDOW_MS',
+  'DEFAULT_RATE_LIMIT_MAX',
 ];
 
 export function validateEnv(requiredVars = DEFAULT_REQUIRED_VARS) {
@@ -62,8 +62,23 @@ export const env = {
   },
 
   rateLimit: {
-    windowMs: process.env.RATE_LIMIT_WINDOW_MS ? parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) : undefined,
-    max: process.env.RATE_LIMIT_MAX ? parseInt(process.env.RATE_LIMIT_MAX, 10) : undefined,
+    // generic fallback
+    windowMs: process.env.DEFAULT_RATE_LIMIT_WINDOW_MS ? parseInt(process.env.DEFAULT_RATE_LIMIT_WINDOW_MS, 10) : undefined,
+    max: process.env.DEFAULT_RATE_LIMIT_MAX ? parseInt(process.env.DEFAULT_RATE_LIMIT_MAX, 10) : undefined,
+
+    // specific overrides
+    otp: {
+      windowMs: process.env.OTP_RATE_LIMIT_WINDOW_MS ? parseInt(process.env.OTP_RATE_LIMIT_WINDOW_MS, 10) : undefined,
+      max: process.env.OTP_RATE_LIMIT_MAX ? parseInt(process.env.OTP_RATE_LIMIT_MAX, 10) : undefined,
+    },
+    login: {
+      windowMs: process.env.LOGIN_RATE_LIMIT_WINDOW_MS ? parseInt(process.env.LOGIN_RATE_LIMIT_WINDOW_MS, 10) : undefined,
+      max: process.env.LOGIN_RATE_LIMIT_MAX ? parseInt(process.env.LOGIN_RATE_LIMIT_MAX, 10) : undefined,
+    },
+    forgotPassword: {
+      windowMs: process.env.FORGOTPASSWORD_RATE_LIMIT_WINDOW_MS ? parseInt(process.env.FORGOTPASSWORD_RATE_LIMIT_WINDOW_MS, 10) : undefined,
+      max: process.env.FORGOTPASSWORD_RATE_LIMIT_MAX ? parseInt(process.env.FORGOTPASSWORD_RATE_LIMIT_MAX, 10) : undefined,
+    },
   },
 
   cloudinary: {
