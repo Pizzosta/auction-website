@@ -1,6 +1,6 @@
 import express from 'express';
 import helmet from 'helmet';
-import { rateLimit } from 'express-rate-limit';
+import { rateLimit, ipKeyGenerator } from 'express-rate-limit';
 import xss from 'xss';
 import hpp from 'hpp';
 import { env, validateEnv } from '../config/env.js';
@@ -13,12 +13,63 @@ if (missingVars.length > 0) {
   process.exit(1);
 }
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: env.rateLimit.windowMs || 15 * 60 * 1000, // 15 minutes
-  max: env.rateLimit.max || 100, // limit each IP to 100 requests per windowMs
-  message: 'Too many requests from this IP, please try again later.',
-});
+// Rate limiter factory
+const createRateLimiter = ({
+  windowMs = env.rateLimit.windowMs || 15 * 60_000, // 15 minutes
+  max = env.rateLimit.max || 100, // limit each IP to 100 requests per windowMs
+  message = 'Too many requests, please try again later.',
+  keyByUser = false,
+  logAbuse = true,
+} = {}) => {
+  return rateLimit({
+    windowMs,
+    max,
+    keyGenerator: (req, res) => (keyByUser && req.user?.id) ? req.user.id : ipKeyGenerator(req, res),
+    standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+    legacyHeaders: false,  // Disable the `X-RateLimit-*` headers
+    message,
+    handler: (req, res, _next, options) => {
+      if (logAbuse) {
+        logger.warn('Rate limit triggered', {
+          method: req.method,
+          path: req.originalUrl,
+          ip: req.ip,
+          userId: req.user?.id,
+          windowMs: options.windowMs,
+          max,
+          timestamp: new Date().toISOString(),
+        });
+      }
+      res.status(options.statusCode).json({ message: options.message });
+    },
+  });
+};
+
+// Presets for common use-cases
+const presets = {
+  otp: {
+    windowMs: env.rateLimit.otp.windowMs ?? env.rateLimit.windowMs ?? 60_000,
+    max:      env.rateLimit.otp.max      ?? env.rateLimit.max      ?? 3,
+    message:  'Too many OTP requests, please try again later.',
+  },
+
+  login: {
+    windowMs: env.rateLimit.login.windowMs ?? env.rateLimit.windowMs ?? 15 * 60_000,
+    max:      env.rateLimit.login.max      ?? env.rateLimit.max      ?? 10,
+    message:  'Too many login attempts, please try again later.',
+  },
+
+  forgotPassword: {
+    windowMs: env.rateLimit.forgotPassword.windowMs ?? env.rateLimit.windowMs ?? 5 * 60_000,
+    max:      env.rateLimit.forgotPassword.max      ?? env.rateLimit.max      ?? 5,
+    message:  'Too many forgot-password requests, please try again later.',
+  },
+};
+
+// Exported specific limiters
+export const forgotLimiter = createRateLimiter({ ...presets.forgotPassword, keyByUser: true });
+export const loginLimiter = createRateLimiter(presets.login);
+export const otpLimiter = createRateLimiter({ ...presets.otp, keyByUser: true });
 
 // Security middleware stack
 const securityMiddleware = [
@@ -53,7 +104,7 @@ const securityMiddleware = [
   }),
 
   // Limit requests from same API
-  limiter,
+  createRateLimiter(),
 
   // Body parser
   express.json({ limit: '10kb' }),
