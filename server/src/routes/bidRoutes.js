@@ -3,6 +3,7 @@ import { placeBid, getBidsByAuction, getMyBids } from '../controllers/bidControl
 import { protect } from '../middleware/authMiddleware.js';
 import { bidSchema, idSchema, bidQuerySchema } from '../utils/validators.js';
 import { validate } from '../middleware/validationMiddleware.js';
+import { bidLimiter } from '../middleware/security.js';
 
 const router = express.Router();
 
@@ -17,7 +18,8 @@ router.get(
 // Protected routes
 router.post(
   '/', 
-  protect, 
+  protect,
+  bidLimiter, 
   validate(bidSchema.create, 'body'), 
   placeBid
 );

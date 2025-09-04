@@ -30,7 +30,7 @@ try {
 // Rate limiter factory
 const createRateLimiter = ({
   windowMs = env.rateLimit.windowMs || 15 * 60_000, // 15 minutes
-  max = env.rateLimit.max || 100, // limit each IP to 100 requests per windowMs
+  max = env.rateLimit.max || 1000, // limit each IP to 1000 requests per windowMs
   message = 'Too many requests, please try again later.',
   keyByUser = false,
   logAbuse = true,
@@ -112,12 +112,38 @@ const presets = {
     max:      env.rateLimit.forgotPassword.max      || env.rateLimit.max      || 5,
     message:  'Too many forgot-password requests, please try again later.',
   },
+
+  bid: {
+    windowMs: env.rateLimit.bid.windowMs || env.rateLimit.windowMs || 5 * 60_000,
+    max:      env.rateLimit.bid.max      || env.rateLimit.max      || 5,
+    message:  'Too many bid requests, please try again later.',
+  },
 };
 
 // Exported specific limiters
-export const forgotLimiter = createRateLimiter({ ...presets.forgotPassword, keyByUser: true });
-export const loginLimiter = createRateLimiter(presets.login);
-export const otpLimiter = createRateLimiter({ ...presets.otp, keyByUser: true });
+export const forgotLimiter = createRateLimiter({ 
+  ...presets.forgotPassword, 
+  keyByUser: false, // Use IP-based limiting
+  keyGenerator: (req) => `forgot-pwd:${req.ip}` // Explicit key for forgot password
+});
+
+export const loginLimiter = createRateLimiter({ 
+  ...presets.login,
+  keyByUser: false, // Use IP-based limiting
+  keyGenerator: (req) => `login:${req.ip}` // Explicit key for login
+});
+
+export const otpLimiter = createRateLimiter({ 
+  ...presets.otp, 
+  keyByUser: false, // Use IP-based limiting
+  keyGenerator: (req) => `otp:${req.ip}` // Explicit key for OTP
+});
+
+export const bidLimiter = createRateLimiter({ 
+  ...presets.bid,
+  keyByUser: true, // Use user-based limiting
+  keyGenerator: (req) => `bid:${req.user.id}` // Explicit key for bid
+});
 
 // Security middleware stack
 const securityMiddleware = [

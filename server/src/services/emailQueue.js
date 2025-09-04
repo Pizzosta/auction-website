@@ -1,16 +1,16 @@
 import Queue from 'bull';
 import logger from '../utils/logger.js';
 import { sendTemplateEmail } from '../utils/emailService.js';
-import { redisOptions } from '../config/redis.js';
+import { getRedisClient } from '../config/redis.js';
 
 // Create a new queue
-const emailQueue = new Queue('email', {
-  redis: redisOptions,
+const emailQueue = new Queue('emailQueue', {
+  connection: getRedisClient(),
   defaultJobOptions: {
     attempts: 3,
     backoff: {
       type: 'exponential',
-      delay: 5000, // 5 seconds
+      delay: 500,
     },
     removeOnComplete: true,
     removeOnFail: 50, // Keep last 50 failed jobs for inspection

@@ -59,6 +59,8 @@ export const env = {
   redis: {
     host: process.env.REDIS_HOST,
     port: process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT, 10) : undefined,
+    password: process.env.REDIS_PASSWORD || undefined,
+    tls: process.env.REDIS_TLS ? process.env.REDIS_TLS === 'true' : undefined,
   },
 
   rateLimit: {
@@ -78,6 +80,10 @@ export const env = {
     forgotPassword: {
       windowMs: process.env.FORGOTPASSWORD_RATE_LIMIT_WINDOW_MS ? parseInt(process.env.FORGOTPASSWORD_RATE_LIMIT_WINDOW_MS, 10) : undefined,
       max: process.env.FORGOTPASSWORD_RATE_LIMIT_MAX ? parseInt(process.env.FORGOTPASSWORD_RATE_LIMIT_MAX, 10) : undefined,
+    },
+    bid: {
+      windowMs: process.env.BID_RATE_LIMIT_WINDOW_MS ? parseInt(process.env.BID_RATE_LIMIT_WINDOW_MS, 10) : undefined,
+      max: process.env.BID_RATE_LIMIT_MAX ? parseInt(process.env.BID_RATE_LIMIT_MAX, 10) : undefined,
     },
   },
 

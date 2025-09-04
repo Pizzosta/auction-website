@@ -29,7 +29,7 @@ connectDB();
 
 // Then import and initialize Cloudinary
 import initializeCloudinary from './config/cloudinary.js';
-import { getRedisClient } from './config/redis.js';
+import {getRedisClient} from './config/redis.js';
 // Initialize Cloudinary
 try {
   await initializeCloudinary();
@@ -173,11 +173,11 @@ process.on('unhandledRejection', (reason, promise) => {
 // Health-check: ensure Redis/Bull queue connectivity
 try {
   const { emailQueue } = await import('./services/emailQueue.js');
-  const { redisOptions } = await import('./config/redis.js');
+  //const { redisOptions } = await import('./config/redis.js');
   await emailQueue.isReady();
   logger.info('Redis (Bull) connected', {
-    host: redisOptions.host,
-    port: redisOptions.port,
+    host: env.redis?.host || '127.0.0.1',
+    port: env.redis?.port || 6379,
   });
 } catch (redisErr) {
   logger.error('Redis (Bull) not ready or failed to connect:', redisErr);
@@ -239,7 +239,7 @@ const shutdown = async () => {
     try {
       const { getRedisClient } = await import('./config/redis.js');
       const client = await getRedisClient();
-      if (client && client.isOpen) {
+      if (client) {
         await client.quit();
         logger.info('Redis client closed');
       } else {
