@@ -1,3 +1,4 @@
+
 import express from 'express';
 import helmet from 'helmet';
 import { rateLimit, ipKeyGenerator } from 'express-rate-limit';
@@ -5,12 +6,25 @@ import xss from 'xss';
 import hpp from 'hpp';
 import { env, validateEnv } from '../config/env.js';
 import logger from '../utils/logger.js';
+import { getRedisClient } from '../config/redis.js';
 
 // Validate required environment variables
 const missingVars = validateEnv();
 if (missingVars.length > 0) {
   logger.error(`Missing required environment variables: ${missingVars.join(', ')}`);
   process.exit(1);
+}
+
+// Optionally load RedisStore from rate-limit-redis (fallback to memory if unavailable)
+let RedisStoreCtor = null;
+try {
+  const mod = await import('rate-limit-redis');
+  RedisStoreCtor = mod.RedisStore || mod.default || null;
+  if (RedisStoreCtor) {
+    logger.info('rate-limit-redis detected; Redis-backed rate limiting enabled');
+  }
+} catch (e) {
+  logger.info('rate-limit-redis not installed; using in-memory rate limiting');
 }
 
 // Rate limiter factory
@@ -20,8 +34,9 @@ const createRateLimiter = ({
   message = 'Too many requests, please try again later.',
   keyByUser = false,
   logAbuse = true,
+  skipFailedRequests = false, // Don't count failed requests against the limit
 } = {}) => {
-  return rateLimit({
+  const options = {
     windowMs,
     max,
     keyGenerator: (req, res) => (keyByUser && req.user?.id) ? req.user.id : ipKeyGenerator(req, res),
@@ -42,26 +57,59 @@ const createRateLimiter = ({
       }
       res.status(options.statusCode).json({ message: options.message });
     },
+  };
+
+  // Attach Redis store if available
+  if (RedisStoreCtor) {
+    const sendCommand = async (...args) => {
+      const client = await getRedisClient();
+      // If client is null, throw to make the failure explicit and surface in logs
+      if (!client) throw new Error('Redis client unavailable');
+      try {
+        return await client.sendCommand(args);
+      } catch (err) {
+        logger.error('Redis command failed:', { error: err.message, command: args[0] });
+        throw err; // Re-throw to let the rate limiter handle it
+      }
+    };
+
+    options.store = new RedisStoreCtor({ 
+      sendCommand,
+      prefix: 'rl:',
+      // Add a small delay to help with race conditions
+      // This helps prevent race conditions by adding a small delay between retries
+      retryStrategy: (times) => Math.min(times * 50, 200) // 50ms, 100ms, 150ms, 200ms, 200ms...
+    });
+  }
+
+  // Add a small delay to help with race conditions in testing
+  if (process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'development') {
+    options.delayMs = 1; // 1ms delay to help with race conditions in testing
+  }
+  
+  return rateLimit({
+    ...options,
+    skipFailedRequests, // Don't count failed requests against the limit
   });
 };
 
 // Presets for common use-cases
 const presets = {
   otp: {
-    windowMs: env.rateLimit.otp.windowMs ?? env.rateLimit.windowMs ?? 60_000,
-    max:      env.rateLimit.otp.max      ?? env.rateLimit.max      ?? 3,
+    windowMs: env.rateLimit.otp.windowMs || env.rateLimit.windowMs || 60_000,
+    max:      env.rateLimit.otp.max      || env.rateLimit.max      || 3,
     message:  'Too many OTP requests, please try again later.',
   },
 
   login: {
-    windowMs: env.rateLimit.login.windowMs ?? env.rateLimit.windowMs ?? 15 * 60_000,
-    max:      env.rateLimit.login.max      ?? env.rateLimit.max      ?? 10,
+    windowMs: env.rateLimit.login.windowMs || env.rateLimit.windowMs || 15 * 60_000,
+    max:      env.rateLimit.login.max      || env.rateLimit.max      || 10,
     message:  'Too many login attempts, please try again later.',
   },
 
   forgotPassword: {
-    windowMs: env.rateLimit.forgotPassword.windowMs ?? env.rateLimit.windowMs ?? 5 * 60_000,
-    max:      env.rateLimit.forgotPassword.max      ?? env.rateLimit.max      ?? 5,
+    windowMs: env.rateLimit.forgotPassword.windowMs || env.rateLimit.windowMs || 5 * 60_000,
+    max:      env.rateLimit.forgotPassword.max      || env.rateLimit.max      || 5,
     message:  'Too many forgot-password requests, please try again later.',
   },
 };
