@@ -1,5 +1,6 @@
 import express from 'express';
 import { register, login, forgotPassword, resetPassword } from '../controllers/authController.js';
+import { forgotLimiter, loginLimiter } from '../middleware/security.js';
 import { validate } from '../middleware/validationMiddleware.js';
 import { authSchema, tokenSchema } from '../utils/validators.js';
 
@@ -14,6 +15,7 @@ router.post(
 
 router.post(
   '/login', 
+  loginLimiter,
   validate(authSchema.login, 'body'), 
   login
 );
@@ -21,6 +23,7 @@ router.post(
 // Password reset routes
 router.post(
   '/forgot-password', 
+  forgotLimiter,
   validate(authSchema.forgotPassword, 'body'), 
   forgotPassword
 );
