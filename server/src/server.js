@@ -29,6 +29,7 @@ connectDB();
 
 // Then import and initialize Cloudinary
 import initializeCloudinary from './config/cloudinary.js';
+import { getRedisClient } from './config/redis.js';
 // Initialize Cloudinary
 try {
   await initializeCloudinary();
@@ -38,6 +39,14 @@ try {
   if (env.isProd) {
     process.exit(1); // Fail fast in production
   }
+}
+
+// Eagerly connect Redis (used by rate limiting and queues) BEFORE middleware/routes
+try {
+  await getRedisClient();
+  logger.info('Redis client ready before middleware registration');
+} catch (e) {
+  logger.warn('Redis client failed to initialize early; rate limiting may fallback temporarily', { message: e?.message });
 }
 
 // Import routes
@@ -224,6 +233,20 @@ const shutdown = async () => {
       }
     } catch (queueError) {
       logger.error('Error closing email queue:', queueError);
+    }
+
+    // Close shared Redis client (used by rate limiter)
+    try {
+      const { getRedisClient } = await import('./config/redis.js');
+      const client = await getRedisClient();
+      if (client && client.isOpen) {
+        await client.quit();
+        logger.info('Redis client closed');
+      } else {
+        logger.warn('Redis client not available or already closed');
+      }
+    } catch (redisCloseErr) {
+      logger.error('Error closing Redis client:', redisCloseErr);
     }
 
     // Final confirmation log
