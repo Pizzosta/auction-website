@@ -1,6 +1,5 @@
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
-import bcrypt from 'bcryptjs';
 import User from '../src/models/User.js';
 
 // Load environment variables
@@ -20,13 +19,13 @@ const SYSTEM_USERS = [
   },
   {
     username: 'SystemAdmin',
-      email: 'test1@example.com',
-      phone: '+233547654321',
-      password: process.env.SYSTEM_ADMIN_PASSWORD,
-      role: 'admin',
-      firstname: 'System',
-      lastname: 'Admin',    
-      isVerified: true
+    email: 'test1@example.com',
+    phone: '+233547654321',
+    password: process.env.SYSTEM_ADMIN_PASSWORD,
+    role: 'admin',
+    firstname: 'System',
+    lastname: 'Admin',
+    isVerified: true
   },
   {
     firstname: 'System',
@@ -35,6 +34,16 @@ const SYSTEM_USERS = [
     username: 'demouser',
     password: 'Demo@1234',
     phone: '+233200654321',
+    role: 'user',
+    isVerified: true
+  },
+  {
+    firstname: 'Reg',
+    lastname: 'Test',
+    email: 'Regtest3@example.com',
+    username: 'Reg',
+    phone: '233500000001',
+    password: 'Regtest3@example.com',
     role: 'user',
     isVerified: true
   },
@@ -59,13 +68,13 @@ async function createSystemUsers() {
 
     for (const userData of SYSTEM_USERS) {
       const { email } = userData;
-      
+
       // Check if user already exists
       const existingUser = await User.findOne({ email });
-      
+
       if (existingUser) {
         console.log(`User ${email} already exists, updating if needed...`);
-        
+
         // Update user role if needed
         if (existingUser.role !== userData.role) {
           existingUser.role = userData.role;
