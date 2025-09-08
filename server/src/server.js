@@ -60,25 +60,26 @@ const app = express();
 const server = http.createServer(app);
 const io = new SocketIO(server, {
   cors: {
-    origin: env.clientUrl || 'http://localhost:3000',
+    origin: env.clientUrl || 'http://localhost:5173',
     methods: ['GET', 'POST'],
   },
 });
 
-// Middleware to parse JSON bodies. This is crucial for req.body to not be undefined.
-app.use(express.json());
-
 // Configure trust proxy for production
 if (env.isProd) {
-  // Trust only the specific proxy in production
-  app.set('trust proxy', 1); // trust first proxy
+  // Trust first proxy in production (for secure cookies)
+  app.set('trust proxy', 1);
 } else {
   // Disable trust proxy in development for safety
   app.disable('trust proxy');
 }
 
-// Apply security middleware
+// Apply security middleware (includes cookie parsing, CORS, etc.)
 app.use(securityMiddleware);
+
+// Body parser (as a backup, though it's also in security middleware)
+app.use(express.json({ limit: '10kb' }));
+app.use(express.urlencoded({ extended: true, limit: '10kb' }));
 
 // Apply requestId context middleware
 app.use(requestContextMiddleware);

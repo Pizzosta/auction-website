@@ -147,7 +147,7 @@ const emailConfig = {
   // Default template variables
   templateVars: {
     appName: env.email.appName || 'Kawodze Auctions',
-    appUrl: env.clientUrl || 'http://localhost:3000',
+    appUrl: env.clientUrl || 'http://localhost:5173',
     year: new Date().getFullYear(),
     supportEmail: env.email.supportEmail || 'support@kawodze.com',
   }

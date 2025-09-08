@@ -1,10 +1,13 @@
-import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import zxcvbn from 'zxcvbn';
 import crypto from 'crypto';
 import { addToQueue } from '../services/emailQueue.js';
 import logger from '../utils/logger.js';
 import { env, validateEnv } from '../config/env.js';
+import {
+  generateAccessToken,
+  generateRefreshToken,
+} from '../services/tokenService.js';
 
 // Validate required environment variables
 const missingVars = validateEnv();
@@ -119,7 +122,7 @@ export const register = async (req, res) => {
         }
 
         // Generate JWT token
-        const token = jwt.sign({ userId: user._id, email: user.email, role: user.role }, env.jwtSecret, { expiresIn: '1d' });
+        const token = jwt.sign({ userId: user._id, email: user.email, role: user.role }, env.jwtSecret, { expiresIn: env.jwtExpire });
 
         res.status(201).json({
             status: 'success',
@@ -137,7 +140,7 @@ export const register = async (req, res) => {
             }
         });
     } catch (error) {
-        console.error(error);
+        logger.error('Login error:', error);
         res.status(500).json({ message: 'Server error' });
     }
 };
@@ -157,9 +160,22 @@ export const login = async (req, res) => {
         if (!isMatch) {
             return res.status(400).json({ message: 'Invalid credentials' });
         }
+        
+        // Update last login timestamp
+        user.lastLogin = new Date();
+        await user.save();
 
-        // Generate JWT token
-        const token = jwt.sign({ userId: user._id, email: user.email, role: user.role }, env.jwtSecret, { expiresIn: '1d' });
+        // Generate tokens
+        const accessToken = generateAccessToken(user._id, user.email, user.role);
+        const refreshToken = await generateRefreshToken(user._id, user.email, user.role);
+
+        // Set refresh token as HTTP-only cookie
+        res.cookie('refreshToken', refreshToken, {
+            httpOnly: true,
+            secure: env.nodeEnv === 'production',
+            sameSite: 'strict',
+            maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+        });
 
         res.json({
             status: 'success',
@@ -173,11 +189,12 @@ export const login = async (req, res) => {
                     phone: user.phone,
                     role: user.role
                 },
-                token,
+                accessToken,
+                expiresIn: env.accessTokenExpiry
             }
         });
     } catch (error) {
-        console.error(error);
+        logger.error('Login error:', error);
         res.status(500).json({ message: 'Server error' });
     }
 };

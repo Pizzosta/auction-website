@@ -10,7 +10,10 @@ const DEFAULT_REQUIRED_VARS = [
   'NODE_ENV',
   'PORT',
   'CLIENT_URL',
+  'JWT_SECRET',
   'JWT_EXPIRE',
+  'ACCESS_TOKEN_EXPIRY',
+  'REFRESH_TOKEN_EXPIRY',
   'RESET_TOKEN_EXPIRE',
   'WEBHOOK_SECRET',
   'CLOUDINARY_CLOUD_NAME',
@@ -47,13 +50,15 @@ export const env = {
   isDev: process.env.NODE_ENV === 'development',
   isTest: process.env.NODE_ENV === 'test',
 
-  port: parseInt(process.env.PORT, 10) || 3000,
+  port: parseInt(process.env.PORT, 10) || 5001,
   clientUrl: process.env.CLIENT_URL,
 
   mongodbUri: process.env.MONGODB_URI,
   jwtSecret: process.env.JWT_SECRET,
-  jwtExpire: process.env.JWT_EXPIRE, // e.g., '7d' or seconds
-  resetTokenExpire: process.env.RESET_TOKEN_EXPIRE, // e.g., minutes or ISO duration
+  jwtExpire: process.env.JWT_EXPIRE,
+  accessTokenExpiry: process.env.ACCESS_TOKEN_EXPIRY,
+  refreshTokenExpiry: process.env.REFRESH_TOKEN_EXPIRY,
+  resetTokenExpire: process.env.RESET_TOKEN_EXPIRE,
   webhookSecret: process.env.WEBHOOK_SECRET,
 
   redis: {
