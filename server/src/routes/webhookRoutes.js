@@ -10,6 +10,7 @@ router.use(rawBodyParser);
 /**
  * @route POST /api/v1/webhook
  * @group Webhook - webhook events
+ * @description Process incoming webhook events from external services.
  * @returns {object} 200 - Webhook processed
  * @returns {Error}  default - Unexpected error
  */

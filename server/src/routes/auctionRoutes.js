@@ -16,6 +16,7 @@ const router = express.Router();
 /**
  * @route GET /api/auctions
  * @group Auctions - auction management
+ * @description Retrieve a list of all auctions with optional filters.
  * @returns {object} 200 - List of auctions
  * @returns {Error}  default - Unexpected error
  */
@@ -28,6 +29,7 @@ router.get(
 /**
  * @route POST /api/auctions
  * @group Auctions - auction management
+ * @description Create a new auction. Requires authentication and image upload.
  * @param {CreateAuction.model} body.body.required
  * @returns {object} 201 - Auction created
  * @returns {Error}  default - Unexpected error
@@ -43,6 +45,7 @@ router.post(
 /**
  * @route GET /api/auctions/{id}
  * @group Auctions - auction management
+ * @description Get details of a specific auction by ID.
  * @param {string} id.path.required
  * @returns {object} 200 - Auction details
  * @returns {Error}  default - Unexpected error
@@ -56,6 +59,7 @@ router.get(
 /**
  * @route PUT /api/auctions/{id}
  * @group Auctions - auction management
+ * @description Update an auction by ID. Requires authentication.
  * @param {string} id.path.required
  * @param {UpdateAuction.model} body.body.required
  * @returns {object} 200 - Auction updated
@@ -72,6 +76,7 @@ router.put(
 /**
  * @route DELETE /api/auctions/{id}
  * @group Auctions - auction management
+ * @description Delete an auction by ID. Requires authentication.
  * @param {string} id.path.required
  * @returns {object} 200 - Auction deleted
  * @returns {Error}  default - Unexpected error

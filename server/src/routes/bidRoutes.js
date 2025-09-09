@@ -10,6 +10,7 @@ const router = express.Router();
 /**
  * @route POST /api/bids
  * @group Bids - bid management
+ * @description Place a bid on an auction. Requires authentication and rate limiting.
  * @param {PlaceBid.model} body.body.required
  * @returns {object} 201 - Bid placed
  * @returns {Error}  default - Unexpected error
@@ -25,6 +26,7 @@ router.post(
 /**
  * @route GET /api/bids/auction/{auctionId}
  * @group Bids - bid management
+ * @description Retrieve all bids for a specific auction by auction ID.
  * @param {string} auctionId.path.required
  * @returns {object} 200 - List of bids for auction
  * @returns {Error}  default - Unexpected error
@@ -39,6 +41,7 @@ router.get(
 /**
  * @route GET /api/bids/me
  * @group Bids - bid management
+ * @description Get all bids placed by the currently authenticated user.
  * @returns {object} 200 - List of user's bids
  * @returns {Error}  default - Unexpected error
  */

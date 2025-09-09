@@ -17,6 +17,7 @@ const router = express.Router();
 /**
  * @route GET /api/users
  * @group Users - user management
+ * @description Retrieve a list of all users. Requires admin privileges.
  * @returns {object} 200 - List of users
  * @returns {Error}  default - Unexpected error
  */
@@ -31,6 +32,7 @@ router.get(
 /**
  * @route GET /api/users/me
  * @group Users - user management
+ * @description Get the profile of the currently authenticated user.
  * @returns {object} 200 - Current user profile
  * @returns {Error}  default - Unexpected error
  */
@@ -39,6 +41,7 @@ router.get('/me', protect, getMe);
 /**
  * @route PATCH /api/users/{id}
  * @group Users - user management
+ * @description Update user details by user ID. Only allowed for the user or admin.
  * @param {string} id.path.required
  * @param {UpdateUser.model} body.body.required
  * @returns {object} 200 - User updated
@@ -55,6 +58,7 @@ router.patch(
 /**
  * @route DELETE /api/users/{id}
  * @group Users - user management
+ * @description Delete a user by ID. Only allowed for the user or admin.
  * @param {string} id.path.required
  * @returns {object} 200 - User deleted
  * @returns {Error}  default - Unexpected error
@@ -70,7 +74,7 @@ router.delete(
 /**
  * @route POST /api/users/me/upload-picture
  * @group Users - user management
- * @param {ProfilePicture.model} body.body.required
+ * @description Upload a profile picture for the authenticated user.
  * @returns {object} 200 - Profile picture uploaded
  * @returns {Error}  default - Unexpected error
  */
@@ -85,7 +89,7 @@ router.post(
 /**
  * @route DELETE /api/users/me/remove-picture
  * @group Users - user management
- * @param {string} id.path.required
+ * @description Remove the profile picture of the authenticated user.
  * @returns {object} 200 - Profile picture removed
  * @returns {Error}  default - Unexpected error
  */
