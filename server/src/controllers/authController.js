@@ -5,9 +5,10 @@ import { addToQueue } from '../services/emailQueue.js';
 import logger from '../utils/logger.js';
 import { env, validateEnv } from '../config/env.js';
 import {
-  generateAccessToken,
-  generateRefreshToken,
+    generateAccessToken,
+    generateRefreshToken,
 } from '../services/tokenService.js';
+import { normalizeToE164 } from '../utils/format.js';
 
 // Validate required environment variables
 const missingVars = validateEnv();
@@ -77,21 +78,38 @@ export const register = async (req, res) => {
         }
 
         const normalizedEmail = email?.trim().toLowerCase();
+        const normalizedUsername = username?.trim();
+        const normalizedPhone = normalizeToE164(phone?.trim());
+
+        if (!normalizedPhone) {
+            return res.status(400).json({
+                status: 'error',
+                message: 'Invalid phone number format'
+            });
+        }
 
         // Check if user exists
         const userByEmail = await User.findOne({ email: normalizedEmail });
         if (userByEmail) {
             return res.status(400).json({
                 status: 'error',
-                message: 'Email is already in use'
+                message: 'Email is already in use by another user.'
             });
         }
 
-        const userByUsername = await User.findOne({ username });
+        const userByUsername = await User.findOne({ username: normalizedUsername });
         if (userByUsername) {
             return res.status(400).json({
                 status: 'error',
-                message: 'Username is already taken'
+                message: 'Username is already in use by another user.'
+            });
+        }
+
+        const userByPhone = await User.findOne({ phone: normalizedPhone });
+        if (userByPhone) {
+            return res.status(400).json({
+                status: 'error',
+                message: 'Phone number is already in use by another user.'
             });
         }
 
@@ -130,6 +148,7 @@ export const register = async (req, res) => {
                 user: {
                     _id: user._id,
                     firstname: user.firstname,
+                    middlename: user.middlename,
                     lastname: user.lastname,
                     username: user.username,
                     email: user.email,
@@ -160,7 +179,7 @@ export const login = async (req, res) => {
         if (!isMatch) {
             return res.status(400).json({ message: 'Invalid credentials' });
         }
-        
+
         // Update last login timestamp
         user.lastLogin = new Date();
         await user.save();
@@ -183,6 +202,7 @@ export const login = async (req, res) => {
                 user: {
                     _id: user._id,
                     firstname: user.firstname,
+                    middlename: user.middlename,
                     lastname: user.lastname,
                     username: user.username,
                     email: user.email,

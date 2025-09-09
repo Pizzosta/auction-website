@@ -1,5 +1,6 @@
 import User from '../models/User.js';
 import { getCloudinary } from '../config/cloudinary.js';
+import { normalizeToE164 } from '../utils/format.js';
 
 // @desc    Get all users (admin only)
 // @route   GET /api/users
@@ -8,7 +9,7 @@ export const getAllUsers = async (req, res) => {
     try {
         // Get pagination parameters (already validated by middleware)
         const { role, isVerified, rating, search, page = 1, limit = 10, sort = 'createdAt:desc' } = req.query;
-        
+
         // Parse pagination parameters
         const pageNum = Math.max(1, parseInt(page));
         const limitNum = Math.min(Math.max(1, parseInt(limit)), 100); // Cap at 100
@@ -296,7 +297,7 @@ export const updateUser = async (req, res) => {
         const updateData = req.body;
 
         // Ensure the request body is not empty before proceeding
-        if (!updateData || Object.keys(updateData).length === 0) {
+        if (!updateData || Object.values(updateData).every(v => v === '' || v === null || v === undefined)) {
             return res.status(400).json({
                 status: 'fail',
                 message: 'No data provided for update.',
@@ -369,25 +370,43 @@ export const updateUser = async (req, res) => {
 
         // Check if the email is being updated and if it's already in use by another user
         if (updateData.email && updateData.email !== user.email) {
-            const emailExists = await User.findOne({ email: updateData.email });
+            const emailExists = await User.findOne({
+                email: updateData.email,
+                _id: { $ne: user._id } // Exclude current user from the check
+            });
             if (emailExists) {
-                return res.status(400).json({ message: 'Email already in use' });
+                return res.status(400).json({ message: 'Email already in use by another user.' });
             }
         }
 
         // Check if the phone is being updated and if it's already in use by another user
         if (updateData.phone && updateData.phone !== user.phone) {
-            const phoneExists = await User.findOne({ phone: updateData.phone });
+            // Normalize the phone number
+            const normalizedPhone = normalizeToE164(updateData.phone);
+
+            if (!normalizedPhone) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'Invalid phone number format'
+                });
+            }
+            const phoneExists = await User.findOne({
+                phone: normalizedPhone,
+                _id: { $ne: user._id } // Exclude current user from the check
+            });
             if (phoneExists) {
-                return res.status(400).json({ message: 'Phone already in use' });
+                return res.status(400).json({ message: 'Phone already in use by another user.' });
             }
         }
 
         // Check if the username is being updated and if it's already in use by another user
         if (updateData.username && updateData.username !== user.username) {
-            const usernameExists = await User.findOne({ username: updateData.username });
+            const usernameExists = await User.findOne({
+                username: updateData.username,
+                _id: { $ne: user._id } // Exclude current user from the check
+            });
             if (usernameExists) {
-                return res.status(400).json({ message: 'Username already in use' });
+                return res.status(400).json({ message: 'Username already in use by another user.' });
             }
         }
 

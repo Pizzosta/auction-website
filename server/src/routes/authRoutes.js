@@ -10,36 +10,44 @@ const router = express.Router();
 
 // Public routes
 router.post(
-  '/register', 
-  validate(authSchema.register, 'body'), 
+  '/register',
+  validate(authSchema.register, 'body'),
   register
 );
 
 router.post(
-  '/login', 
+  '/login',
   loginLimiter,
-  validate(authSchema.login, 'body'), 
+  validate(authSchema.login, 'body'),
   login
 );
 
 // Password reset routes
 router.post(
-  '/forgot-password', 
+  '/forgot-password',
   forgotLimiter,
-  validate(authSchema.forgotPassword, 'body'), 
+  validate(authSchema.forgotPassword, 'body'),
   forgotPassword
 );
 
 router.post(
-  '/reset-password/:token', 
-  validate(tokenSchema, 'params', { key: 'token' }), 
-  validate(authSchema.resetPassword, 'body'), 
+  '/reset-password/:token',
+  validate(tokenSchema, 'params', { key: 'token' }),
+  validate(authSchema.resetPassword, 'body'),
   resetPassword
 );
 
 // Token management routes
-router.post('/refresh-token', verifyRefreshToken, refreshToken);
-router.post('/logout', verifyRefreshToken, logout);
+router.post(
+  '/refresh-token',
+  verifyRefreshToken,
+  refreshToken
+);
+router.post(
+  '/logout',
+  verifyRefreshToken,
+  logout
+);
 router.post('/logout-all', protect, logoutAllDevices);
 
 export default router;

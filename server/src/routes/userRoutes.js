@@ -2,13 +2,13 @@ import express from 'express';
 import { protect, admin } from '../middleware/authMiddleware.js';
 import { validate } from '../middleware/validationMiddleware.js';
 import { userSchema, idSchema, userQuerySchema } from '../utils/validators.js';
-import { 
-    deleteUser, 
-    updateUser, 
-    getMe, 
-    getAllUsers, 
-    uploadProfilePicture,
-    deleteProfilePicture 
+import {
+  deleteUser,
+  updateUser,
+  getMe,
+  getAllUsers,
+  uploadProfilePicture,
+  deleteProfilePicture
 } from '../controllers/userController.js';
 import { uploadProfileImageMiddleware } from '../middleware/uploadMiddleware.js';
 
@@ -16,10 +16,10 @@ const router = express.Router();
 
 // Get all users (admin only)
 router.get(
-  '/', 
-  protect, 
-  admin, 
-  validate(userQuerySchema, 'query'), 
+  '/',
+  protect,
+  admin,
+  validate(userQuerySchema, 'query'),
   getAllUsers
 );
 
@@ -27,18 +27,18 @@ router.get(
 router.get('/me', protect, getMe);
 
 router.delete(
-  '/:id', 
-  protect, 
-  validate(idSchema, 'params', { key: 'id' }), 
-  validate(userSchema.deleteUser, 'body'), 
+  '/:id',
+  protect,
+  validate(idSchema, 'params', { key: 'id' }),
+  validate(userSchema.deleteUser, 'body'),
   deleteUser
 );
 
 router.patch(
-  '/:id', 
-  protect, 
-  validate(idSchema, 'params', { key: 'id' }), 
-  validate(userSchema.updateUser, 'body'), 
+  '/:id',
+  protect,
+  validate(idSchema, 'params', { key: 'id' }),
+  validate(userSchema.updateUser, 'body'),
   updateUser
 );
 

@@ -1,4 +1,5 @@
 import Joi from 'joi';
+import { normalizeToE164 } from './format.js';
 
 // User query schema validation
 export const userQuerySchema = Joi.object({
@@ -81,8 +82,14 @@ export const authSchema = {
         'string.max': 'Last name cannot be more than 20 characters',
       }),
     phone: Joi.string()
-      .pattern(/^[+]?[(]?[0-9]{1,4}[)]?[-\s./0-9]*$/, 'phone')
-      .message('Please provide a valid phone number')
+      .custom((value, helpers) => {
+        const normalized = normalizeToE164(value);
+        if (!normalized) {
+          return helpers.error('any.invalid');
+        }
+        return normalized;
+      }, 'E.164 normalization')
+      .message('Please enter a valid Ghanaian phone number')
       .required(),
     username: Joi.string().alphanum().trim().min(3).max(20).required()
       .messages({
@@ -162,21 +169,21 @@ export const auctionSchema = {
     currentPrice: Joi.number().min(0),
     endDate: Joi.date().iso().greater('now').required(),
     category: Joi.string().required()
-    .valid(
-      ...[
-        "Electronics",
-        "Fashion",
-        "Home & Garden",
-        "Collectibles",
-        "Sports",
-        "Automotive",
-        "Art",
-        "Books",
-        "Jewelry",
-        "Toys",
-      ]
-    )
-    .required(),
+      .valid(
+        ...[
+          "Electronics",
+          "Fashion",
+          "Home & Garden",
+          "Collectibles",
+          "Sports",
+          "Automotive",
+          "Art",
+          "Books",
+          "Jewelry",
+          "Toys",
+        ]
+      )
+      .required(),
     images: Joi.array().items(Joi.string().uri()),
   }),
 
@@ -187,21 +194,21 @@ export const auctionSchema = {
     currentPrice: Joi.number().min(0),
     endDate: Joi.date().iso().greater('now').required(),
     category: Joi.string().required()
-    .valid(
-      ...[
-        "Electronics",
-        "Fashion",
-        "Home & Garden",
-        "Collectibles",
-        "Sports",
-        "Automotive",
-        "Art",
-        "Books",
-        "Jewelry",
-        "Toys",
-      ]
-    )
-    .required(),
+      .valid(
+        ...[
+          "Electronics",
+          "Fashion",
+          "Home & Garden",
+          "Collectibles",
+          "Sports",
+          "Automotive",
+          "Art",
+          "Books",
+          "Jewelry",
+          "Toys",
+        ]
+      )
+      .required(),
     images: Joi.array().items(Joi.string().uri()),
   }).min(1), // At least one field required for update
 };
@@ -227,19 +234,19 @@ export const webhookSchema = {
       .required()
       .messages({
         'string.pattern.base': 'User-Agent must be in format: AuctionWebhookService/x.y.z',
-        'any.required': 'User-Agent header is required'
+        'any.required': 'User-Agent header is required',
       }),
     'content-type': Joi.string().valid('application/json').required(),
-    'x-request-timestamp': Joi.number().integer().required()
+    'x-request-timestamp': Joi.number().integer().required(),
   }).options({ allowUnknown: true }), // Allow other headers
-  
+
   validateTimestamp: (timestamp, maxAge = 300) => {
     const now = Math.floor(Date.now() / 1000);
     if (Math.abs(now - timestamp) > maxAge) {
       throw new Error('Webhook timestamp is too old');
     }
     return true;
-  }
+  },
 };
 
 // User schema validation
@@ -252,7 +259,7 @@ export const userSchema = {
         'string.min': 'Password must be at least 8 characters long',
         'string.empty': 'Password is required to confirm deletion'
       })
-      .optional() // Only required if user is deleting themselves
+      .optional(), // Only required if user is deleting themselves
   }),
 
   updateUser: Joi.object({
@@ -262,7 +269,7 @@ export const userSchema = {
         'string.pattern.base': 'First name can only contain letters, spaces, hyphens, and apostrophes',
         'string.min': 'First name must be at least 3 characters long',
         'string.max': 'First name cannot be more than 20 characters',
-        'string.empty': 'First name is required'
+        'string.empty': 'First name is required',
       }),
 
     lastname: Joi.string().trim().min(3).max(20)
@@ -271,23 +278,25 @@ export const userSchema = {
         'string.pattern.base': 'Last name can only contain letters, spaces, hyphens, and apostrophes',
         'string.min': 'Last name must be at least 3 characters long',
         'string.max': 'Last name cannot be more than 20 characters',
-        'string.empty': 'Last name is required'
+        'string.empty': 'Last name is required',
       }),
 
     middlename: Joi.string().trim().allow('').max(20)
       .pattern(/^[a-zA-Z\s-']*$/)
       .messages({
         'string.pattern.base': 'Middle name can only contain letters, spaces, hyphens, and apostrophes',
-        'string.max': 'Middle name cannot be more than 20 characters'
+        'string.max': 'Middle name cannot be more than 20 characters',
       }),
 
-    phone: Joi.string().trim()
-      .pattern(/^(?:\+?233|0?)[235]\d{8}$/)
-      .messages({
-        'string.pattern.base': 'Please enter a valid Ghanaian phone number',
-        'string.empty': 'Phone number is required'
-      })
-      .required(),
+    phone: Joi.string()
+      .custom((value, helpers) => {
+        const normalized = normalizeToE164(value);
+        if (!normalized) {
+          return helpers.error('any.invalid');
+        }
+        return normalized;
+      }, 'E.164 normalization')
+      .message('Please enter a valid Ghanaian phone number'),
 
     username: Joi.string().trim().min(3).max(20)
       .pattern(/^[a-zA-Z0-9_]+$/)
@@ -295,7 +304,7 @@ export const userSchema = {
         'string.pattern.base': 'Username can only contain letters, numbers, and underscores',
         'string.min': 'Username must be at least 3 characters long',
         'string.max': 'Username cannot be more than 20 characters',
-        'string.empty': 'Username is required'
+        'string.empty': 'Username is required',
       }),
 
     email: Joi.string().trim().lowercase()
@@ -310,7 +319,7 @@ export const userSchema = {
       .messages({
         'string.pattern.base': 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character',
         'string.min': 'Password must be at least 8 characters long',
-        'string.empty': 'Password is required'
+        'string.empty': 'Password is required',
       }),
 
     currentPassword: Joi.string()
@@ -330,7 +339,7 @@ export const userSchema = {
           'any.only': 'Passwords do not match',
           'any.required': 'Please confirm your new password'
         }),
-        otherwise: Joi.optional()
+        otherwise: Joi.optional(),
       }),
 
     role: Joi.string().valid('user', 'admin')
@@ -359,7 +368,7 @@ export const userSchema = {
   }).min(1).messages({
     'object.min': 'At least one field must be provided to update'
   }),
-  
+
   // Profile picture validation
   profilePicture: Joi.object({
     profilePicture: Joi.any().required().messages({
@@ -367,7 +376,7 @@ export const userSchema = {
       'any.empty': 'Profile picture cannot be empty'
     })
   }),
-  
+
   // Delete profile picture validation
   deleteProfilePicture: Joi.object({}).empty().messages({
     'object.base': 'No additional data should be sent with this request'
