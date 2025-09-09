@@ -6,7 +6,8 @@
   "scripts": {
     "prestart": "npm-check --skip-unused --quiet || echo 'npm-check failed, continuing...'",
     "start": "node src/server.js",
-    "dev": "npm run prestart && nodemon --signal SIGTERM src/server.js",
+    "swagger": "node src/swagger.js",
+    "dev": "npm run prestart && npm run swagger && nodemon --signal SIGTERM src/server.js",
     "test": "cross-env NODE_OPTIONS='--experimental-vm-modules --no-warnings' NODE_ENV=test mocha",
     "test:watch": "cross-env NODE_OPTIONS='--experimental-vm-modules --no-warnings' NODE_ENV=test mocha --watch",
     "test:coverage": "cross-env NODE_OPTIONS='--experimental-vm-modules --no-warnings' NODE_ENV=test nyc mocha",
@@ -50,6 +51,7 @@
     "rate-limit-redis": "^4.2.2",
     "redis": "^5.8.2",
     "socket.io": "^4.8.1",
+    "swagger-autogen": "^2.23.7",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
     "winston": "^3.12.0",

@@ -1,5 +1,5 @@
 import express from 'express';
-import apiDocsRouter from './apiDocs.js';
+import apiDocsRouter from './swagger.js';
 import http from 'http';
 import { Server as SocketIO } from 'socket.io';
 import { fileURLToPath } from 'url';
