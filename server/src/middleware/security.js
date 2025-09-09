@@ -5,9 +5,11 @@ import xss from 'xss';
 import hpp from 'hpp';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import csrf from 'csurf';
 import { env, validateEnv } from '../config/env.js';
 import logger from '../utils/logger.js';
 import { getRedisClient } from '../config/redis.js';
+import { apiLogger, errorLogger } from './apiLogger.js';
 
 // Validate required environment variables
 const missingVars = validateEnv();
@@ -40,9 +42,10 @@ const createRateLimiter = ({
   const options = {
     windowMs,
     max,
-    keyGenerator: (req, res) => (keyByUser && req.user?.id) ? req.user.id : ipKeyGenerator(req, res),
+    keyGenerator: (req, res) =>
+      keyByUser && req.user?.id ? req.user.id : ipKeyGenerator(req, res),
     standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-    legacyHeaders: false,  // Disable the `X-RateLimit-*` headers
+    legacyHeaders: false, // Disable the `X-RateLimit-*` headers
     message,
     handler: (req, res, _next, options) => {
       if (logAbuse) {
@@ -70,20 +73,20 @@ const createRateLimiter = ({
         // For Redis v4+, use client[command](...args) pattern
         return await client.sendCommand(args);
       } catch (err) {
-        logger.error('Redis command failed:', { 
-          error: err.message, 
+        logger.error('Redis command failed:', {
+          error: err.message,
           command: args[0],
-          stack: err.stack 
+          stack: err.stack,
         });
         throw err; // Re-throw to let the rate limiter handle it
       }
     };
 
-    options.store = new RedisStoreCtor({ 
+    options.store = new RedisStoreCtor({
       sendCommand,
       prefix: 'rl:',
       // Add a small delay to help with race conditions
-      retryStrategy: (times) => Math.min(times * 50, 200) // 50ms, 100ms, 150ms, 200ms, 200ms...
+      retryStrategy: times => Math.min(times * 50, 200), // 50ms, 100ms, 150ms, 200ms, 200ms...
     });
   }
 
@@ -91,7 +94,7 @@ const createRateLimiter = ({
   if (process.env.NODE_ENV === 'test' || process.env.NODE_ENV === 'development') {
     options.delayMs = 1; // 1ms delay to help with race conditions in testing
   }
-  
+
   return rateLimit({
     ...options,
     skipFailedRequests, // Don't count failed requests against the limit
@@ -102,52 +105,52 @@ const createRateLimiter = ({
 const presets = {
   otp: {
     windowMs: env.rateLimit.otp.windowMs || env.rateLimit.windowMs || 60_000,
-    max:      env.rateLimit.otp.max      || env.rateLimit.max      || 3,
-    message:  'Too many OTP requests, please try again later.',
+    max: env.rateLimit.otp.max || env.rateLimit.max || 3,
+    message: 'Too many OTP requests, please try again later.',
   },
 
   login: {
     windowMs: env.rateLimit.login.windowMs || env.rateLimit.windowMs || 15 * 60_000,
-    max:      env.rateLimit.login.max      || env.rateLimit.max      || 10,
-    message:  'Too many login attempts, please try again later.',
+    max: env.rateLimit.login.max || env.rateLimit.max || 10,
+    message: 'Too many login attempts, please try again later.',
   },
 
   forgotPassword: {
     windowMs: env.rateLimit.forgotPassword.windowMs || env.rateLimit.windowMs || 5 * 60_000,
-    max:      env.rateLimit.forgotPassword.max      || env.rateLimit.max      || 5,
-    message:  'Too many forgot-password requests, please try again later.',
+    max: env.rateLimit.forgotPassword.max || env.rateLimit.max || 5,
+    message: 'Too many forgot-password requests, please try again later.',
   },
 
   bid: {
     windowMs: env.rateLimit.bid.windowMs || env.rateLimit.windowMs || 5 * 60_000,
-    max:      env.rateLimit.bid.max      || env.rateLimit.max      || 5,
-    message:  'Too many bid requests, please try again later.',
+    max: env.rateLimit.bid.max || env.rateLimit.max || 5,
+    message: 'Too many bid requests, please try again later.',
   },
 };
 
 // Exported specific limiters
-export const forgotLimiter = createRateLimiter({ 
-  ...presets.forgotPassword, 
+export const forgotLimiter = createRateLimiter({
+  ...presets.forgotPassword,
   keyByUser: false, // Use IP-based limiting
-  keyGenerator: (req) => `forgot-pwd:${req.ip}` // Explicit key for forgot password
+  keyGenerator: req => `forgot-pwd:${req.ip}`, // Explicit key for forgot password
 });
 
-export const loginLimiter = createRateLimiter({ 
+export const loginLimiter = createRateLimiter({
   ...presets.login,
   keyByUser: false, // Use IP-based limiting
-  keyGenerator: (req) => `login:${req.ip}` // Explicit key for login
+  keyGenerator: req => `login:${req.ip}`, // Explicit key for login
 });
 
-export const otpLimiter = createRateLimiter({ 
-  ...presets.otp, 
+export const otpLimiter = createRateLimiter({
+  ...presets.otp,
   keyByUser: false, // Use IP-based limiting
-  keyGenerator: (req) => `otp:${req.ip}` // Explicit key for OTP
+  keyGenerator: req => `otp:${req.ip}`, // Explicit key for OTP
 });
 
-export const bidLimiter = createRateLimiter({ 
+export const bidLimiter = createRateLimiter({
   ...presets.bid,
   keyByUser: true, // Use user-based limiting
-  keyGenerator: (req) => `bid:${req.user.id}` // Explicit key for bid
+  keyGenerator: req => `bid:${req.user.id}`, // Explicit key for bid
 });
 
 // CORS configuration
@@ -155,13 +158,10 @@ const corsOptions = {
   origin: (origin, callback) => {
     // Allow requests with no origin (like mobile apps, curl, etc.)
     if (!origin) return callback(null, true);
-    
+
     const allowedOrigins = [
       env.clientUrl,
-      'http://localhost:3000',
-      'http://localhost:3001',
       'http://localhost:5173',
-      'http://127.0.0.1:3000',
       'https://kawodze.com', // Replace with your production domain
     ];
 
@@ -194,61 +194,121 @@ const corsOptions = {
 const securityMiddleware = [
   // Enable CORS with configuration
   cors(corsOptions),
-  
+
   // Parse cookies
-  cookieParser(),
-  
+  cookieParser(env.cookieSecret),
+
+  // API request/response logging
+  apiLogger,
+
   // Parse JSON request body
-  express.json({ limit: '10kb' }),
-  
+  express.json({
+    limit: '10kb',
+    strict: true,
+  }),
+
   // Parse URL-encoded request body
-  express.urlencoded({ extended: true, limit: '10kb' }),
-  
-  // Set security HTTP headers
+  express.urlencoded({
+    extended: true,
+    limit: '10kb',
+    parameterLimit: 10, // Limit number of parameters
+  }),
+
+  // Set security HTTP headers with Helmet
   helmet({
     contentSecurityPolicy: {
       directives: {
         defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", 'trusted-cdn.com'],
-        styleSrc: ["'self'", 'trusted-cdn.com', "'unsafe-inline'"],
+        scriptSrc: [
+          "'self'",
+          'trusted-cdn.com',
+          // Remove 'unsafe-inline' in production
+          ...(env.nodeEnv === 'development' ? ["'unsafe-inline'"] : []),
+        ],
+        styleSrc: [
+          "'self'",
+          'trusted-cdn.com',
+          // Remove 'unsafe-inline' in production
+          ...(env.nodeEnv === 'development' ? ["'unsafe-inline'"] : []),
+        ],
         imgSrc: ["'self'", 'data:', 'blob:', 'https://www.trusted-cdn.com'],
         connectSrc: ["'self'", 'api.trusted-service.com'],
         fontSrc: ["'self'", 'trusted-cdn.com'],
         objectSrc: ["'none'"],
-        upgradeInsecureRequests: [],
+        baseUri: ["'self'"],
+        formAction: ["'self'"],
+        frameAncestors: ["'self'"],
+        upgradeInsecureRequests: env.nodeEnv === 'production' ? [] : null,
       },
     },
-    crossOriginEmbedderPolicy: false,
-    crossOriginOpenerPolicy: false,
-    crossOriginResourcePolicy: false,
+    crossOriginEmbedderPolicy: env.nodeEnv === 'production',
+    crossOriginOpenerPolicy: { policy: 'same-origin' },
+    crossOriginResourcePolicy: { policy: 'same-site' },
+    dnsPrefetchControl: { allow: false },
     frameguard: { action: 'deny' },
     hidePoweredBy: true,
     hsts: {
-      maxAge: 60 * 60 * 24 * 365, // 1 year in seconds
+      maxAge: 63072000, // 2 years in seconds
       includeSubDomains: true,
       preload: true,
     },
     ieNoOpen: true,
     noSniff: true,
     permittedCrossDomainPolicies: { permittedPolicies: 'none' },
-    referrerPolicy: { policy: 'no-referrer' },
+    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+    xssFilter: true,
   }),
 
-  // Limit requests from same API
-  createRateLimiter(),
+  // CSRF protection for non-API routes and non-GET requests
+  (req, res, next) => {
+    // Skip CSRF for API routes, GET, HEAD, OPTIONS, and TRACE methods
+    if (req.path.startsWith('/api/') || ['GET', 'HEAD', 'OPTIONS', 'TRACE'].includes(req.method)) {
+      return next();
+    }
 
-  // Body parser
-  express.json({ limit: '10kb' }),
+    // Initialize CSRF protection
+    const csrfProtection = csrf({
+      cookie: {
+        key: '_csrf',
+        path: '/',
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 24 * 60 * 60 * 1000, // 24 hours in milliseconds
+      },
+      value: (req) => {
+        // Extract CSRF token from body, query, or headers
+        return (
+          req.body?._csrf ||
+          req.query?._csrf ||
+          req.headers['x-csrf-token'] ||
+          ''
+        );
+      },
+    });
+
+    // Apply CSRF protection
+    csrfProtection(req, res, next);
+  },
+
+  // Add CSRF token to response locals for views
+  (req, res, next) => {
+    res.locals.csrfToken = req.csrfToken ? req.csrfToken() : '';
+    next();
+  },
+
+  // Rate limiting
+  createRateLimiter(),
 
   // Data sanitization against XSS
   (req, res, next) => {
     // Skip XSS for versioned webhook endpoints (e.g., /api/v1/webhook, /api/v2/webhook)
     if (/^\/api\/v\d+\/webhook\/?$/.test(req.path)) return next();
-    
+
     // Sanitize request body, query, and params
-    const sanitizeInput = (data) => {
+    const sanitizeInput = data => {
       if (!data || typeof data !== 'object') return data;
-      
+
       Object.keys(data).forEach(key => {
         if (typeof data[key] === 'string') {
           data[key] = xss(data[key]);
@@ -256,14 +316,14 @@ const securityMiddleware = [
           sanitizeInput(data[key]);
         }
       });
-      
+
       return data;
     };
-    
+
     sanitizeInput(req.body);
     sanitizeInput(req.query);
     sanitizeInput(req.params);
-    
+
     next();
   },
 
@@ -279,7 +339,7 @@ const securityMiddleware = [
       // Add any other whitelisted parameters here
     ],
   }),
-  
+
   // Trust first proxy if behind one (e.g., Heroku, AWS ELB, etc.)
   (req, res, next) => {
     if (env.nodeEnv === 'production' && req.headers['x-forwarded-proto'] === 'http') {
@@ -287,43 +347,25 @@ const securityMiddleware = [
     }
     next();
   },
-  
-  // Add security headers with Helmet
-  helmet({
-    contentSecurityPolicy: env.nodeEnv === 'production' ? {
-      directives: {
-        defaultSrc: ["'self'"],
-        scriptSrc: ["'self'", 'trusted-cdn.com', "'unsafe-inline'"],
-        styleSrc: ["'self'", 'trusted-cdn.com', "'unsafe-inline'"],
-        imgSrc: ["'self'", 'data:', 'blob:', 'https://www.trusted-cdn.com'],
-        connectSrc: ["'self'", 'api.trusted-service.com'],
-        fontSrc: ["'self'", 'trusted-cdn.com'],
-      },
-    } : false,
-    crossOriginEmbedderPolicy: true,
-    crossOriginOpenerPolicy: true,
-    crossOriginResourcePolicy: { policy: 'same-site' },
-    dnsPrefetchControl: true,
-    frameguard: { action: 'sameorigin' },
-    hidePoweredBy: true,
-    hsts: {
-      maxAge: 31536000, // 1 year in seconds
-      includeSubDomains: true,
-      preload: true,
-    },
-    ieNoOpen: true,
-    noSniff: true,
-    referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
-    xssFilter: true,
-  }),
 
+  // Error logging
+  errorLogger,
+
+  // Handle OPTIONS requests
   (req, res, next) => {
     if (req.method === 'OPTIONS') {
       return res.sendStatus(200);
     }
-
     next();
   },
 ];
+
+// Add CSRF token to all API responses
+export const addCsrfToken = (req, res, next) => {
+  if (req.csrfToken) {
+    res.setHeader('X-CSRF-Token', req.csrfToken());
+  }
+  next();
+};
 
 export default securityMiddleware;

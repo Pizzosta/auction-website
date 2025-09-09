@@ -16,6 +16,7 @@ const DEFAULT_REQUIRED_VARS = [
   'REFRESH_TOKEN_EXPIRY',
   'RESET_TOKEN_EXPIRE',
   'WEBHOOK_SECRET',
+  'COOKIE_SECRET',
   'CLOUDINARY_CLOUD_NAME',
   'CLOUDINARY_API_KEY',
   'CLOUDINARY_API_SECRET',
@@ -60,6 +61,7 @@ export const env = {
   refreshTokenExpiry: process.env.REFRESH_TOKEN_EXPIRY,
   resetTokenExpire: process.env.RESET_TOKEN_EXPIRE,
   webhookSecret: process.env.WEBHOOK_SECRET,
+  cookieSecret: process.env.COOKIE_SECRET,
 
   redis: {
     host: process.env.REDIS_HOST,

@@ -6,6 +6,7 @@ import { dirname, join } from 'path';
 import logger from './utils/logger.js';
 import requestLogger from './middleware/requestLogger.js';
 import securityMiddleware from './middleware/security.js';
+import { apiLogger, errorLogger } from './middleware/apiLogger.js';
 import { globalErrorHandler, AppError } from './middleware/errorHandler.js';
 import './jobs/index.js'; // Import jobs to start the scheduler
 import { requestContextMiddleware } from './middleware/requestContext.js';
@@ -77,6 +78,9 @@ if (env.isProd) {
 // Apply security middleware (includes cookie parsing, CORS, etc.)
 app.use(securityMiddleware);
 
+// Enhanced API request/response logging
+app.use(apiLogger);
+
 // Body parser (as a backup, though it's also in security middleware)
 app.use(express.json({ limit: '10kb' }));
 app.use(express.urlencoded({ extended: true, limit: '10kb' }));
@@ -100,6 +104,9 @@ app.get('/health', (req, res) => {
     environment: env.nodeEnv || 'development',
   });
 });
+
+// Error logging (should be before global error handler)
+app.use(errorLogger);
 
 // API Routes
 app.use('/api/auth', authRoutes);
