@@ -48,7 +48,10 @@ const router = express.Router();
  *
  *   post:
  *     summary: Create a new auction
- *     tags: [Auctions]
+ *     security:
+ *       - bearerAuth: []
+ *     tags:
+ *       - Auctions
  *     requestBody:
  *       required: true
  *       content:

@@ -38,11 +38,18 @@ const router = express.Router();
  * @swagger
  * /api/users/me:
  *   get:
- *     summary: Get current user
- *     tags: [Users]
+ *     summary: Get current user profile
+ *     security:
+ *       - bearerAuth: []
+ *     tags:
+ *       - Users
  *     responses:
  *       200:
- *         description: Current user details
+ *         description: User profile
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/User'
  *       401:
  *         description: Unauthorized
  */

@@ -9,6 +9,7 @@ import {
     generateRefreshToken,
 } from '../services/tokenService.js';
 import { normalizeToE164 } from '../utils/format.js';
+import jwt from 'jsonwebtoken';
 
 // Validate required environment variables
 const missingVars = validateEnv();

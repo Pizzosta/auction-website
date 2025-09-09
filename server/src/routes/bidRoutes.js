@@ -39,7 +39,10 @@ const router = express.Router();
  * /api/bids:
  *   post:
  *     summary: Place a bid
- *     tags: [Bids]
+ *     security:
+ *       - bearerAuth: []
+ *     tags:
+ *       - Bids
  *     requestBody:
  *       required: true
  *       content:

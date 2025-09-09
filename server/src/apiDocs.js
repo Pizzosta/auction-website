@@ -23,6 +23,16 @@ const options = {
 
 const specs = swaggerJsdoc(options);
 
+/**
+ * @swagger
+ * components:
+ *   securitySchemes:
+ *     bearerAuth:
+ *       type: http
+ *       scheme: bearer
+ *       bearerFormat: JWT
+ */
+
 router.use('/', swaggerUi.serve, swaggerUi.setup(specs));
 
 export default router;
