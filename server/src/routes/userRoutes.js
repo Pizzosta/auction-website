@@ -14,7 +14,12 @@ import { uploadProfileImageMiddleware } from '../middleware/uploadMiddleware.js'
 
 const router = express.Router();
 
-// Get all users (admin only)
+/**
+ * @route GET /api/users
+ * @group Users - user management
+ * @returns {object} 200 - List of users
+ * @returns {Error}  default - Unexpected error
+ */
 router.get(
   '/',
   protect,
@@ -23,17 +28,22 @@ router.get(
   getAllUsers
 );
 
-// Protected routes
+/**
+ * @route GET /api/users/me
+ * @group Users - user management
+ * @returns {object} 200 - Current user profile
+ * @returns {Error}  default - Unexpected error
+ */
 router.get('/me', protect, getMe);
 
-router.delete(
-  '/:id',
-  protect,
-  validate(idSchema, 'params', { key: 'id' }),
-  validate(userSchema.deleteUser, 'body'),
-  deleteUser
-);
-
+/**
+ * @route PATCH /api/users/{id}
+ * @group Users - user management
+ * @param {string} id.path.required
+ * @param {UpdateUser.model} body.body.required
+ * @returns {object} 200 - User updated
+ * @returns {Error}  default - Unexpected error
+ */
 router.patch(
   '/:id',
   protect,
@@ -42,7 +52,28 @@ router.patch(
   updateUser
 );
 
-// Profile picture routes
+/**
+ * @route DELETE /api/users/{id}
+ * @group Users - user management
+ * @param {string} id.path.required
+ * @returns {object} 200 - User deleted
+ * @returns {Error}  default - Unexpected error
+ */
+router.delete(
+  '/:id',
+  protect,
+  validate(idSchema, 'params', { key: 'id' }),
+  validate(userSchema.deleteUser, 'body'),
+  deleteUser
+);
+
+/**
+ * @route POST /api/users/me/upload-picture
+ * @group Users - user management
+ * @param {ProfilePicture.model} body.body.required
+ * @returns {object} 200 - Profile picture uploaded
+ * @returns {Error}  default - Unexpected error
+ */
 router.post(
   '/me/upload-picture',
   protect,
@@ -51,6 +82,13 @@ router.post(
   uploadProfilePicture
 );
 
+/**
+ * @route DELETE /api/users/me/remove-picture
+ * @group Users - user management
+ * @param {string} id.path.required
+ * @returns {object} 200 - Profile picture removed
+ * @returns {Error}  default - Unexpected error
+ */
 router.delete(
   '/me/remove-picture',
   protect,

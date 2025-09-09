@@ -13,9 +13,11 @@ const endpoints = [path.join(__dirname, 'server.js')];
 
 const router = express.Router();
 
-const swaggerDoc = JSON.parse(
-    fs.readFileSync(path.resolve('src/swagger-output.json'), 'utf-8')
-);
+const swaggerOutputPath = path.resolve('src/swagger-output.json');
+let swaggerDoc = {};
+if (fs.existsSync(swaggerOutputPath) && fs.readFileSync(swaggerOutputPath, 'utf-8').trim()) {
+  swaggerDoc = JSON.parse(fs.readFileSync(swaggerOutputPath, 'utf-8'));
+}
 
 const doc = {
     info: {

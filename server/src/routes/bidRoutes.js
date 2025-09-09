@@ -7,15 +7,13 @@ import { bidLimiter } from '../middleware/security.js';
 
 const router = express.Router();
 
-// Public routes
-router.get(
-  '/auction/:auctionId',
-  validate(idSchema, 'params', { key: 'auctionId' }),
-  validate(bidQuerySchema, 'query'),
-  getBidsByAuction
-);
-
-// Protected routes
+/**
+ * @route POST /api/bids
+ * @group Bids - bid management
+ * @param {PlaceBid.model} body.body.required
+ * @returns {object} 201 - Bid placed
+ * @returns {Error}  default - Unexpected error
+ */
 router.post(
   '/', 
   protect,
@@ -24,6 +22,26 @@ router.post(
   placeBid
 );
 
+/**
+ * @route GET /api/bids/auction/{auctionId}
+ * @group Bids - bid management
+ * @param {string} auctionId.path.required
+ * @returns {object} 200 - List of bids for auction
+ * @returns {Error}  default - Unexpected error
+ */
+router.get(
+  '/auction/:auctionId',
+  validate(idSchema, 'params', { key: 'auctionId' }),
+  validate(bidQuerySchema, 'query'),
+  getBidsByAuction
+);
+
+/**
+ * @route GET /api/bids/me
+ * @group Bids - bid management
+ * @returns {object} 200 - List of user's bids
+ * @returns {Error}  default - Unexpected error
+ */
 router.get(
   '/me',
   protect,

@@ -7,6 +7,13 @@ const router = express.Router();
 // Parse raw body for webhook requests
 router.use(rawBodyParser);
 
+/**
+ * @route POST /api/v1/webhook
+ * @group Webhook - webhook events
+ * @returns {object} 200 - Webhook processed
+ * @returns {Error}  default - Unexpected error
+ */
+
 // Webhook endpoint for processing events
 router.post(
     '/',

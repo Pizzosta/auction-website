@@ -8,14 +8,26 @@ import { verifyRefreshToken, protect } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-// Public routes
-
+/**
+ * @route POST /api/auth/register
+ * @group Auth - authentication
+ * @param {RegisterUser.model} body.body.required
+ * @returns {object} 201 - Created
+ * @returns {Error}  default - Unexpected error
+ */
 router.post(
   '/register',
   validate(authSchema.register, 'body'),
   register
 );
 
+/**
+ * @route POST /api/auth/login
+ * @group Auth - authentication
+ * @param {LoginUser.model} body.body.required
+ * @returns {object} 200 - OK
+ * @returns {Error}  default - Unexpected error
+ */
 router.post(
   '/login',
   loginLimiter,
@@ -23,7 +35,13 @@ router.post(
   login
 );
 
-// Password reset routes
+/**
+ * @route POST /api/auth/forgot-password
+ * @group Auth - authentication
+ * @param {ForgotPassword.model} body.body.required
+ * @returns {object} 200 - OK
+ * @returns {Error}  default - Unexpected error
+ */
 router.post(
   '/forgot-password',
   forgotLimiter,
@@ -31,6 +49,14 @@ router.post(
   forgotPassword
 );
 
+/**
+ * @route POST /api/auth/reset-password/{token}
+ * @group Auth - authentication
+ * @param {string} token.path.required
+ * @param {ResetPassword.model} body.body.required
+ * @returns {object} 200 - OK
+ * @returns {Error}  default - Unexpected error
+ */
 router.post(
   '/reset-password/:token',
   validate(tokenSchema, 'params', { key: 'token' }),
@@ -38,12 +64,24 @@ router.post(
   resetPassword
 );
 
-// Token management routes
+/**
+ * @route POST /api/auth/refresh-token
+ * @group Auth - authentication
+ * @returns {object} 200 - OK
+ * @returns {Error}  default - Unexpected error
+ */
 router.post(
   '/refresh-token',
   verifyRefreshToken,
   refreshToken
 );
+
+/**
+ * @route POST /api/auth/logout
+ * @group Auth - authentication
+ * @returns {object} 200 - OK
+ * @returns {Error}  default - Unexpected error
+ */
 router.post(
   '/logout',
   verifyRefreshToken,
