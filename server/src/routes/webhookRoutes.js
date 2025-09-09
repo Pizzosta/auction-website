@@ -4,6 +4,47 @@ import logger from '../utils/logger.js';
 
 const router = express.Router();
 
+/**
+ * @swagger
+ * tags:
+ *   name: Webhooks
+ *   description: Webhook event processing
+ */
+
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     WebhookEvent:
+ *       type: object
+ *       properties:
+ *         event:
+ *           type: string
+ *           example: payment.succeeded
+ *         payload:
+ *           type: object
+ *           example: { "amount": 100, "currency": "GHS" }
+ */
+
+/**
+ * @swagger
+ * /api/v1/webhook:
+ *   post:
+ *     summary: Process webhook event
+ *     tags: [Webhooks]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *     responses:
+ *       200:
+ *         description: Webhook processed
+ *       400:
+ *         description: Invalid webhook
+ */
+
 // Parse raw body for webhook requests
 router.use(rawBodyParser);
 

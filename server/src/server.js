@@ -1,4 +1,5 @@
 import express from 'express';
+import apiDocsRouter from './apiDocs.js';
 import http from 'http';
 import { Server as SocketIO } from 'socket.io';
 import { fileURLToPath } from 'url';
@@ -30,7 +31,7 @@ connectDB();
 
 // Then import and initialize Cloudinary
 import initializeCloudinary from './config/cloudinary.js';
-import {getRedisClient} from './config/redis.js';
+import { getRedisClient } from './config/redis.js';
 // Initialize Cloudinary
 try {
   await initializeCloudinary();
@@ -59,6 +60,8 @@ import webhookRoutes from './routes/webhookRoutes.js';
 
 const app = express();
 const server = http.createServer(app);
+// Serve API documentation
+app.use('/api-docs', apiDocsRouter);
 const io = new SocketIO(server, {
   cors: {
     origin: env.clientUrl || 'http://localhost:5173',
@@ -181,7 +184,6 @@ process.on('unhandledRejection', (reason, promise) => {
 // Health-check: ensure Redis/Bull queue connectivity
 try {
   const { emailQueue } = await import('./services/emailQueue.js');
-  //const { redisOptions } = await import('./config/redis.js');
   await emailQueue.isReady();
   logger.info('Redis (Bull) connected', {
     host: env.redis?.host || '127.0.0.1',
