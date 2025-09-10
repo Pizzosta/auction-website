@@ -22,7 +22,7 @@ export const auctionQuerySchema = Joi.object({
     .pattern(/^(title|description|startingPrice|currentPrice|endDate|createdAt|bidCount):(asc|desc)$/)
     .default('createdAt:desc')
     .optional(),
-  status: Joi.string().valid('active', 'upcoming', 'ended', 'sold').optional(),
+  status: Joi.string().valid('active', 'upcoming', 'ended', 'sold', 'cancelled').optional(),
   category: Joi.string().optional(),
   search: Joi.string().optional(),
   endingSoon: Joi.boolean().optional().description('Filter for auctions ending in the next 24 hours'),
@@ -31,6 +31,8 @@ export const auctionQuerySchema = Joi.object({
   fields: Joi.string().pattern(/^[a-zA-Z0-9_, ]*$/).optional(),
   minPrice: Joi.number().min(0).optional(),
   maxPrice: Joi.number().min(0).optional(),
+  startDate: Joi.date().iso().optional(),
+  endDate: Joi.date().iso().optional(),
 });
 
 // Bid query schema validation
@@ -49,8 +51,8 @@ export const idSchema = Joi.object({
   id: Joi.string().hex().length(24).required().messages({
     'string.hex': 'Invalid user ID format',
     'string.length': 'User ID must be 24 characters long',
-    'any.required': 'User ID is required'
-  })
+    'any.required': 'User ID is required',
+  }),
 });
 
 // Token schema validation
@@ -89,7 +91,10 @@ export const authSchema = {
         }
         return normalized;
       }, 'E.164 normalization')
-      .message('Please enter a valid Ghanaian phone number')
+      .message({
+        'string.phone': 'Please enter a valid Ghanaian phone number',
+        'string.empty': 'Phone is required',
+      })
       .required(),
     username: Joi.string().alphanum().trim().min(3).max(20).required()
       .messages({
@@ -167,7 +172,8 @@ export const auctionSchema = {
     description: Joi.string().trim().min(3).max(500).required(),
     startingPrice: Joi.number().min(0).required(),
     currentPrice: Joi.number().min(0),
-    endDate: Joi.date().iso().greater('now').required(),
+    startDate: Joi.date().iso().greater('now').required(),
+    endDate: Joi.date().iso().greater(Joi.ref('startDate')).required(),
     category: Joi.string().required()
       .valid(
         ...[
@@ -192,7 +198,8 @@ export const auctionSchema = {
     description: Joi.string().trim().min(3).max(500).required(),
     startingPrice: Joi.number().min(0).required(),
     currentPrice: Joi.number().min(0),
-    endDate: Joi.date().iso().greater('now').required(),
+    startDate: Joi.date().iso().greater('now').required(),
+    endDate: Joi.date().iso().greater(Joi.ref('startDate')).required(),
     category: Joi.string().required()
       .valid(
         ...[
@@ -219,7 +226,7 @@ export const bidSchema = {
   auctionId: Joi.string().hex().length(24).required().messages({
     'string.hex': 'Invalid auction ID format',
     'string.length': 'Auction ID must be 24 characters long',
-    'any.required': 'Auction ID is required'
+    'any.required': 'Auction ID is required',
   }),
 };
 
@@ -257,7 +264,7 @@ export const userSchema = {
       .messages({
         'string.pattern.base': 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character',
         'string.min': 'Password must be at least 8 characters long',
-        'string.empty': 'Password is required to confirm deletion'
+        'string.empty': 'Password is required to confirm deletion',
       })
       .optional(), // Only required if user is deleting themselves
   }),
@@ -296,7 +303,10 @@ export const userSchema = {
         }
         return normalized;
       }, 'E.164 normalization')
-      .message('Please enter a valid Ghanaian phone number'),
+      .message({
+        'string.phone': 'Please enter a valid Ghanaian phone number',
+        'string.empty': 'Phone is required',
+      }),
 
     username: Joi.string().trim().min(3).max(20)
       .pattern(/^[a-zA-Z0-9_]+$/)
@@ -311,7 +321,7 @@ export const userSchema = {
       .email()
       .messages({
         'string.email': 'Please provide a valid email address',
-        'string.empty': 'Email is required'
+        'string.empty': 'Email is required',
       }),
 
     password: Joi.string().min(8)
@@ -337,7 +347,7 @@ export const userSchema = {
         is: Joi.exist(),
         then: Joi.required().messages({
           'any.only': 'Passwords do not match',
-          'any.required': 'Please confirm your new password'
+          'any.required': 'Please confirm your new password',
         }),
         otherwise: Joi.optional(),
       }),
@@ -373,12 +383,12 @@ export const userSchema = {
   profilePicture: Joi.object({
     profilePicture: Joi.any().required().messages({
       'any.required': 'Profile picture is required',
-      'any.empty': 'Profile picture cannot be empty'
+      'any.empty': 'Profile picture cannot be empty',
     })
   }),
 
   // Delete profile picture validation
   deleteProfilePicture: Joi.object({}).empty().messages({
-    'object.base': 'No additional data should be sent with this request'
+    'object.base': 'No additional data should be sent with this request',
   })
 };
