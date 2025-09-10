@@ -1,0 +1,64 @@
+<html>
+  <head>
+    <meta charset='UTF-8' />
+    <title>Your Auction Has Started</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        background: #f7f7f7;
+        color: #333;
+        margin: 0;
+        padding: 0;
+      }
+      .container {
+        background: #fff;
+        max-width: 600px;
+        margin: 40px auto;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.07);
+        padding: 32px;
+      }
+      h2 {
+        color: #2a7ae2;
+        margin-top: 0;
+      }
+      .info {
+        background: #eaf4fe;
+        border-left: 4px solid #2a7ae2;
+        padding: 16px;
+        margin: 24px 0;
+        border-radius: 4px;
+      }
+      .button {
+        display: inline-block;
+        background: #2a7ae2;
+        color: #fff;
+        text-decoration: none;
+        padding: 12px 24px;
+        border-radius: 4px;
+        font-weight: bold;
+        margin-top: 24px;
+      }
+      .footer {
+        font-size: 13px;
+        color: #888;
+        margin-top: 32px;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <div class='container'>
+      <h2>Hello {{username}},</h2>
+      <div class='info'>
+        <p>Your auction <strong>{{title}}</strong> has just started!</p>
+        <p><strong>Start Time:</strong> {{startTime}}</p>
+      </div>
+      <a class='button' href='{{baseUrl}}/auctions/{{auctionId}}'>View Auction</a>
+      <p>Goodluck!</p>
+      <div class='footer'>
+        <p>© {{year}} {{appName}}. All rights reserved.</p>
+      </div>
+    </div>
+  </body>
+</html>
