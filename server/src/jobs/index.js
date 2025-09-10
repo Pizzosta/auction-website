@@ -3,9 +3,11 @@ import {
   closeExpiredAuctions,
   cleanupOldData,
   sendAuctionEndingReminders,
+  startScheduledAuctions,
 } from '../utils/auctionCleanup.js';
 import logger from '../utils/logger.js';
 import { env, validateEnv } from '../config/env.js';
+import Auction from '../models/Auction.js';
 
 // Validate required environment variables
 const missingVars = validateEnv();
@@ -24,6 +26,17 @@ if (!env.isTest && !env.isDev) {
       logger.info(`Auction expiration check completed: ${result.processed} auctions processed`);
     } catch (error) {
       logger.error('Error in auction expiration job:', error);
+    }
+  });
+
+  // Run every minute to start scheduled auctions
+  cron.schedule('* * * * *', async () => {
+    try {
+      logger.info('Running auction start check...');
+      const result = await startScheduledAuctions();
+      logger.info(`Auction start check completed: ${result.started} auctions started`);
+    } catch (error) {
+      logger.error('Error in auction start job:', error);
     }
   });
 
