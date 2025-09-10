@@ -31,6 +31,12 @@ router.get(
  * @group Auctions - auction management
  * @description Create a new auction. Requires authentication and image upload.
  * @param {CreateAuction.model} body.body.required
+ * @param {string} title.body.required - Title of the auction
+ * @param {string} description.body.required - Description of the auction
+ * @param {number} startingPrice.body.required - Starting price for the auction
+ * @param {string} startDate.body.required - ISO date string for auction start
+ * @param {string} endDate.body.required - ISO date string for auction end
+ * @param {file} images.formData.required - Up to 5 images (JPG/JPEG/PNG/WEBP, max 5MB each)
  * @returns {object} 201 - Auction created
  * @returns {Error}  default - Unexpected error
  */
@@ -62,10 +68,16 @@ router.get(
  * @description Update an auction by ID. Requires authentication.
  * @param {string} id.path.required
  * @param {UpdateAuction.model} body.body.required
+ * @param {string} title.body.optional - Title of the auction
+ * @param {string} description.body.optional - Description of the auction
+ * @param {number} startingPrice.body.optional - Starting price for the auction
+ * @param {string} startDate.body.optional - ISO date string for auction start
+ * @param {string} endDate.body.optional - ISO date string for auction end
+ * @param {file} images.formData.optional - Up to 5 images (JPG/JPEG/PNG/WEBP, max 5MB each)
  * @returns {object} 200 - Auction updated
  * @returns {Error}  default - Unexpected error
  */
-router.put(
+router.patch(
   '/:id', 
   protect, 
   validate(idSchema, 'params', { key: 'id' }), 
