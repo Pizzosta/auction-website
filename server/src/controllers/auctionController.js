@@ -144,7 +144,8 @@ export const getAuctions = async (req, res) => {
       .limit(limitNum)
       .skip(skip)
       .populate('seller', 'username avatarUrl')
-      .populate('winner', 'username avatarUrl');
+      .populate('winner', 'username avatarUrl')
+      .populate('highestBidder');
 
     // Get total count for pagination
     const count = await Auction.countDocuments(query);
@@ -186,7 +187,8 @@ export const getAuctionById = async (req, res) => {
   try {
     const auction = await Auction.findById(req.params.id)
       .populate('seller', 'username email')
-      .populate('winner', 'username');
+      .populate('winner', 'username')
+      .populate('highestBidder');
 
     if (auction) {
       res.json(auction);

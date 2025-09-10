@@ -255,6 +255,16 @@
             "type": "string"
           },
           {
+            "name": "startDate",
+            "in": "query",
+            "type": "string"
+          },
+          {
+            "name": "endDate",
+            "in": "query",
+            "type": "string"
+          },
+          {
             "name": "minPrice",
             "in": "query",
             "type": "string"
@@ -271,6 +281,11 @@
           },
           {
             "name": "endingSoon",
+            "in": "query",
+            "type": "string"
+          },
+          {
+            "name": "upcoming",
             "in": "query",
             "type": "string"
           },
@@ -325,6 +340,9 @@
                 "startingPrice": {
                   "example": "any"
                 },
+                "startDate": {
+                  "example": "any"
+                },
                 "endDate": {
                   "example": "any"
                 },
@@ -377,7 +395,7 @@
           }
         }
       },
-      "put": {
+      "patch": {
         "description": "",
         "parameters": [
           {
@@ -404,6 +422,9 @@
                   "example": "any"
                 },
                 "startingPrice": {
+                  "example": "any"
+                },
+                "startDate": {
                   "example": "any"
                 },
                 "endDate": {

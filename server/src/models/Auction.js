@@ -42,17 +42,6 @@ const auctionSchema = new mongoose.Schema(
         return this.startingPrice;
       },
     },
-    endDate: {
-      type: Date,
-      required: [true, 'Please add an end date'],
-      validate: {
-        validator(value) {
-          // End date must be in the future
-          return value > Date.now();
-        },
-        message: 'End date must be in the future',
-      },
-    },
     startDate: {
       type: Date,
       required: [true, 'Please add a start date'],
@@ -62,6 +51,17 @@ const auctionSchema = new mongoose.Schema(
           return value > Date.now();
         },
         message: 'Start date must be in the future',
+      },
+    },
+    endDate: {
+      type: Date,
+      required: [true, 'Please add an end date'],
+      validate: {
+        validator(value) {
+          // End date must be in the future
+          return value > Date.now();
+        },
+        message: 'End date must be in the future',
       },
     },
     images: [
@@ -101,6 +101,14 @@ const auctionSchema = new mongoose.Schema(
     winner: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
+      default: null,
+      description: "The user who won the auction (if any)",
+    },
+    bidIncrement: {
+      type: Number,
+      required: true,
+      min: [0.01, 'Bid increment must be at least 0.01'],
+      default: 1,
     },
   },
   {
@@ -142,6 +150,15 @@ auctionSchema.virtual('highestBid', {
   foreignField: 'auction',
   justOne: true,
   options: { sort: { amount: -1 } },
+});
+
+// Virtual for highest bidder
+auctionSchema.virtual('highestBidder', {
+  ref: 'Bid',
+  localField: '_id',
+  foreignField: 'auction',
+  justOne: true,
+  options: { sort: { amount: -1 }, populate: { path: 'bidder', select: 'username email avatarUrl' } },
 });
 
 // Method to close the auction

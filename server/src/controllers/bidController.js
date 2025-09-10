@@ -1,5 +1,7 @@
 import Bid from '../models/Bid.js';
 import Auction from '../models/Auction.js';
+import mongoose from 'mongoose';
+import logger from '../utils/logger.js';
 
 // @desc    Place a bid on an auction
 // @route   POST /api/bids
@@ -12,7 +14,16 @@ export const placeBid = async (req, res) => {
     const auction = await Auction.findById(auctionId);
 
     if (!auction) {
-      return res.status(404).json({ message: 'Auction not found' });
+      return res.status(404).json({ success: false, message: 'Auction not found' });
+    }
+
+    // Enforce bid increment
+    const minAllowedBid = auction.currentPrice + auction.bidIncrement;
+    if (amount < minAllowedBid) {
+      return res.status(400).json({
+        success: false,
+        message: `Bid must be at least ${auction.bidIncrement} higher than current price (${minAllowedBid})`,
+      });
     }
 
     // Check if auction is active
@@ -95,7 +106,7 @@ export const getBidsByAuction = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(auctionId)) {
       return res.status(400).json({
         status: 'error',
-        message: 'Invalid auction ID format'
+        message: 'Invalid auction ID format',
       });
     }
 
@@ -104,7 +115,7 @@ export const getBidsByAuction = async (req, res) => {
     if (!auctionExists) {
       return res.status(404).json({
         status: 'error',
-        message: 'Auction not found'
+        message: 'Auction not found',
       });
     }
 
@@ -116,7 +127,7 @@ export const getBidsByAuction = async (req, res) => {
     // Build sort object if sort parameter is provided
     const [sortField, sortOrder] = sort.split(':');
     const sortOptions = {
-      [sortField]: sortOrder === 'asc' ? 1 : -1
+      [sortField]: sortOrder === 'asc' ? 1 : -1,
     };
 
     // Execute query
@@ -148,13 +159,13 @@ export const getBidsByAuction = async (req, res) => {
     logger.error('Get bids by auction error:', {
       error: error.message,
       auctionId: req.params.auctionId,
-      userId: req.user?._id
+      userId: req.user?._id,
     });
 
     res.status(500).json({
       status: 'error',
       message: 'Failed to retrieve bids',
-      ...(process.env.NODE_ENV === 'development' && { error: error.message })
+      ...(process.env.NODE_ENV === 'development' && { error: error.message }),
     });
   }
 };
@@ -189,8 +200,8 @@ export const getMyBids = async (req, res) => {
         select: 'title currentPrice endDate status images winner',
         populate: {
           path: 'winner',
-          select: 'username'
-        }
+          select: 'username',
+        },
       })
       .lean();
 
@@ -211,7 +222,7 @@ export const getMyBids = async (req, res) => {
         auctionStatus: auction.status,
         timeRemaining: isActive ? new Date(auction.endDate) - new Date() : null,
         isActive,
-        isEnded
+        isEnded,
       };
     });
 
@@ -222,22 +233,22 @@ export const getMyBids = async (req, res) => {
         totalPages,
         totalCount,
         hasNext: pageNum < totalPages,
-        hasPrev: pageNum > 1
+        hasPrev: pageNum > 1,
       },
       data: {
         bids: enhancedBids,
-      }
+      },
     });
   } catch (error) {
     logger.error('Get my bids error:', {
       error: error.message,
-      userId: req.user._id
+      userId: req.user._id,
     });
 
     res.status(500).json({
       status: 'error',
       message: 'Failed to retrieve your bids',
-      ...(process.env.NODE_ENV === 'development' && { error: error.message })
+      ...(process.env.NODE_ENV === 'development' && { error: error.message }),
     });
   }
 };
