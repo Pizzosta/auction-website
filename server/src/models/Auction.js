@@ -13,6 +13,8 @@ const predefinedCategories = [
   "Toys",
 ];
 
+const auctionStatusEnum = ['upcoming', 'active', 'ended', 'sold'];
+
 const auctionSchema = new mongoose.Schema(
   {
     title: {
@@ -51,6 +53,17 @@ const auctionSchema = new mongoose.Schema(
         message: 'End date must be in the future',
       },
     },
+    startDate: {
+      type: Date,
+      required: [true, 'Please add a start date'],
+      validate: {
+        validator(value) {
+          // Start date must be in the future
+          return value > Date.now();
+        },
+        message: 'Start date must be in the future',
+      },
+    },
     images: [
       {
         url: {
@@ -58,7 +71,7 @@ const auctionSchema = new mongoose.Schema(
           required: [true, "Image URL is required"],
           validate: {
             validator: function (v) {
-              return /^(https?:\/\/.*\.(?:png|jpg|jpeg))$/.test(v);
+              return /^(https?:\/\/.*\.(?:png|jpg|jpeg|webp))$/.test(v);
             },
             message: (props) => `${props.value} is not a valid image URL!`,
           },
@@ -76,8 +89,9 @@ const auctionSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['active', 'ended', 'sold'],
-      default: 'active',
+      enum: auctionStatusEnum,
+      default: 'upcoming',
+      required: true,
     },
     seller: {
       type: mongoose.Schema.Types.ObjectId,
