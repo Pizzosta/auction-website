@@ -165,3 +165,42 @@ export const sendAuctionEndingReminders = async () => {
     throw error;
   }
 };
+
+/**
+ * Start auctions whose startDate has passed
+ * This function should be called periodically (e.g., every minute) using a job scheduler
+ */
+export const startScheduledAuctions = async () => {
+  try {
+    // Find all upcoming auctions whose startDate has passed
+    const auctionsToStart = await Auction.find({
+      status: 'upcoming',
+      startDate: { $lte: new Date() },
+    });
+
+    for (const auction of auctionsToStart) {
+      auction.status = 'active';
+      await auction.save();
+      // Optionally notify seller that auction has started
+      if (auction.seller && auction.seller.email) {
+        await sendEmail({
+          to: auction.seller.email,
+          subject: 'Your auction has started',
+          template: 'auctionStarted',
+          context: {
+            username: auction.seller.username,
+            title: auction.title,
+            auctionId: auction._id,
+            startTime: auction.startDate,
+          },
+        });
+      }
+    }
+
+    console.log(`Started ${auctionsToStart.length} auctions`);
+    return { started: auctionsToStart.length };
+  } catch (error) {
+    console.error('Error in startScheduledAuctions:', error);
+    throw error;
+  }
+};
