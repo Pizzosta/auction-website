@@ -40,7 +40,7 @@ const isTemporaryEmailError = (err) => {
   ];
 
   return networkIssues.some(k => msg.includes(k) || code.includes(k)) ||
-         smtpTemporary.some(k => msg.includes(k) || code.includes(k));
+    smtpTemporary.some(k => msg.includes(k) || code.includes(k));
 };
 
 const __filename = fileURLToPath(import.meta.url);
@@ -51,7 +51,7 @@ const compileTemplate = async (templateName, context) => {
   // Go up one level from src/utils to src, then to templates/emails
   const templateDir = path.join(__dirname, '..', 'templates', 'emails');
   const filePath = path.join(templateDir, `${templateName}.hbs`);
-  
+
   try {
     const source = fs.readFileSync(filePath, 'utf-8');
     const template = handlebars.compile(source);
@@ -71,7 +71,7 @@ export const sendEmail = async ({ to, subject, template, context = {}, retryCoun
     if (process.env.NODE_ENV === 'development') {
       logger.info(`Sending email (attempt ${retryCount + 1}/${maxRetries + 1}):`, { to, subject, template });
     }
-    
+
     // Use context from config and merge with provided context
     const emailContext = { ...context };
 
@@ -98,16 +98,16 @@ export const sendEmail = async ({ to, subject, template, context = {}, retryCoun
   } catch (error) {
     const isTemporary = isTemporaryEmailError(error);
     const errorMessage = `Error sending email (${isTemporary ? 'temporary' : 'permanent'})`;
-    
+
     logger.error(`${errorMessage}:`, error);
-    
+
     // Only retry for temporary errors and if we haven't exceeded max retries
     if (isTemporary && retryCount < maxRetries) {
       logger.info(`Retrying in ${retryDelay}ms... (${retryCount + 1}/${maxRetries})`);
       await new Promise(resolve => setTimeout(resolve, retryDelay));
       return sendEmail({ to, subject, template, context, retryCount: retryCount + 1 });
     }
-    
+
     throw new Error(`${errorMessage}: ${error.message}`);
   }
 };
@@ -142,6 +142,10 @@ const emailTemplates = {
     subject: 'Hurry! Auction Ending Soon',
     template: 'auctionEndingReminder',
   },
+  auctionStarted: {
+    subject: 'Auction Started: Your Item is Now Live!',
+    template: 'auctionStarted',
+  },
 };
 
 export const sendTemplateEmail = async (type, to, context = {}) => {
@@ -157,3 +161,15 @@ export const sendTemplateEmail = async (type, to, context = {}) => {
     context,
   });
 };
+
+/*
+// Template registration (if using a template engine like handlebars)
+// Example for handlebars:
+import path from 'path';
+import fs from 'fs';
+
+const templates = {
+  auctionStarted: fs.readFileSync(path.resolve(__dirname, '../templates/emails/auctionStarted.hbs'), 'utf-8'),
+  // ...other templates
+};
+*/
