@@ -1,13 +1,14 @@
 import Auction from '../models/Auction.js';
 import Bid from '../models/Bid.js';
 import getCloudinary from '../config/cloudinary.js';
+import logger from '../utils/logger.js';
 
 // @desc    Create a new auction
 // @route   POST /api/auctions
 // @access  Private
 export const createAuction = async (req, res) => {
   try {
-    const { title, description, startingPrice, endDate, category } = req.body;
+    const { title, description, startingPrice, startDate, endDate, category } = req.body;
 
     // Ensure at least one image is uploaded
     if (!req.uploadedFiles || req.uploadedFiles.length === 0) {
@@ -24,6 +25,7 @@ export const createAuction = async (req, res) => {
       description,
       startingPrice,
       currentPrice: startingPrice,
+      startDate: new Date(startDate),
       endDate: new Date(endDate),
       images: images.map(file => ({
         url: file.url,
@@ -41,7 +43,7 @@ export const createAuction = async (req, res) => {
     res.status(201).json({
       success: true,
       message: 'Auction created successfully',
-      data: createdAuction
+      data: createdAuction,
     });
   } catch (error) {
     console.error('Error creating auction:', error);
@@ -63,7 +65,7 @@ export const createAuction = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Server error while creating auction',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
 };
@@ -74,7 +76,7 @@ export const createAuction = async (req, res) => {
 export const getAuctions = async (req, res) => {
   try {
     // Get pagination parameters (already validated by middleware)
-    const { status, category, minPrice, maxPrice, search, endingSoon, page = 1, limit = 10, sort = 'createdAt:desc' } = req.query;
+    const { status, category, startDate, endDate, minPrice, maxPrice, search, endingSoon, upcoming, page = 1, limit = 10, sort = 'createdAt:desc', } = req.query;
 
     // Parse pagination parameters
     const pageNum = Math.max(1, parseInt(page));
@@ -84,7 +86,7 @@ export const getAuctions = async (req, res) => {
     // Build sort object if sort parameter is provided
     const [field, order] = sort.split(':');
     const sortOptions = {
-      [field]: order === 'desc' ? -1 : 1
+      [field]: order === 'desc' ? -1 : 1,
     };
 
     // Build query
@@ -107,8 +109,22 @@ export const getAuctions = async (req, res) => {
     if (endingSoon === 'true') {
       query.endDate = {
         $gte: new Date(),
-        $lte: new Date(Date.now() + 24 * 60 * 60 * 1000) // Next 24 hours
+        $lte: new Date(Date.now() + 24 * 60 * 60 * 1000), // Next 24 hours
       };
+    }
+
+    // Filter for upcoming auctions
+    if (upcoming === 'true') {
+      query.startDate = {
+        $gte: new Date(), // Start date in the future
+      };
+    }
+
+    // Filter by startDate range if provided
+    if (startDate || endDate) {
+      query.startDate = {};
+      if (startDate) query.startDate.$gte = new Date(startDate);
+      if (endDate) query.startDate.$lte = new Date(endDate);
     }
 
     // Search by title, description, or category if search query is provided
@@ -188,14 +204,14 @@ export const getAuctionById = async (req, res) => {
 // @access  Private/Owner or Admin
 export const updateAuction = async (req, res) => {
   try {
-    const { title, description, startingPrice, endDate, images, category } = req.body;
+    const { title, description, startingPrice, startDate, endDate, images, category } = req.body;
     const auctionId = req.params.id;
 
     // Validate auction ID
     if (!auctionId.match(/^[0-9a-fA-F]{24}$/)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid auction ID format'
+        message: 'Invalid auction ID format',
       });
     }
 
@@ -204,7 +220,7 @@ export const updateAuction = async (req, res) => {
     if (!auction) {
       return res.status(404).json({
         success: false,
-        message: 'Auction not found'
+        message: 'Auction not found',
       });
     }
 
@@ -212,7 +228,15 @@ export const updateAuction = async (req, res) => {
     if (auction.seller.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
       return res.status(403).json({
         success: false,
-        message: 'Not authorized to update this auction'
+        message: 'Not authorized to update this auction',
+      });
+    }
+
+    // Check if auction has started
+    if (new Date(auction.startDate) <= new Date()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot update an auction that has already started',
       });
     }
 
@@ -220,7 +244,7 @@ export const updateAuction = async (req, res) => {
     if (new Date(auction.endDate) < new Date()) {
       return res.status(400).json({
         success: false,
-        message: 'Cannot update an auction that has already ended'
+        message: 'Cannot update an auction that has already ended',
       });
     }
 
@@ -229,6 +253,7 @@ export const updateAuction = async (req, res) => {
     if (title) updates.title = title;
     if (description) updates.description = description;
     if (startingPrice !== undefined) updates.startingPrice = Number(startingPrice);
+    if (startDate) updates.startDate = new Date(startDate);
     if (endDate) updates.endDate = new Date(endDate);
     if (category) updates.category = category;
 
@@ -262,15 +287,18 @@ export const updateAuction = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      data: updatedAuction
+      data: updatedAuction,
     });
   } catch (error) {
     console.error('Update auction error:', error);
     res.status(500).json({
       success: false,
-      message: error.name === 'ValidationError'
-        ? Object.values(error.errors).map(val => val.message).join(', ')
-        : 'Server error while updating auction'
+      message:
+        error.name === 'ValidationError'
+          ? Object.values(error.errors)
+            .map(val => val.message)
+            .join(', ')
+          : 'Server error while updating auction',
     });
   }
 };
@@ -291,7 +319,7 @@ export const deleteAuction = async (req, res) => {
       //session.endSession();
       return res.status(400).json({
         success: false,
-        message: 'Invalid auction ID format'
+        message: 'Invalid auction ID format',
       });
     }
 
@@ -302,7 +330,7 @@ export const deleteAuction = async (req, res) => {
       //session.endSession();
       return res.status(404).json({
         success: false,
-        message: 'Auction not found'
+        message: 'Auction not found',
       });
     }
 
@@ -312,7 +340,15 @@ export const deleteAuction = async (req, res) => {
       //session.endSession();
       return res.status(403).json({
         success: false,
-        message: 'Not authorized to delete this auction'
+        message: 'Not authorized to delete this auction',
+      });
+    }
+
+    // Check if auction has started
+    if (new Date(auction.startDate) <= new Date()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot delete an auction that has already started'
       });
     }
 
@@ -345,7 +381,7 @@ export const deleteAuction = async (req, res) => {
     res.status(200).json({
       success: true,
       message: 'Auction and all associated bids have been deleted',
-      data: { id: auctionId }
+      data: { id: auctionId },
     });
   } catch (error) {
     //await session.abortTransaction();
