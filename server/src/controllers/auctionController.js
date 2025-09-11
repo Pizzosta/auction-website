@@ -3,61 +3,6 @@ import Auction from '../models/Auction.js';
 import getCloudinary from '../config/cloudinary.js';
 import logger from '../utils/logger.js';
 
-// @desc    Get all auctions with optional soft deleted
-// @route   GET /api/auctions
-// @access  Public/Admin for soft deleted
-export const getAllAuctions = async (req, res) => {
-  try {
-    const { showDeleted = false, page = 1, limit = 10, sort = 'createdAt:desc' } = req.query;
-
-    // Only admins can see soft-deleted auctions
-    if (showDeleted && (!req.user || req.user.role !== 'admin')) {
-      return res.status(403).json({
-        status: 'error',
-        message: 'Only admins can view deleted auctions',
-      });
-    }
-
-    const query = Auction.find();
-
-    if (showDeleted) {
-      query.setQuery({ ...query.getQuery(), includeSoftDeleted: true });
-    }
-
-    const auctions = await query
-      .populate('seller', 'username email')
-      .sort({ [sort.split(':')[0]]: sort.split(':')[1] === 'desc' ? -1 : 1 })
-      .limit(limit)
-      .skip((page - 1) * limit);
-
-    const count = await Auction.countDocuments(query.getQuery());
-
-    res.json({
-      success: true,
-      data: {
-        auctions,
-        pagination: {
-          total: count,
-          pages: Math.ceil(count / limit),
-          page: parseInt(page),
-          limit: parseInt(limit),
-        },
-      },
-    });
-  } catch (error) {
-    logger.error('Error getting auctions:', {
-      error: error.message,
-      stack: error.stack,
-      query: req.query,
-    });
-    res.status(500).json({
-      status: 'error',
-      message: 'Server error',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
-  }
-};
-
 // @desc    Create a new auction
 // @route   POST /api/auctions
 // @access  Private
@@ -90,8 +35,11 @@ export const createAuction = async (req, res) => {
 
     const createdAuction = await auction.save();
 
-    // Populate seller details
-    await createdAuction.populate('seller', 'username email');
+    // Populate seller details with all fields needed for virtuals
+    await createdAuction.populate({
+      path: 'seller',
+      select: 'username email role',
+    });
 
     res.status(201).json({
       success: true,
@@ -220,7 +168,11 @@ export const getAuctions = async (req, res) => {
       .sort(sortOptions)
       .limit(limitNum)
       .skip(skip)
-      .populate('seller', 'username avatarUrl')
+      .populate({
+        path: 'seller',
+        select: 'username email role avatarUrl',
+      })
+      .select('-__v')
       .populate('winner', 'username avatarUrl')
       .populate('highestBidder');
 
@@ -262,12 +214,39 @@ export const getAuctions = async (req, res) => {
 export const getAuctionById = async (req, res) => {
   try {
     const auction = await Auction.findById(req.params.id)
-      .populate('seller', 'username email')
-      .populate('winner', 'username')
-      .populate('highestBidder');
+      .populate({
+        path: 'seller',
+        select: 'username fullName avatarUrl',
+      })
+      .populate({
+        path: 'winner',
+        select: 'username fullName avatarUrl',
+      })
+      .populate({
+        path: 'highestBidder',
+        select: 'username',
+      })
+      .select(
+        'title description startingPrice currentPrice endDate images category status bidIncrement timeRemaining hasEnded'
+      );
 
     if (auction) {
-      res.json(auction);
+      res.json({
+        status: 'success',
+        data: {
+          ...auction.toJSON(),
+          seller: {
+            ...auction.seller.toJSON(),
+            fullName: auction.seller.fullName,
+          },
+          winner: auction.winner
+            ? {
+                ...auction.winner.toJSON(),
+                fullName: auction.winner.fullName,
+              }
+            : null,
+        },
+      });
     } else {
       res.status(404).json({ message: 'Auction not found' });
     }
