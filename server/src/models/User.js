@@ -1,9 +1,26 @@
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
+import logger from '../utils/logger.js';
 
 const userSchema = new mongoose.Schema(
   {
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      select: false, // Hide from regular queries
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
+      select: false, // Hide from regular queries
+    },
+    deletedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+      select: false, // Hide from regular queries
+    },
     firstname: {
       type: String,
       required: [true, 'Please add a first name'],
@@ -38,11 +55,18 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: [true, 'Please add a phone number'],
       trim: true,
-      match: [/^(?:\+?233|0?)[235]\d{8}$/, 'Please add a valid Ghanaian phone number starting with 233, +233, 0, or nothing, followed by 2, 3, or 5 and 8 more digits'],
+      match: [
+        /^(?:\+?233|0?)[235]\d{8}$/,
+        'Please add a valid Ghanaian phone number starting with 233, +233, 0, or nothing, followed by 2, 3, or 5 and 8 more digits',
+      ],
       get: function (value) {
         if (!value) return value;
         try {
-          const decipher = crypto.createDecipheriv('aes-256-cbc', process.env.DATA_ENCRYPTION_KEY, process.env.DATA_ENCRYPTION_IV);
+          const decipher = crypto.createDecipheriv(
+            'aes-256-cbc',
+            process.env.DATA_ENCRYPTION_KEY,
+            process.env.DATA_ENCRYPTION_IV
+          );
           let decrypted = decipher.update(value, 'hex', 'utf8');
           decrypted += decipher.final('utf8');
           return decrypted;
@@ -53,7 +77,11 @@ const userSchema = new mongoose.Schema(
       set: function (value) {
         if (!value) return value;
         try {
-          const cipher = crypto.createCipheriv('aes-256-cbc', process.env.DATA_ENCRYPTION_KEY, process.env.DATA_ENCRYPTION_IV);
+          const cipher = crypto.createCipheriv(
+            'aes-256-cbc',
+            process.env.DATA_ENCRYPTION_KEY,
+            process.env.DATA_ENCRYPTION_IV
+          );
           let encrypted = cipher.update(value, 'utf8', 'hex');
           encrypted += cipher.final('hex');
           return encrypted;
@@ -71,7 +99,11 @@ const userSchema = new mongoose.Schema(
       get: function (value) {
         if (!value) return value;
         try {
-          const decipher = crypto.createDecipheriv('aes-256-cbc', process.env.DATA_ENCRYPTION_KEY, process.env.DATA_ENCRYPTION_IV);
+          const decipher = crypto.createDecipheriv(
+            'aes-256-cbc',
+            process.env.DATA_ENCRYPTION_KEY,
+            process.env.DATA_ENCRYPTION_IV
+          );
           let decrypted = decipher.update(value, 'hex', 'utf8');
           decrypted += decipher.final('utf8');
           return decrypted;
@@ -82,7 +114,11 @@ const userSchema = new mongoose.Schema(
       set: function (value) {
         if (!value) return value;
         try {
-          const cipher = crypto.createCipheriv('aes-256-cbc', process.env.DATA_ENCRYPTION_KEY, process.env.DATA_ENCRYPTION_IV);
+          const cipher = crypto.createCipheriv(
+            'aes-256-cbc',
+            process.env.DATA_ENCRYPTION_KEY,
+            process.env.DATA_ENCRYPTION_IV
+          );
           let encrypted = cipher.update(value, 'utf8', 'hex');
           encrypted += cipher.final('hex');
           return encrypted;
@@ -99,7 +135,8 @@ const userSchema = new mongoose.Schema(
         validator: function (v) {
           return /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^\da-zA-Z]).{8,}$/.test(v);
         },
-        message: 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character',
+        message:
+          'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character',
       },
       select: false, // Don't return password in query results
     },
@@ -112,7 +149,7 @@ const userSchema = new mongoose.Schema(
           validator: function (v) {
             return !v || /^(https?:\/\/.*\.(?:png|jpg|jpeg|webp))$/.test(v);
           },
-          message: (props) => `${props.value} is not a valid image URL!`,
+          message: props => `${props.value} is not a valid image URL!`,
         },
       },
       publicId: {
@@ -159,7 +196,13 @@ const userSchema = new mongoose.Schema(
 );
 
 // Add text index for search functionality
-userSchema.index({ firstname: 'text', lastname: 'text', email: 'text', phone: 'text', username: 'text' });
+userSchema.index({
+  firstname: 'text',
+  lastname: 'text',
+  email: 'text',
+  phone: 'text',
+  username: 'text',
+});
 
 // Frequent sort / pagination queries
 userSchema.index({ email: 1 });
@@ -177,9 +220,7 @@ userSchema.virtual('isAdmin').get(function () {
 
 // Virtual for full name
 userSchema.virtual('fullName').get(function () {
-  return [this.firstname, this.middlename, this.lastname]
-    .filter(Boolean)
-    .join(' ');
+  return [this.firstname, this.middlename, this.lastname].filter(Boolean).join(' ');
 });
 
 // Virtual field to get avatar URL with fallback
@@ -219,13 +260,21 @@ userSchema.virtual('wonAuctions', {
 // Match user entered password to hashed password in database
 userSchema.methods.matchPassword = async function (enteredPassword) {
   if (!enteredPassword || !this.password) {
-    console.warn('Missing password input or stored hash');
+    logger.warn('Missing password input or stored hash', {
+      userId: this._id,
+      hasEnteredPassword: !!enteredPassword,
+      hasStoredHash: !!this.password,
+    });
     return false;
   }
   try {
     return await bcrypt.compare(enteredPassword, this.password);
   } catch (error) {
-    console.error('Password comparison failed:', error);
+    logger.error('Password comparison failed:', {
+      error: error.message,
+      stack: error.stack,
+      userId: this._id,
+    });
     return false;
   }
 };
@@ -257,6 +306,46 @@ userSchema.methods.getEmailVerificationToken = function () {
 
   return verificationToken;
 };
+
+// Soft delete method
+userSchema.methods.softDelete = async function (deletedBy) {
+  this.isDeleted = true;
+  this.deletedAt = new Date();
+  this.deletedBy = deletedBy;
+  await this.save();
+};
+
+// Restore soft-deleted user
+userSchema.methods.restore = async function () {
+  this.isDeleted = false;
+  this.deletedAt = null;
+  this.deletedBy = null;
+  await this.save();
+};
+
+// Static method for permanent deletion (admin only)
+userSchema.statics.permanentDelete = async function (userId) {
+  const user = await this.findById(userId).select('+isDeleted');
+  if (!user) {
+    throw new Error('User not found');
+  }
+
+  // Cascade permanent delete
+  await mongoose.model('Auction').deleteMany({ seller: userId });
+  await mongoose.model('Bid').deleteMany({ bidder: userId });
+
+  await this.deleteOne({ _id: userId });
+};
+
+// Add query middleware to exclude soft deleted documents by default
+userSchema.pre(/^find/, function (next) {
+  // Add includeSoftDeleted flag to queries to include soft deleted documents
+  if (!this.getQuery().includeSoftDeleted) {
+    this.where({ isDeleted: { $ne: true } });
+  }
+  delete this.getQuery().includeSoftDeleted;
+  next();
+});
 
 // Hash password before saving
 userSchema.pre('save', async function (next) {

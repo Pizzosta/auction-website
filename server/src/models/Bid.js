@@ -2,6 +2,22 @@ import mongoose from 'mongoose';
 
 const bidSchema = new mongoose.Schema(
   {
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      select: false,
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
+      select: false,
+    },
+    deletedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+      select: false,
+    },
     amount: {
       type: Number,
       required: [true, 'Please add a bid amount'],
@@ -76,7 +92,7 @@ bidSchema.pre('save', async function (next) {
           outbid: true,
           isWinningBid: false,
         },
-      },
+      }
     );
 
     // Update auction's current price
@@ -99,6 +115,75 @@ bidSchema.pre('save', async function (next) {
   }
   next();
 });
+
+// Add query middleware to exclude soft deleted documents by default
+bidSchema.pre(/^find/, function (next) {
+  if (!this.getQuery().includeSoftDeleted) {
+    this.where({ isDeleted: { $ne: true } });
+  }
+  delete this.getQuery().includeSoftDeleted;
+  next();
+});
+
+// Soft delete method
+bidSchema.methods.softDelete = async function (deletedBy) {
+  this.isDeleted = true;
+  this.deletedAt = new Date();
+  this.deletedBy = deletedBy;
+  await this.save();
+
+  // Recalculate auction's current price after bid deletion
+  const Auction = mongoose.model('Auction');
+  const auction = await Auction.findById(this.auction);
+  if (auction) {
+    const highestBid = await this.model('Bid')
+      .findOne({ auction: this.auction, isDeleted: false })
+      .sort('-amount');
+    auction.currentPrice = highestBid ? highestBid.amount : auction.startingPrice;
+    await auction.save();
+  }
+};
+
+// Restore soft-deleted bid
+bidSchema.methods.restore = async function () {
+  this.isDeleted = false;
+  this.deletedAt = null;
+  this.deletedBy = null;
+  await this.save();
+
+  // Recalculate auction's current price after bid restoration
+  const Auction = mongoose.model('Auction');
+  const auction = await Auction.findById(this.auction);
+  if (auction) {
+    const highestBid = await this.model('Bid')
+      .findOne({ auction: this.auction, isDeleted: false })
+      .sort('-amount');
+    auction.currentPrice = highestBid ? highestBid.amount : auction.startingPrice;
+    await auction.save();
+  }
+};
+
+// Static method for permanent deletion (admin only)
+bidSchema.statics.permanentDelete = async function (bidId) {
+  const bid = await this.findById(bidId).select('+isDeleted');
+  if (!bid) {
+    throw new Error('Bid not found');
+  }
+
+  // Delete the bid
+  await this.deleteOne({ _id: bidId });
+
+  // Recalculate auction's current price
+  const Auction = mongoose.model('Auction');
+  const auction = await Auction.findById(bid.auction);
+  if (auction) {
+    const highestBid = await this.findOne({ auction: bid.auction, isDeleted: false }).sort(
+      '-amount'
+    );
+    auction.currentPrice = highestBid ? highestBid.amount : auction.startingPrice;
+    await auction.save();
+  }
+};
 
 // After saving, check if this is the first bid and extend auction end time if needed
 bidSchema.post('save', async function () {

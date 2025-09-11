@@ -16,11 +16,7 @@ const router = express.Router();
  * @returns {object} 201 - Created
  * @returns {Error}  default - Unexpected error
  */
-router.post(
-  '/register',
-  validate(authSchema.register, 'body'),
-  register
-);
+router.post('/register', validate(authSchema.register, 'body'), register);
 
 /**
  * @route POST /api/auth/login
@@ -30,12 +26,7 @@ router.post(
  * @returns {object} 200 - OK
  * @returns {Error}  default - Unexpected error
  */
-router.post(
-  '/login',
-  loginLimiter,
-  validate(authSchema.login, 'body'),
-  login
-);
+router.post('/login', loginLimiter, validate(authSchema.login, 'body'), login);
 
 /**
  * @route POST /api/auth/forgot-password
@@ -75,11 +66,7 @@ router.post(
  * @returns {object} 200 - OK
  * @returns {Error}  default - Unexpected error
  */
-router.post(
-  '/refresh-token',
-  verifyRefreshToken,
-  refreshToken
-);
+router.post('/refresh-token', verifyRefreshToken, refreshToken);
 
 /**
  * @route POST /api/auth/logout
@@ -88,11 +75,7 @@ router.post(
  * @returns {object} 200 - OK
  * @returns {Error}  default - Unexpected error
  */
-router.post(
-  '/logout',
-  verifyRefreshToken,
-  logout
-);
+router.post('/logout', verifyRefreshToken, logout);
 router.post('/logout-all', protect, logoutAllDevices);
 
 export default router;

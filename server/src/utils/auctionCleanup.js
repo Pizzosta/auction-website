@@ -2,6 +2,7 @@ import Auction from '../models/Auction.js';
 import Bid from '../models/Bid.js';
 import User from '../models/User.js';
 import { sendEmail } from './emailService.js';
+import logger from './logger.js';
 
 /**
  * Check and close expired auctions
@@ -77,16 +78,25 @@ export const closeExpiredAuctions = async () => {
           });
         }
       } catch (error) {
-        console.error(`Error processing expired auction ${auction._id}:`, error);
+        logger.error('Error processing expired auction:', {
+          error: error.message,
+          stack: error.stack,
+          auctionId: auction._id,
+        });
         // Continue with the next auction even if one fails
         continue;
       }
     }
 
-    console.log(`Processed ${expiredAuctions.length} expired auctions`);
+    logger.info('Processed expired auctions', {
+      count: expiredAuctions.length,
+    });
     return { processed: expiredAuctions.length };
   } catch (error) {
-    console.error('Error in closeExpiredAuctions:', error);
+    logger.error('Error in closeExpiredAuctions:', {
+      error: error.message,
+      stack: error.stack,
+    });
     throw error;
   }
 };
@@ -105,10 +115,15 @@ export const cleanupOldData = async () => {
       updatedAt: { $lt: thirtyDaysAgo },
     });
 
-    console.log(`Cleaned up ${result.deletedCount} old auctions`);
+    logger.info('Cleaned up old auctions', {
+      count: result.deletedCount,
+    });
     return result;
   } catch (error) {
-    console.error('Error in cleanupOldData:', error);
+    logger.error('Error in cleanupOldData:', {
+      error: error.message,
+      stack: error.stack,
+    });
     throw error;
   }
 };
@@ -153,15 +168,24 @@ export const sendAuctionEndingReminders = async () => {
           });
         }
       } catch (error) {
-        console.error(`Error sending reminders for auction ${auction._id}:`, error);
+        logger.error('Error sending auction reminders:', {
+          error: error.message,
+          stack: error.stack,
+          auctionId: auction._id,
+        });
         continue;
       }
     }
 
-    console.log(`Sent reminders for ${endingAuctions.length} auctions`);
+    logger.info('Sent auction ending reminders', {
+      count: endingAuctions.length,
+    });
     return { reminded: endingAuctions.length };
   } catch (error) {
-    console.error('Error in sendAuctionEndingReminders:', error);
+    logger.error('Error in sendAuctionEndingReminders:', {
+      error: error.message,
+      stack: error.stack,
+    });
     throw error;
   }
 };
@@ -197,10 +221,15 @@ export const startScheduledAuctions = async () => {
       }
     }
 
-    console.log(`Started ${auctionsToStart.length} auctions`);
+    logger.info('Started scheduled auctions', {
+      count: auctionsToStart.length,
+    });
     return { started: auctionsToStart.length };
   } catch (error) {
-    console.error('Error in startScheduledAuctions:', error);
+    logger.error('Error in startScheduledAuctions:', {
+      error: error.message,
+      stack: error.stack,
+    });
     throw error;
   }
 };

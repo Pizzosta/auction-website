@@ -337,6 +337,9 @@
                 "description": {
                   "example": "any"
                 },
+                "category": {
+                  "example": "any"
+                },
                 "startingPrice": {
                   "example": "any"
                 },
@@ -346,7 +349,10 @@
                 "endDate": {
                   "example": "any"
                 },
-                "category": {
+                "bidIncrement": {
+                  "example": "any"
+                },
+                "images": {
                   "example": "any"
                 }
               }
@@ -474,6 +480,18 @@
             "name": "authorization",
             "in": "header",
             "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "schema": {
+              "type": "object",
+              "properties": {
+                "permanent": {
+                  "example": "any"
+                }
+              }
+            }
           }
         ],
         "responses": {
@@ -566,6 +584,11 @@
             "name": "sort",
             "in": "query",
             "type": "string"
+          },
+          {
+            "name": "showDeleted",
+            "in": "query",
+            "type": "string"
           }
         ],
         "responses": {
@@ -574,6 +597,9 @@
           },
           "400": {
             "description": "Bad Request"
+          },
+          "403": {
+            "description": "Forbidden"
           },
           "404": {
             "description": "Not Found"
@@ -607,6 +633,11 @@
             "name": "status",
             "in": "query",
             "type": "string"
+          },
+          {
+            "name": "showDeleted",
+            "in": "query",
+            "type": "string"
           }
         ],
         "responses": {
@@ -618,6 +649,90 @@
           },
           "401": {
             "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/api/bids/{bidId}": {
+      "delete": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "bidId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "type": "string"
+          },
+          {
+            "name": "permanent",
+            "in": "query",
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/api/bids/{bidId}/restore": {
+      "post": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "bidId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "404": {
+            "description": "Not Found"
           },
           "500": {
             "description": "Internal Server Error"
@@ -668,6 +783,11 @@
             "name": "sort",
             "in": "query",
             "type": "string"
+          },
+          {
+            "name": "showDeleted",
+            "in": "query",
+            "type": "string"
           }
         ],
         "responses": {
@@ -679,6 +799,9 @@
           },
           "401": {
             "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
           },
           "500": {
             "description": "Internal Server Error"
@@ -797,6 +920,9 @@
               "type": "object",
               "properties": {
                 "password": {
+                  "example": "any"
+                },
+                "permanent": {
                   "example": "any"
                 }
               }

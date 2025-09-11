@@ -3,6 +3,146 @@ import Auction from '../models/Auction.js';
 import mongoose from 'mongoose';
 import logger from '../utils/logger.js';
 
+// @desc    Delete a bid (with support for soft and permanent delete)
+// @route   DELETE /api/bids/:bidId
+// @access  Private (Admin for permanent delete)
+export const deleteBid = async (req, res) => {
+  try {
+    const { bidId } = req.params;
+    const { permanent = false } = req.query;
+
+    // Validate bid ID
+    if (!mongoose.Types.ObjectId.isValid(bidId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid bid ID format',
+      });
+    }
+
+    // Find the bid
+    const bid = await Bid.findById(bidId).populate('auction');
+
+    if (!bid) {
+      return res.status(404).json({
+        success: false,
+        message: 'Bid not found',
+      });
+    }
+
+    // Check user permissions
+    const isAdmin = req.user.role === 'admin';
+    const isBidder = bid.bidder.toString() === req.user._id.toString();
+
+    if (!isAdmin && !isBidder) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to delete this bid',
+      });
+    }
+
+    // Only admins can permanently delete
+    if (permanent && !isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only admins can permanently delete bids',
+      });
+    }
+
+    // Check if auction is active
+    if (bid.auction.status === 'active') {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot delete bids on active auctions',
+      });
+    }
+
+    if (permanent) {
+      // Permanent delete
+      await Bid.permanentDelete(bid._id);
+    } else {
+      // Soft delete
+      await bid.softDelete(req.user._id);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Bid ${permanent ? 'permanently' : 'soft'} deleted successfully`,
+    });
+  } catch (error) {
+    logger.error('Delete bid error:', {
+      error: error.message,
+      bidId: req.params.bidId,
+      userId: req.user._id,
+    });
+
+    res.status(500).json({
+      success: false,
+      message: 'Error deleting bid',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
+  }
+};
+
+// @desc    Restore a soft-deleted bid
+// @route   POST /api/bids/:bidId/restore
+// @access  Private (Admin only)
+export const restoreBid = async (req, res) => {
+  try {
+    const { bidId } = req.params;
+
+    // Only admins can restore bids
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only admins can restore deleted bids',
+      });
+    }
+
+    // Validate bid ID
+    if (!mongoose.Types.ObjectId.isValid(bidId)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid bid ID format',
+      });
+    }
+
+    const bid = await Bid.findOneWithDeleted({ _id: bidId });
+
+    if (!bid) {
+      return res.status(404).json({
+        success: false,
+        message: 'Bid not found',
+      });
+    }
+
+    if (!bid.isDeleted) {
+      return res.status(400).json({
+        success: false,
+        message: 'Bid is not deleted',
+      });
+    }
+
+    await bid.restore();
+
+    res.status(200).json({
+      success: true,
+      message: 'Bid restored successfully',
+    });
+  } catch (error) {
+    logger.error('Restore bid error:', {
+      error: error.message,
+      bidId: req.params.bidId,
+      userId: req.user._id,
+    });
+
+    res.status(500).json({
+      success: false,
+      message: 'Error restoring bid',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
+  }
+};
+
 // @desc    Place a bid on an auction
 // @route   POST /api/bids
 // @access  Private
@@ -130,8 +270,23 @@ export const getBidsByAuction = async (req, res) => {
       [sortField]: sortOrder === 'asc' ? 1 : -1,
     };
 
+    // Get showDeleted from query params
+    const { showDeleted = false } = req.query;
+
+    // Check if user has permission to see deleted bids
+    if (showDeleted && (!req.user || req.user.role !== 'admin')) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only admins can view deleted bids',
+      });
+    }
+
     // Execute query
-    const bids = await Bid.find({ auction: auctionId })
+    const query = showDeleted
+      ? Bid.findWithDeleted({ auction: auctionId })
+      : Bid.find({ auction: auctionId });
+
+    const bids = await query
       .sort(sortOptions)
       .limit(limitNum)
       .skip(skip)
@@ -150,10 +305,10 @@ export const getBidsByAuction = async (req, res) => {
         totalPages,
         hasNext: pageNum < totalPages,
         hasPrev: pageNum > 1,
-      }, 
+      },
       data: {
-        bids
-      }
+        bids,
+      },
     });
   } catch (error) {
     logger.error('Get bids by auction error:', {
@@ -190,8 +345,21 @@ export const getMyBids = async (req, res) => {
       query['auction.status'] = status;
     }
 
+    // Get showDeleted from query params
+    const { showDeleted = false } = req.query;
+
+    // Only admins can see deleted bids
+    if (showDeleted && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only admins can view deleted bids',
+      });
+    }
+
     // Execute query with population
-    const bids = await Bid.find(query)
+    const bidsQuery = showDeleted ? Bid.findWithDeleted(query) : Bid.find(query);
+
+    const bids = await bidsQuery
       .sort({ createdAt: -1 })
       .limit(limitNum)
       .skip(skip)
@@ -211,7 +379,7 @@ export const getMyBids = async (req, res) => {
 
     // Enhance bid data with additional information
     const enhancedBids = bids.map(bid => {
-      const auction = bid.auction;
+      const { auction } = bid;
       const isWinning = auction.winner && auction.winner._id.toString() === req.user._id.toString();
       const isActive = auction.status === 'active';
       const isEnded = ['ended', 'sold'].includes(auction.status);

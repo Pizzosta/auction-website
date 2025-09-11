@@ -4,7 +4,7 @@ import {
   getAuctions,
   getAuctionById,
   updateAuction,
-  deleteAuction
+  deleteAuction,
 } from '../controllers/auctionController.js';
 import { protect } from '../middleware/authMiddleware.js';
 import { validate } from '../middleware/validationMiddleware.js';
@@ -20,11 +20,7 @@ const router = express.Router();
  * @returns {object} 200 - List of auctions
  * @returns {Error}  default - Unexpected error
  */
-router.get(
-  '/', 
-  validate(auctionQuerySchema, 'query'), 
-  getAuctions
-);
+router.get('/', validate(auctionQuerySchema, 'query'), getAuctions);
 
 /**
  * @route POST /api/auctions
@@ -41,10 +37,10 @@ router.get(
  * @returns {Error}  default - Unexpected error
  */
 router.post(
-  '/', 
-  protect, 
+  '/',
+  protect,
   uploadAuctionImagesMiddleware,
-  validate(auctionSchema.create, 'body'), 
+  validate(auctionSchema.create, 'body'),
   createAuction
 );
 
@@ -56,11 +52,7 @@ router.post(
  * @returns {object} 200 - Auction details
  * @returns {Error}  default - Unexpected error
  */
-router.get(
-  '/:id', 
-  validate(idSchema, 'params', { key: 'id' }), 
-  getAuctionById
-);
+router.get('/:id', validate(idSchema, 'params', { key: 'id' }), getAuctionById);
 
 /**
  * @route PUT /api/auctions/{id}
@@ -78,10 +70,10 @@ router.get(
  * @returns {Error}  default - Unexpected error
  */
 router.patch(
-  '/:id', 
-  protect, 
-  validate(idSchema, 'params', { key: 'id' }), 
-  validate(auctionSchema.update, 'body'), 
+  '/:id',
+  protect,
+  validate(idSchema, 'params', { key: 'id' }),
+  validate(auctionSchema.update, 'body'),
   updateAuction
 );
 
@@ -93,11 +85,6 @@ router.patch(
  * @returns {object} 200 - Auction deleted
  * @returns {Error}  default - Unexpected error
  */
-router.delete(
-  '/:id', 
-  protect, 
-  validate(idSchema, 'params', { key: 'id' }), 
-  deleteAuction
-);
+router.delete('/:id', protect, validate(idSchema, 'params', { key: 'id' }), deleteAuction);
 
 export default router;

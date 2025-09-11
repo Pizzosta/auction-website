@@ -1,22 +1,38 @@
 import mongoose from 'mongoose';
 
 const predefinedCategories = [
-  "Electronics",
-  "Fashion",
-  "Home & Garden",
-  "Collectibles",
-  "Sports",
-  "Automotive",
-  "Art",
-  "Books",
-  "Jewelry",
-  "Toys",
+  'Electronics',
+  'Fashion',
+  'Home & Garden',
+  'Collectibles',
+  'Sports',
+  'Automotive',
+  'Art',
+  'Books',
+  'Jewelry',
+  'Toys',
 ];
 
 const auctionStatusEnum = ['upcoming', 'active', 'ended', 'sold'];
 
 const auctionSchema = new mongoose.Schema(
   {
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      select: false, // Hide from regular queries
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
+      select: false,
+    },
+    deletedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+      select: false,
+    },
     title: {
       type: String,
       required: [true, 'Please add a title'],
@@ -68,19 +84,19 @@ const auctionSchema = new mongoose.Schema(
       {
         url: {
           type: String,
-          required: [true, "Image URL is required"],
+          required: [true, 'Image URL is required'],
           validate: {
             validator: function (v) {
               return /^(https?:\/\/.*\.(?:png|jpg|jpeg|webp))$/.test(v);
             },
-            message: (props) => `${props.value} is not a valid image URL!`,
+            message: props => `${props.value} is not a valid image URL!`,
           },
         },
         publicId: {
           type: String,
-          required: [true, "Image public ID is required"],
+          required: [true, 'Image public ID is required'],
         },
-      }
+      },
     ],
     category: {
       type: String,
@@ -102,7 +118,7 @@ const auctionSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       default: null,
-      description: "The user who won the auction (if any)",
+      description: 'The user who won the auction (if any)',
     },
     bidIncrement: {
       type: Number,
@@ -158,7 +174,10 @@ auctionSchema.virtual('highestBidder', {
   localField: '_id',
   foreignField: 'auction',
   justOne: true,
-  options: { sort: { amount: -1 }, populate: { path: 'bidder', select: 'username email avatarUrl' } },
+  options: {
+    sort: { amount: -1 },
+    populate: { path: 'bidder', select: 'username email avatarUrl' },
+  },
 });
 
 // Method to close the auction
@@ -166,6 +185,46 @@ auctionSchema.methods.closeAuction = async function (winnerId = null) {
   this.status = winnerId ? 'sold' : 'ended';
   if (winnerId) this.winner = winnerId;
   return this.save();
+};
+
+// Add query middleware to exclude soft deleted documents by default
+auctionSchema.pre(/^find/, function (next) {
+  // Add includeSoftDeleted flag to queries to include soft deleted documents
+  if (!this.getQuery().includeSoftDeleted) {
+    this.where({ isDeleted: { $ne: true } });
+  }
+  delete this.getQuery().includeSoftDeleted;
+  next();
+});
+
+// Soft delete method
+auctionSchema.methods.softDelete = async function (deletedBy) {
+  this.isDeleted = true;
+  this.deletedAt = new Date();
+  this.deletedBy = deletedBy;
+  await this.save();
+};
+
+// Restore soft-deleted auction
+auctionSchema.methods.restore = async function () {
+  this.isDeleted = false;
+  this.deletedAt = null;
+  this.deletedBy = null;
+  await this.save();
+};
+
+// Static method for permanent deletion (admin only)
+auctionSchema.statics.permanentDelete = async function (auctionId) {
+  const auction = await this.findById(auctionId).select('+isDeleted');
+  if (!auction) {
+    throw new Error('Auction not found');
+  }
+
+  // Delete associated bids
+  await mongoose.model('Bid').deleteMany({ auction: auctionId });
+
+  // Delete the auction
+  await this.deleteOne({ _id: auctionId });
 };
 
 // Update auction status based on end date
