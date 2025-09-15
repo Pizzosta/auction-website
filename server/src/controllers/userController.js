@@ -17,11 +17,11 @@ export const getAllUsers = async (req, res) => {
       page = 1,
       limit = 10,
       sort = 'createdAt:desc',
-      showDeleted = false,
+      status,
     } = req.query;
 
     // Only admins can see soft-deleted users
-    if (showDeleted && req.user.role !== 'admin') {
+    if ((status === 'deleted' || status === 'all') && req.user.role !== 'admin') {
       return res.status(403).json({
         status: 'error',
         message: 'Only admins can view deleted users',
@@ -70,12 +70,8 @@ export const getAllUsers = async (req, res) => {
     }
 
     // Execute query with pagination and sorting
-    const findQuery = User.find(query);
-
-    // Include soft-deleted users if requested
-    if (showDeleted) {
-      findQuery.setQuery({ ...findQuery.getQuery(), includeSoftDeleted: true });
-    }
+    // Pass status through so model middleware can interpret it
+    const findQuery = User.find(status ? { ...query, status } : query);
 
     const users = await findQuery
       .select('-password -__v')
@@ -85,14 +81,24 @@ export const getAllUsers = async (req, res) => {
       .lean();
 
     // Get total count for pagination
-    const count = await User.countDocuments(query);
+    // pre(/^find/) middleware does not apply to countDocuments, so translate status here
+    const countFilter = { ...query };
+    if (status === 'active' || !status) {
+      // Default to active when no status is provided
+      countFilter.isDeleted = { $ne: true };
+    } else if (status === 'deleted') {
+      countFilter.isDeleted = true;
+    } else if (status === 'all') {
+      // No isDeleted constraint
+    }
+    const count = await User.countDocuments(countFilter);
     const totalPages = Math.ceil(count / limitNum);
 
     res.status(200).json({
       status: 'success',
       pagination: {
         currentPage: pageNum,
-        totalUsers: count,
+        total: count,
         totalPages,
         hasNext: pageNum < totalPages,
         hasPrev: pageNum > 1,
@@ -121,8 +127,18 @@ export const getAllUsers = async (req, res) => {
 // @access  Private/Admin
 export const deleteUser = async (req, res) => {
   try {
-    const { password, permanent = false } = req.body;
-    const user = await User.findById(req.params.id).select('+password +isDeleted');
+    const { password } = req.body || {};
+    // Accept permanent from query string (?permanent=true) and fallback to body for backward compatibility
+    const permanent =
+      (typeof req.query?.permanent === 'string'
+        ? req.query.permanent.toLowerCase() === 'true'
+        : !!req.query?.permanent) ||
+      (typeof req.body?.permanent === 'string'
+        ? req.body.permanent.toLowerCase() === 'true'
+        : !!req.body?.permanent);
+    const user = await User.findOne({ _id: req.params.id, status: 'all' }).select(
+      '+password +isDeleted'
+    );
 
     if (!user) {
       return res.status(404).json({
@@ -245,7 +261,8 @@ export const restoreUser = async (req, res) => {
       });
     }
 
-    const user = await User.findById(req.params.id).select('+isDeleted');
+    // Include status: 'all' so pre(/^find/) middleware does not exclude soft-deleted users
+    const user = await User.findOne({ _id: req.params.id, status: 'all' }).select('+isDeleted');
 
     if (!user) {
       return res.status(404).json({
@@ -272,7 +289,7 @@ export const restoreUser = async (req, res) => {
           firstname: user.firstname,
           middlename: user.middlename,
           lastname: user.lastname,
-          email: User.schema.path('email').get(user.email),
+          email: user.email,
           username: user.username,
           role: user.role,
         },

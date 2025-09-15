@@ -14,6 +14,7 @@ export const userQuerySchema = Joi.object({
     .optional(),
   search: Joi.string().optional(),
   role: Joi.string().valid('user', 'admin').optional(),
+  status: Joi.string().valid('active', 'deleted', 'all').default('active'),
 });
 
 // Auction query schema validation
@@ -108,12 +109,19 @@ export const authSchema = {
         'string.empty': 'Phone is required',
       })
       .required(),
-    username: Joi.string().alphanum().trim().min(3).max(20).required().messages({
-      'string.empty': 'Username is required',
-      'string.alphanum': 'Username can only contain letters and numbers',
-      'string.min': 'Username must be at least 3 characters long',
-      'string.max': 'Username cannot be more than 20 characters',
-    }),
+    username: Joi.string()
+      .trim()
+      .min(3)
+      .max(20)
+      .pattern(/^[a-zA-Z0-9_]+$/)
+      .messages({
+        'string.pattern.base':
+          'Username should be one word (can only contain letters, numbers, and underscores)',
+        'string.min': 'Username must be at least 3 characters long',
+        'string.max': 'Username cannot be more than 20 characters',
+        'string.empty': 'Username is required',
+      }),
+
     email: Joi.string().email().required().messages({
       'string.email': 'Please provide a valid email',
       'string.empty': 'Email is required',
@@ -170,6 +178,13 @@ export const authSchema = {
   }),
 };
 
+// User delete query schema (for ?permanent=true)
+export const userDeleteQuerySchema = Joi.object({
+  permanent: Joi.boolean().default(false).messages({
+    'boolean.base': 'permanent must be a boolean',
+  }),
+});
+
 // Auction schema validation
 export const auctionSchema = {
   create: Joi.object({
@@ -194,7 +209,7 @@ export const auctionSchema = {
           'Books',
           'Jewelry',
           'Toys',
-        ],
+        ]
       )
       .required(),
     images: Joi.array()
@@ -202,7 +217,7 @@ export const auctionSchema = {
         Joi.object({
           url: Joi.string().uri().required(),
           publicId: Joi.string().required(),
-        }),
+        })
       )
       .min(1)
       .required()
@@ -235,7 +250,7 @@ export const auctionSchema = {
           'Books',
           'Jewelry',
           'Toys',
-        ],
+        ]
       )
       .required(),
     images: Joi.array()
@@ -243,7 +258,7 @@ export const auctionSchema = {
         Joi.object({
           url: Joi.string().uri().required(),
           publicId: Joi.string().required(),
-        }),
+        })
       )
       .min(1)
       .required()
@@ -372,7 +387,8 @@ export const userSchema = {
       .max(20)
       .pattern(/^[a-zA-Z0-9_]+$/)
       .messages({
-        'string.pattern.base': 'Username can only contain letters, numbers, and underscores',
+        'string.pattern.base':
+          'Username should be one word (can only contain letters, numbers, and underscores)',
         'string.min': 'Username must be at least 3 characters long',
         'string.max': 'Username cannot be more than 20 characters',
         'string.empty': 'Username is required',

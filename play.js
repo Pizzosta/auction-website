@@ -1,192 +1,128 @@
-import axios from 'axios';
-import dotenv from 'dotenv';
-import https from 'https';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import User from '../models/User.js';
+import { getCloudinary } from '../config/cloudinary.js';
+import { normalizeToE164 } from '../utils/format.js';
+import logger from '../utils/logger.js';
 
-// Get current directory
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Load environment variables from .env file
-const envPath = path.resolve(__dirname, '../../.env');
-if (fs.existsSync(envPath)) {
-  dotenv.config({ path: envPath });
-} else {
-  console.warn('No .env file found, using process.env');
-}
-
-const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:5001/api';
-
-// Create axios instance with default config
-const api = axios.create({
-  baseURL: API_BASE_URL,
-  withCredentials: true, // Important for cookies
-  httpsAgent: new https.Agent({ 
-    rejectUnauthorized: false, // Only for development
-  }),
-  headers: {
-    'Content-Type': 'application/json',
-    'Accept': 'application/json',
-  },
-  validateStatus: () => true, // Don't throw on HTTP error status
-});
-
-// Store cookies between requests
-let cookies = [];
-
-// Add request interceptor to include cookies in each request
-api.interceptors.request.use(config => {
-  console.log(`\n[Request] ${config.method?.toUpperCase()} ${config.url}`);
-  if (config.data) {
-    console.log('Request data:', JSON.stringify(config.data, null, 2));
-  }
-  
-  if (cookies.length > 0) {
-    config.headers.Cookie = cookies.join('; ');
-    console.log('Sending cookies:', cookies);
-  }
-  
-  return config;
-});
-
-// Add response interceptor to store cookies from responses
-api.interceptors.response.use(response => {
-  console.log(`[Response] ${response.status} ${response.statusText}`);
-  console.log('Response headers:', JSON.stringify(response.headers, null, 2));
-  
-  if (response.data) {
-    console.log('Response data:', JSON.stringify(response.data, null, 2));
-  }
-
-  const newCookies = response.headers['set-cookie'] || [];
-  console.log('Received cookies:', newCookies);
-  
-  if (newCookies.length > 0) {
-    // Update stored cookies with new ones
-    newCookies.forEach(cookie => {
-      const [keyValue] = cookie.split(';');
-      const [key] = keyValue.split('=');
-      // Remove old cookie if it exists
-      cookies = cookies.filter(c => !c.startsWith(`${key}=`));
-      cookies.push(keyValue);
-    });
-    console.log('Updated cookies:', cookies);
-  }
-  
-  return response;
-}, error => {
-  if (error.response) {
-    console.error('Response error:', {
-      status: error.response.status,
-      statusText: error.response.statusText,
-      headers: error.response.headers,
-      data: error.response.data,
-    });
-  } else if (error.request) {
-    console.error('No response received:', error.request);
-  } else {
-    console.error('Request setup error:', error.message);
-  }
-  return Promise.reject(error);
-});
-
-const testLogin = async () => {
-  const credentials = {
-    email: 'Regtest3@example.com',
-    password: 'Regtest3@example.com'
-  };
-
-  console.log('\n=== Starting Authentication Test ===');
-  console.log(`API Base URL: ${API_BASE_URL}`);
-  console.log('Using credentials:', { email: credentials.email, password: '********' });
-
+// @desc    Get all users (admin only)
+// @route   GET /api/users
+// @access  Private/Admin
+export const getAllUsers = async (req, res) => {
   try {
-    // Step 1: Login
-    console.log('\n1. Attempting to login...');
-    const loginResponse = await api.post('/auth/login', credentials);
-    
-    console.log('✅ Login successful!');
-    console.log('Response status:', loginResponse.status);
-    
-    const accessToken = loginResponse.data.token;
-    console.log('Access token received');
-    
-    // Check for refresh token in cookies
-    const cookies = loginResponse.headers['set-cookie'];
-    const hasRefreshToken = cookies && cookies.some(cookie => cookie.includes('refreshToken'));
-    console.log(`Refresh token cookie ${hasRefreshToken ? 'found' : 'not found'}`);
+    // Get pagination parameters (already validated by middleware)
+    const {
+      role,
+      isVerified,
+      rating,
+      search,
+      page = 1,
+      limit = 10,
+      sort = 'createdAt:desc',
+      showDeleted = false,
+    } = req.query;
 
-    // Step 2: Test protected route
-    if (accessToken) {
-      console.log('\n2. Testing protected route...');
-      try {
-        const profileResponse = await api.get('/users/me', {
-          headers: { 'Authorization': `Bearer ${accessToken}` }
-        });
-        console.log('✅ Successfully accessed protected route');
-        console.log('User profile:', JSON.stringify(profileResponse.data, null, 2));
-      } catch (error) {
-        console.error('❌ Failed to access protected route:', error.response?.data?.message || error.message);
-      }
+    // Only admins can see soft-deleted users
+    if (showDeleted && req.user.role !== 'admin') {
+      return res.status(403).json({
+        status: 'error',
+        message: 'Only admins can view deleted users',
+      });
     }
 
-    // Step 3: Test token refresh
-    if (hasRefreshToken) {
-      console.log('\n3. Testing token refresh...');
-      try {
-        const refreshResponse = await api.post('/auth/refresh-token');
-        console.log('✅ Token refresh successful');
-        console.log('New access token received');
-        
-        // Test new access token
-        if (refreshResponse.data.token) {
-          const newProfileResponse = await api.get('/users/me', {
-            headers: { 'Authorization': `Bearer ${refreshResponse.data.token}` }
-          });
-          console.log('✅ Successfully used new access token');
-        }
-      } catch (error) {
-        console.error('❌ Token refresh failed:', error.response?.data?.message || error.message);
-      }
+    // Parse pagination parameters
+    const pageNum = Math.max(1, parseInt(page));
+    const limitNum = Math.min(Math.max(1, parseInt(limit)), 100); // Cap at 100
+    const skip = (pageNum - 1) * limitNum;
+
+    // Build sort object if sort parameter is provided
+    const [field, order] = sort.split(':');
+    const sortOptions = {
+      [field]: order === 'desc' ? -1 : 1,
+    };
+
+    // Build query
+    const query = {};
+
+    // Filter by role if provided
+    if (role) {
+      query.role = role;
     }
 
-    // Step 4: Logout
-    console.log('\n4. Testing logout...');
-    try {
-      await api.post('/auth/logout');
-      console.log('✅ Logout successful');
-      
-      // Verify token is invalidated
-      try {
-        await api.get('/users/me', {
-          headers: { 'Authorization': `Bearer ${accessToken}` }
-        });
-        console.log('❌ Token still valid after logout');
-      } catch (error) {
-        console.log('✅ Token successfully invalidated after logout');
-      }
-    } catch (error) {
-      console.error('❌ Logout failed:', error.response?.data?.message || error.message);
+    // Filter by verified status if provided
+    if (isVerified) {
+      query.isVerified = isVerified;
     }
 
-  } catch (error) {
-    console.error('\n❌ Test failed with error:', {
-      status: error.response?.status,
-      message: error.response?.data?.message || error.message,
-      url: error.config?.url,
-      method: error.config?.method
+    // Filter by rating if provided
+    if (rating) {
+      query.rating = rating;
+    }
+
+    // Search by name, email, or username if search query is provided
+    if (search) {
+      const searchRegex = new RegExp(search, 'i');
+      query.$or = [
+        { firstname: searchRegex },
+        { lastname: searchRegex },
+        { email: searchRegex },
+        { phone: searchRegex },
+        { username: searchRegex },
+      ];
+    }
+
+    // Handle soft-deleted users in the query
+    if (showDeleted) {
+      // When showing deleted users, don't filter by isDeleted (show all)
+      query.includeSoftDeleted = true;
+    } else {
+      // When not showing deleted users, only show active ones
+      query.isDeleted = false;
+    }
+
+    // Execute query with pagination and sorting
+    const users = await User.find(query)
+      .select('-password -__v')
+      .sort(sortOptions)
+      .limit(limitNum)
+      .skip(skip)
+      .lean();
+
+    // Get counts for both active and soft-deleted users
+    const [activeCount, deletedCount] = await Promise.all([
+      User.countDocuments({ ...query, isDeleted: false }),
+      User.countDocuments({ ...query, isDeleted: true }),
+    ]);
+
+    const totalCount = activeCount + deletedCount;
+    const totalPages = Math.ceil((showDeleted ? totalCount : activeCount) / limitNum);
+
+    res.status(200).json({
+      status: 'success',
+      pagination: {
+        currentPage: pageNum,
+        totalPages,
+        hasNext: pageNum < totalPages,
+        hasPrev: pageNum > 1,
+      },
+      stats: {
+        total: totalCount,
+        active: activeCount,
+        deleted: deletedCount,
+      },
+      data: {
+        users,
+      },
     });
-    
-    if (error.response?.data?.stack && env.NODE_ENV !== 'production') {
-      console.error('\nError details:', error.response.data);
-    }
+  } catch (error) {
+    logger.error('Get all users error:', {
+      error: error.message,
+      stack: error.stack,
+      query: req.query,
+    });
+
+    res.status(500).json({
+      status: 'error',
+      message: 'Server error',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
   }
 };
-
-// Run the test
-console.log('Starting authentication test...');
-testLogin()
-  .then(() => console.log('\n=== Test completed ==='))
-  .catch(err => console.error('Test failed:', err));

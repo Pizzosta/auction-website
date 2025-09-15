@@ -29,38 +29,6 @@ Create global async error wrapper (catchAsync) so you don’t need try/catch blo
 
 Expose a /health endpoint that includes Cloudinary status:
 
-
-npm warn deprecated xss-clean@0.1.4: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
-
-npm warn deprecated inflight@1.0.6: This module is not supported, and leaks memory. Do not use it. Check out lru-cache if you want a good and tested way to coalesce async requests by a key value, which is much more comprehensive and powerful.
-npm warn deprecated @humanwhocodes/config-array@0.13.0: Use @eslint/config-array instead
-npm warn deprecated rimraf@3.0.2: Rimraf versions prior to v4 are no longer supported
-npm warn deprecated @humanwhocodes/object-schema@2.0.3: Use @eslint/object-schema instead
-npm warn deprecated glob@7.2.3: Glob versions prior to v9 are no longer supported
-npm warn deprecated glob@7.2.3: Glob versions prior to v9 are no longer supported
-npm warn deprecated glob@7.2.3: Glob versions prior to v9 are no longer supported
-npm warn deprecated glob@8.1.0: Glob versions prior to v9 are no longer supported
-npm warn deprecated supertest@6.3.4: Please upgrade to supertest v7.1.3+, see release notes at https://github.com/forwardemail/supertest/releases/tag/v7.1.3 - maintenance is supported by Forward Email @ https://forwardemail.net
-npm warn deprecated superagent@8.1.2: Please upgrade to superagent v10.2.2+, see release notes at https://github.com/forwardemail/superagent/releases/tag/v10.2.2 - maintenance is supported by Forward Email @ https://forwardemail.net
-npm warn deprecated eslint@8.57.1: This version is no longer supported. Please see https://eslint.org/version-support for other options.
- 
-added 285 packages, changed 2 packages, and audited 489 packages in 26s
- 
-83 packages are looking for funding
-  run `npm fund` for details
- 
-found 0 vulnerabilities
-
-npm warn deprecated inflight@1.0.6: This module is not supported, and leaks memory. Do not use it. Check out lru-cache if you want a good and tested way to coalesce async requests by a key value, which is much more comprehensive and powerful.
-npm warn deprecated glob@7.2.3: Glob versions prior to v9 are no longer supported
-npm warn deprecated uid-number@0.0.6: This package is no longer supported.
-npm warn deprecated rimraf@2.7.1: Rimraf versions prior to v4 are no longer supported
-npm warn deprecated tar@2.2.2: This version of tar is no longer supported, and will not receive security updates. Please upgrade asap.
-npm warn deprecated fstream@1.0.12: This package is no longer supported.
-npm warn deprecated fstream-ignore@1.0.5: This package is no longer supported.
-create-react-app is deprecated.
-
-
 npm test
 npm test:watch //development
 npm test:coverage //production generate coverage report
@@ -68,3 +36,11 @@ npm test:debug //debugger
 npx mocha test/integration/userController.test.js
 npx mocha test/integration/authController.test.js
 NODE_OPTIONS='--experimental-vm-modules --no-warnings' npx mocha test/integration/userController.test.js
+
+load default image before real image
+
+cleaner response. The response does include quite a bit of information. We can trim it down by being more selective in what we send back.
+Consistent across endpoints
+Lighter (less data transfer)
+Focused on what the client needs
+Easier to work with in the frontend

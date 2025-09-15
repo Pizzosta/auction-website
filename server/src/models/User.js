@@ -5,22 +5,6 @@ import logger from '../utils/logger.js';
 
 const userSchema = new mongoose.Schema(
   {
-    isDeleted: {
-      type: Boolean,
-      default: false,
-      select: false, // Hide from regular queries
-    },
-    deletedAt: {
-      type: Date,
-      default: null,
-      select: false, // Hide from regular queries
-    },
-    deletedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      default: null,
-      select: false, // Hide from regular queries
-    },
     firstname: {
       type: String,
       required: [true, 'Please add a first name'],
@@ -183,6 +167,22 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      select: false, // Hide from regular queries
+    },
+    deletedAt: {
+      type: Date,
+      default: null,
+      select: false, // Hide from regular queries
+    },
+    deletedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+      select: false, // Hide from regular queries
+    },
     resetPasswordToken: String,
     resetPasswordExpire: Date,
     emailVerificationToken: String,
@@ -325,7 +325,7 @@ userSchema.methods.restore = async function () {
 
 // Static method for permanent deletion (admin only)
 userSchema.statics.permanentDelete = async function (userId) {
-  const user = await this.findById(userId).select('+isDeleted');
+  const user = await this.findOne({ _id: userId, status: 'all' }).select('+isDeleted');
   if (!user) {
     throw new Error('User not found');
   }
@@ -337,13 +337,25 @@ userSchema.statics.permanentDelete = async function (userId) {
   await this.deleteOne({ _id: userId });
 };
 
-// Add query middleware to exclude soft deleted documents by default
+// Add query middleware to handle soft delete + status filtering
 userSchema.pre(/^find/, function (next) {
-  // Add includeSoftDeleted flag to queries to include soft deleted documents
-  if (!this.getQuery().includeSoftDeleted) {
+  const query = this.getQuery();
+
+  // Handle status from Joi schema
+  if (query.status) {
+    if (query.status === 'active') {
+      this.where({ isDeleted: { $ne: true } });
+    } else if (query.status === 'deleted') {
+      this.where({ isDeleted: true });
+    } else if (query.status === 'all') {
+      // no filter applied
+    }
+    delete query.status;
+  } else {
+    // Default: only active users
     this.where({ isDeleted: { $ne: true } });
   }
-  delete this.getQuery().includeSoftDeleted;
+
   next();
 });
 

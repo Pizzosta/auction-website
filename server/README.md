@@ -20,7 +20,12 @@ This is the backend server for the auction website. It provides a RESTful API fo
 
 ### User Management
 
-- User registration and authentication
+- User registration and authenticatio| col1 | col2 | col3 |
+  | ---- | ---- | ---- |
+  |      |      |      |
+  |      |      |      |
+
+  n
 - Profile management
 - Role-based access control
 - Soft delete support for data integrity
