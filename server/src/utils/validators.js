@@ -27,7 +27,8 @@ export const auctionQuerySchema = Joi.object({
     )
     .default('createdAt:desc')
     .optional(),
-  status: Joi.string().valid('active', 'upcoming', 'ended', 'sold', 'cancelled').optional(),
+  status: Joi.string().valid('upcoming', 'active', 'ended', 'sold', 'cancelled').optional(),
+  showDeleted: Joi.boolean().default(false).optional(),
   category: Joi.string().optional(),
   search: Joi.string().optional(),
   endingSoon: Joi.boolean()
@@ -64,11 +65,12 @@ export const bidQuerySchema = Joi.object({
 
 // ID schema validation
 export const idSchema = Joi.object({
-  id: Joi.string().hex().length(24).required().messages({
-    'string.hex': 'Invalid user ID format',
-    'string.length': 'User ID must be 24 characters long',
-    'any.required': 'User ID is required',
-  }),
+  id: Joi.string().uuid({ version: 'uuidv4' })
+    .required()
+    .messages({
+      'string.uuid': 'Invalid UUID format',
+      'any.required': 'ID is required',
+    }),
 });
 
 // Token schema validation
@@ -456,10 +458,24 @@ export const userSchema = {
 
   // Profile picture validation
   profilePicture: Joi.object({
-    profilePicture: Joi.any().required().messages({
-      'any.required': 'Profile picture is required',
-      'any.empty': 'Profile picture cannot be empty',
-    }),
+    url: Joi.string()
+      .uri()
+      .required()
+      .messages({
+        'string.uri': 'Profile picture must be a valid URL',
+        'string.empty': 'Profile picture URL cannot be empty',
+        'any.required': 'Profile picture URL is required',
+      }),
+    publicId: Joi.string()
+      .required()
+      .pattern(/^[a-zA-Z0-9_\-\/]+$/)
+      .messages({
+        'string.pattern.base': 'Invalid public ID format',
+        'string.empty': 'Public ID cannot be empty',
+        'any.required': 'Public ID is required',
+      }),
+  }).messages({
+    'object.base': 'Profile picture must be an object with url and publicId',
   }),
 
   // Delete profile picture validation

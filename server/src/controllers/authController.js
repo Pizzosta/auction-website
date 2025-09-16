@@ -1,4 +1,5 @@
-import User from '../models/User.js';
+import prisma from '../config/prisma.js';
+import bcrypt from 'bcryptjs';
 import zxcvbn from 'zxcvbn';
 import crypto from 'crypto';
 import { addToQueue } from '../services/emailQueue.js';
@@ -79,7 +80,7 @@ export const register = async (req, res) => {
     }
 
     // Check if user exists
-    const userByEmail = await User.findOne({ email: normalizedEmail });
+    const userByEmail = await prisma.user.findFirst({ where: { email: normalizedEmail } });
     if (userByEmail) {
       return res.status(400).json({
         status: 'error',
@@ -87,7 +88,7 @@ export const register = async (req, res) => {
       });
     }
 
-    const userByUsername = await User.findOne({ username: normalizedUsername });
+    const userByUsername = await prisma.user.findFirst({ where: { username: normalizedUsername } });
     if (userByUsername) {
       return res.status(400).json({
         status: 'error',
@@ -95,7 +96,7 @@ export const register = async (req, res) => {
       });
     }
 
-    const userByPhone = await User.findOne({ phone: normalizedPhone });
+    const userByPhone = await prisma.user.findFirst({ where: { phone: normalizedPhone } });
     if (userByPhone) {
       return res.status(400).json({
         status: 'error',
@@ -103,18 +104,21 @@ export const register = async (req, res) => {
       });
     }
 
-    // Create user
-    const user = await User.create({
-      firstname,
-      middlename,
-      lastname,
-      phone,
-      username,
-      email,
-      password,
+    // Create user (hash password)
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(password, salt);
+    const user = await prisma.user.create({
+      data: {
+        firstname,
+        middlename: middlename || '',
+        lastname,
+        phone: normalizedPhone,
+        username: normalizedUsername,
+        email: normalizedEmail,
+        passwordHash,
+        role: 'user',
+      },
     });
-
-    await user.save();
 
     // Add welcome email to queue
     try {
@@ -135,7 +139,7 @@ export const register = async (req, res) => {
 
     // Generate JWT token
     const token = jwt.sign(
-      { userId: user._id, email: user.email, role: user.role },
+      { userId: user.id, email: user.email, role: user.role },
       env.jwtSecret,
       { expiresIn: env.jwtExpire }
     );
@@ -144,7 +148,7 @@ export const register = async (req, res) => {
       status: 'success',
       data: {
         user: {
-          _id: user._id,
+          id: user.id,
           firstname: user.firstname,
           middlename: user.middlename,
           lastname: user.lastname,
@@ -167,24 +171,36 @@ export const login = async (req, res) => {
     const { email, password } = req.body;
 
     // Check if user exists
-    const user = await User.findOne({ email: email?.trim().toLowerCase() }).select('+password');
+    const user = await prisma.user.findFirst({
+      where: { email: email?.trim().toLowerCase() },
+      select: {
+        id: true,
+        firstname: true,
+        middlename: true,
+        lastname: true,
+        username: true,
+        email: true,
+        phone: true,
+        role: true,
+        passwordHash: true,
+        isDeleted: true,
+      },
+    });
     if (!user) {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
     // Check password
-    const isMatch = await user.matchPassword(password);
+    const isMatch = user.passwordHash ? await bcrypt.compare(password, user.passwordHash) : false;
     if (!isMatch) {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
-    // Update last login timestamp
-    user.lastLogin = new Date();
-    await user.save();
+    // Optional: update last login if you add this column in Prisma schema
 
     // Generate tokens
-    const accessToken = generateAccessToken(user._id, user.email, user.role);
-    const refreshToken = await generateRefreshToken(user._id, user.email, user.role);
+    const accessToken = generateAccessToken(user.id, user.email, user.role);
+    const refreshToken = await generateRefreshToken(user.id, user.email, user.role);
 
     // Set refresh token as HTTP-only cookie
     res.cookie('refreshToken', refreshToken, {
@@ -198,7 +214,7 @@ export const login = async (req, res) => {
       status: 'success',
       data: {
         user: {
-          _id: user._id,
+          id: user.id,
           firstname: user.firstname,
           middlename: user.middlename,
           lastname: user.lastname,
@@ -222,7 +238,10 @@ export const forgotPassword = async (req, res) => {
     const { email } = req.body;
 
     // Find user by email
-    const user = await User.findOne({ email: email?.trim().toLowerCase() });
+    const user = await prisma.user.findFirst({
+      where: { email: email?.trim().toLowerCase() },
+      select: { id: true, firstname: true, email: true },
+    });
 
     // Don't reveal if user doesn't exist (security best practice)
     if (!user) {
@@ -233,8 +252,30 @@ export const forgotPassword = async (req, res) => {
     }
 
     // Generate reset token and save hashed version to database
-    const resetToken = user.getResetPasswordToken();
-    await user.save({ validateBeforeSave: false });
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const hashed = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+    // compute expire (default 10 minutes if not configured)
+    const parseExpiry = val => {
+      if (!val) return 10 * 60 * 1000;
+      if (typeof val === 'number') return val;
+      const m = String(val).match(/^(\d+)(ms|s|m|h|d)?$/);
+      if (!m) return 10 * 60 * 1000;
+      const num = parseInt(m[1]);
+      const unit = m[2] || 'ms';
+      const mult = { ms: 1, s: 1000, m: 60000, h: 3600000, d: 86400000 }[unit];
+      return num * mult;
+    };
+    const expireMs = parseExpiry(env.resetTokenExpire || '10m');
+    const expireAt = new Date(Date.now() + expireMs);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        resetPasswordToken: hashed,
+        resetPasswordExpire: expireAt,
+      },
+    });
 
     // Create reset URL - use the unhashed token in the URL
     const resetUrl = `${env.clientUrl}/reset-password/${resetToken}`;
@@ -262,9 +303,10 @@ export const forgotPassword = async (req, res) => {
         stack: error.stack,
         userEmail: user.email,
       });
-      user.resetPasswordToken = undefined;
-      user.resetPasswordExpire = undefined;
-      await user.save({ validateBeforeSave: false });
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { resetPasswordToken: null, resetPasswordExpire: null },
+      });
 
       return res.status(500).json({
         status: 'error',
@@ -349,10 +391,13 @@ export const resetPassword = async (req, res) => {
     const resetPasswordToken = crypto.createHash('sha256').update(decodedToken).digest('hex');
 
     // Find user by reset token and check expiration
-    const user = await User.findOne({
-      resetPasswordToken,
-      resetPasswordExpire: { $gt: Date.now() },
-    }).select('+password');
+    const user = await prisma.user.findFirst({
+      where: {
+        resetPasswordToken,
+        resetPasswordExpire: { gt: new Date() },
+      },
+      select: { id: true, firstname: true, email: true, role: true, passwordHash: true },
+    });
 
     if (!user) {
       return res.status(400).json({
@@ -362,7 +407,7 @@ export const resetPassword = async (req, res) => {
     }
 
     // Check if new password is the same as the old one
-    const isMatch = await user.matchPassword(password);
+    const isMatch = user.passwordHash ? await bcrypt.compare(password, user.passwordHash) : false;
     if (isMatch) {
       return res.status(400).json({
         status: 'error',
@@ -371,11 +416,12 @@ export const resetPassword = async (req, res) => {
     }
 
     // Set new password
-    user.password = password;
-    user.resetPasswordToken = undefined;
-    user.resetPasswordExpire = undefined;
-
-    await user.save();
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(password, salt);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { passwordHash, resetPasswordToken: null, resetPasswordExpire: null },
+    });
 
     // Send confirmation email
     try {
@@ -386,7 +432,7 @@ export const resetPassword = async (req, res) => {
       logger.error('Error sending password reset confirmation email:', {
         error: emailError.message,
         stack: emailError.stack,
-        userId: user._id,
+        userId: user.id,
         userEmail: user.email,
       });
       // Don't fail the request if email fails
@@ -394,7 +440,7 @@ export const resetPassword = async (req, res) => {
 
     // Generate new JWT token
     const authToken = jwt.sign(
-      { userId: user._id, email: user.email, role: user.role },
+      { userId: user.id, email: user.email, role: user.role },
       env.jwtSecret,
       { expiresIn: env.jwtExpire }
     );
@@ -405,8 +451,9 @@ export const resetPassword = async (req, res) => {
       data: {
         token: authToken,
         user: {
-          _id: user._id,
+          id: user.id,
           firstname: user.firstname,
+          middlename: user.middlename,
           lastname: user.lastname,
           email: user.email,
           role: user.role,

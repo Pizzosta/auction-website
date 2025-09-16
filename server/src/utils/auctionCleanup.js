@@ -1,6 +1,4 @@
-import Auction from '../models/Auction.js';
-import Bid from '../models/Bid.js';
-import User from '../models/User.js';
+import prisma from '../config/prisma.js';
 import { sendEmail } from './emailService.js';
 import logger from './logger.js';
 
@@ -11,69 +9,68 @@ import logger from './logger.js';
 export const closeExpiredAuctions = async () => {
   try {
     // Find all active auctions that have passed their end date
-    const expiredAuctions = await Auction.find({
-      status: 'active',
-      endDate: { $lte: new Date() },
-    }).populate('seller', 'email username');
+    const expiredAuctions = await prisma.auction.findMany({
+      where: { status: 'active', endDate: { lte: new Date() } },
+      include: { seller: { select: { email: true, username: true } } },
+    });
 
     // Process each expired auction
     for (const auction of expiredAuctions) {
       try {
         // Find the highest bid for this auction
-        const highestBid = await Bid.findOne({ auction: auction._id })
-          .sort('-amount')
-          .populate('bidder', 'email username');
+        const highestBid = await prisma.bid.findFirst({
+          where: { auctionId: auction.id },
+          orderBy: { amount: 'desc' },
+          include: { bidder: { select: { email: true, username: true } } },
+        });
 
         if (highestBid) {
           // Update auction status to 'sold' and set the winner
-          auction.status = 'sold';
-          auction.winner = highestBid.bidder._id;
-          await auction.save();
-
-          // Mark the winning bid
-          await Bid.updateOne({ _id: highestBid._id }, { isWinningBid: true });
+          await prisma.auction.update({
+            where: { id: auction.id },
+            data: { status: 'sold', winnerId: highestBid.bidderId },
+          });
 
           // Send notification to the seller
           await sendEmail({
-            to: auction.seller.email,
+            to: auction.seller?.email,
             subject: 'Your auction has ended',
             template: 'auctionEndedSeller',
             context: {
-              username: auction.seller.username,
+              username: auction.seller?.username,
               title: auction.title,
               amount: highestBid.amount,
-              winner: highestBid.bidder.username,
-              auctionId: auction._id,
+              winner: highestBid.bidder?.username,
+              auctionId: auction.id,
             },
           });
 
           // Send notification to the winner
           await sendEmail({
-            to: highestBid.bidder.email,
+            to: highestBid.bidder?.email,
             subject: 'You won an auction!',
             template: 'auctionWon',
             context: {
-              username: highestBid.bidder.username,
+              username: highestBid.bidder?.username,
               title: auction.title,
               amount: highestBid.amount,
-              seller: auction.seller.username,
-              auctionId: auction._id,
+              seller: auction.seller?.username,
+              auctionId: auction.id,
             },
           });
         } else {
           // No bids, just mark as ended
-          auction.status = 'ended';
-          await auction.save();
+          await prisma.auction.update({ where: { id: auction.id }, data: { status: 'ended' } });
 
           // Notify seller that auction ended with no bids
           await sendEmail({
-            to: auction.seller.email,
+            to: auction.seller?.email,
             subject: 'Your auction has ended with no bids',
             template: 'auctionEndedNoBids',
             context: {
-              username: auction.seller.username,
+              username: auction.seller?.username,
               title: auction.title,
-              auctionId: auction._id,
+              auctionId: auction.id,
             },
           });
         }
@@ -81,7 +78,7 @@ export const closeExpiredAuctions = async () => {
         logger.error('Error processing expired auction:', {
           error: error.message,
           stack: error.stack,
-          auctionId: auction._id,
+          auctionId: auction.id,
         });
         // Continue with the next auction even if one fails
         continue;
@@ -109,14 +106,13 @@ export const cleanupOldData = async () => {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    // Find and remove old completed auctions
-    const result = await Auction.deleteMany({
-      status: { $in: ['ended', 'sold'] },
-      updatedAt: { $lt: thirtyDaysAgo },
+    // Remove old completed auctions
+    const result = await prisma.auction.deleteMany({
+      where: { status: { in: ['ended', 'sold'] }, updatedAt: { lt: thirtyDaysAgo } },
     });
 
     logger.info('Cleaned up old auctions', {
-      count: result.deletedCount,
+      count: result.count,
     });
     return result;
   } catch (error) {
@@ -137,33 +133,31 @@ export const sendAuctionEndingReminders = async () => {
     oneHourFromNow.setHours(oneHourFromNow.getHours() + 1);
 
     // Find auctions ending in the next hour
-    const endingAuctions = await Auction.find({
-      status: 'active',
-      endDate: {
-        $lte: oneHourFromNow,
-        $gt: new Date(),
-      },
-    }).populate('seller', 'email username');
+    const endingAuctions = await prisma.auction.findMany({
+      where: { status: 'active', endDate: { lte: oneHourFromNow, gt: new Date() } },
+      include: { seller: { select: { email: true, username: true } } },
+    });
 
     for (const auction of endingAuctions) {
       try {
-        // Get bidders for this auction
-        const bidders = await Bid.find({ auction: auction._id }).distinct('bidder');
-
-        // Get user details for bidders
-        const users = await User.find({ _id: { $in: bidders } });
+        // Get distinct bidders for this auction
+        const bids = await prisma.bid.findMany({
+          where: { auctionId: auction.id },
+          distinct: ['bidderId'],
+          select: { bidder: { select: { email: true, username: true } } },
+        });
 
         // Send reminder to each bidder
-        for (const user of users) {
+        for (const { bidder } of bids) {
           await sendEmail({
-            to: user.email,
+            to: bidder?.email,
             subject: 'Auction ending soon!',
             template: 'auctionEndingReminder',
             context: {
-              username: user.username,
+              username: bidder?.username,
               title: auction.title,
               endTime: auction.endDate,
-              auctionId: auction._id,
+              auctionId: auction.id,
             },
           });
         }
@@ -171,7 +165,7 @@ export const sendAuctionEndingReminders = async () => {
         logger.error('Error sending auction reminders:', {
           error: error.message,
           stack: error.stack,
-          auctionId: auction._id,
+          auctionId: auction.id,
         });
         continue;
       }
@@ -197,16 +191,15 @@ export const sendAuctionEndingReminders = async () => {
 export const startScheduledAuctions = async () => {
   try {
     // Find all upcoming auctions whose startDate has passed
-    const auctionsToStart = await Auction.find({
-      status: 'upcoming',
-      startDate: { $lte: new Date() },
+    const auctionsToStart = await prisma.auction.findMany({
+      where: { status: 'upcoming', startDate: { lte: new Date() } },
+      include: { seller: { select: { email: true, username: true } } },
     });
 
     for (const auction of auctionsToStart) {
-      auction.status = 'active';
-      await auction.save();
+      await prisma.auction.update({ where: { id: auction.id }, data: { status: 'active' } });
       // Optionally notify seller that auction has started
-      if (auction.seller && auction.seller.email) {
+      if (auction.seller?.email) {
         await sendEmail({
           to: auction.seller.email,
           subject: 'Your auction has started',
@@ -214,7 +207,7 @@ export const startScheduledAuctions = async () => {
           context: {
             username: auction.seller.username,
             title: auction.title,
-            auctionId: auction._id,
+            auctionId: auction.id,
             startTime: auction.startDate,
           },
         });

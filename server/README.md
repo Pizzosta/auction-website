@@ -54,7 +54,7 @@ Each model (User, Auction, Bid) includes:
 - Soft delete: DELETE request to the resource endpoint
 - Permanent delete: DELETE request with `?permanent=true` (admin only)
 - Restore: POST request to `/resource/:id/restore` (admin only)
-- View deleted items: Add `?showDeleted=true` to GET requests (admin only)
+- View deleted items: Add `?status=deleted` to GET requests (admin only)
 
 Example:
 

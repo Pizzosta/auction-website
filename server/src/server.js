@@ -24,10 +24,7 @@ if (missingVars.length > 0) {
   process.exit(1);
 }
 
-// Import database connection
-import connectDB from './config/db.js';
-// Initialize database connection
-connectDB();
+// Prisma is used for DB access; no Mongoose connection needed
 
 // Then import and initialize Cloudinary
 import initializeCloudinary from './config/cloudinary.js';
@@ -56,6 +53,7 @@ import authRoutes from './routes/authRoutes.js';
 import auctionRoutes from './routes/auctionRoutes.js';
 import bidRoutes from './routes/bidRoutes.js';
 import userRoutes from './routes/userRoutes.js';
+import adminRoutes from './routes/adminRoutes.js';
 import webhookRoutes from './routes/webhookRoutes.js';
 
 const app = express();
@@ -116,6 +114,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/auctions', auctionRoutes);
 app.use('/api/bids', bidRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/admin', adminRoutes);
 app.use('/api/v1/webhook', webhookRoutes);
 
 // Serve static assets in production
@@ -216,20 +215,7 @@ const shutdown = async () => {
   logger.info('Shutting down server...');
 
   const completeShutdown = async () => {
-    // Close database connection
-    try {
-      const mongooseModule = await import('mongoose');
-      const mongoose = mongooseModule.default || mongooseModule;
-      const conn = mongoose.connection;
-      if (conn && typeof conn.close === 'function') {
-        await conn.close();
-        logger.info('MongoDB connection closed');
-      } else {
-        logger.warn('MongoDB connection not available or already closed');
-      }
-    } catch (dbError) {
-      logger.error('Error closing MongoDB connection:', dbError);
-    }
+    // No MongoDB connection to close; Prisma manages connections per request
 
     // Close Redis/Bull queues
     try {

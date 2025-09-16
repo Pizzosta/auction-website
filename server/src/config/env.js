@@ -29,7 +29,6 @@ const DEFAULT_REQUIRED_VARS = [
   'EMAIL_FROM_NAME',
   'APP_NAME',
   'SUPPORT_EMAIL',
-  'DKIM_PRIVATE_KEY',
   'DKIM_KEY_PATH',
   'DKIM_DOMAIN',
   'DKIM_SELECTOR',
@@ -111,7 +110,6 @@ export const env = {
     appName: process.env.APP_NAME,
     supportEmail: process.env.SUPPORT_EMAIL,
     dkim: {
-      privateKey: process.env.DKIM_PRIVATE_KEY,
       keyPath: process.env.DKIM_KEY_PATH,
       domain: process.env.DKIM_DOMAIN,
       selector: process.env.DKIM_SELECTOR,

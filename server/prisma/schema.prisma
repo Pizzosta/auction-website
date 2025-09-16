@@ -1,0 +1,92 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                      String    @id @default(uuid())
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+  firstname               String
+  middlename              String?   @default("")
+  lastname                String
+  username                String    @unique
+  email                   String    @unique
+  phone                   String    @unique
+  passwordHash            String
+  role                    String    @default("user")
+  rating                  Float     @default(0)
+  bio                     String?   @default("")
+  location                String?   @default("")
+  isVerified              Boolean   @default(false)
+  isDeleted               Boolean   @default(false)
+  deletedAt               DateTime?
+  deletedById             String?
+  resetPasswordToken      String?
+  resetPasswordExpire     DateTime?
+  emailVerificationToken  String?
+  emailVerificationExpire DateTime?
+  profilePicture          Json?     @default("{}")
+  deletedAuctions         Auction[] @relation("AuctionDeletedBy")
+  auctions                Auction[] @relation("SellerAuctions")
+  wonAuctions             Auction[] @relation("WinnerAuctions")
+  bids                    Bid[]     @relation("BidBidder")
+  deletedBids             Bid[]     @relation("BidDeletedBy")
+  deletedBy               User?     @relation("UserDeletedBy", fields: [deletedById], references: [id])
+  deletedUsers            User[]    @relation("UserDeletedBy")
+}
+
+model Auction {
+  id            String        @id @default(uuid())
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  title         String
+  description   String
+  startingPrice Decimal       @db.Decimal(12, 2)
+  currentPrice  Decimal       @db.Decimal(12, 2)
+  bidIncrement  Decimal       @db.Decimal(12, 2)
+  startDate     DateTime
+  endDate       DateTime
+  status        AuctionStatus @default(active)
+  category      String?
+  sellerId      String
+  winnerId      String?
+  deletedAt     DateTime?
+  deletedById   String?
+  isDeleted     Boolean       @default(false)
+  images        Json?
+  deletedBy     User?         @relation("AuctionDeletedBy", fields: [deletedById], references: [id])
+  seller        User          @relation("SellerAuctions", fields: [sellerId], references: [id])
+  winner        User?         @relation("WinnerAuctions", fields: [winnerId], references: [id])
+  bids          Bid[]
+
+  @@index([status])
+  @@index([endDate])
+}
+
+model Bid {
+  id          String    @id @default(uuid())
+  createdAt   DateTime  @default(now())
+  amount      Decimal   @db.Decimal(12, 2)
+  auctionId   String
+  bidderId    String
+  deletedAt   DateTime?
+  deletedById String?
+  isDeleted   Boolean   @default(false)
+  auction     Auction   @relation(fields: [auctionId], references: [id])
+  bidder      User      @relation("BidBidder", fields: [bidderId], references: [id])
+  deletedBy   User?     @relation("BidDeletedBy", fields: [deletedById], references: [id])
+
+  @@index([auctionId, createdAt])
+}
+
+enum AuctionStatus {
+  active
+  upcoming
+  ended
+  sold
+}

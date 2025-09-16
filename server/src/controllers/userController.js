@@ -1,4 +1,6 @@
-import User from '../models/User.js';
+import { listUsersPrisma } from '../repositories/userRepo.prisma.js';
+import prisma from '../config/prisma.js';
+import bcrypt from 'bcryptjs';
 import { getCloudinary } from '../config/cloudinary.js';
 import { normalizeToE164 } from '../utils/format.js';
 import logger from '../utils/logger.js';
@@ -28,77 +30,24 @@ export const getAllUsers = async (req, res) => {
       });
     }
 
-    // Parse pagination parameters
-    const pageNum = Math.max(1, parseInt(page));
-    const limitNum = Math.min(Math.max(1, parseInt(limit)), 100); // Cap at 100
-    const skip = (pageNum - 1) * limitNum;
-
-    // Build sort object if sort parameter is provided
-    const [field, order] = sort.split(':');
-    const sortOptions = {
-      [field]: order === 'desc' ? -1 : 1,
-    };
-
-    // Build query
-    const query = {};
-
-    // Filter by role if provided
-    if (role) {
-      query.role = role;
-    }
-
-    // Filter by verified status if provided
-    if (isVerified) {
-      query.isVerified = isVerified;
-    }
-
-    // Filter by rating if provided
-    if (rating) {
-      query.rating = rating;
-    }
-
-    // Search by name, email, or username if search query is provided
-    if (search) {
-      const searchRegex = new RegExp(search, 'i');
-      query.$or = [
-        { firstname: searchRegex },
-        { lastname: searchRegex },
-        { email: searchRegex },
-        { phone: searchRegex },
-        { username: searchRegex },
-      ];
-    }
-
-    // Execute query with pagination and sorting
-    // Pass status through so model middleware can interpret it
-    const findQuery = User.find(status ? { ...query, status } : query);
-
-    const users = await findQuery
-      .select('-password -__v')
-      .sort(sortOptions)
-      .limit(limitNum)
-      .skip(skip)
-      .lean();
-
-    // Get total count for pagination
-    // pre(/^find/) middleware does not apply to countDocuments, so translate status here
-    const countFilter = { ...query };
-    if (status === 'active' || !status) {
-      // Default to active when no status is provided
-      countFilter.isDeleted = { $ne: true };
-    } else if (status === 'deleted') {
-      countFilter.isDeleted = true;
-    } else if (status === 'all') {
-      // No isDeleted constraint
-    }
-    const count = await User.countDocuments(countFilter);
-    const totalPages = Math.ceil(count / limitNum);
+    // Fetch via Prisma repository
+    const { users, count, pageNum, take } = await listUsersPrisma({
+      role,
+      isVerified,
+      rating,
+      search,
+      page,
+      limit,
+      sort,
+      status,
+    });
+    const totalPages = Math.ceil(count / take);
 
     res.status(200).json({
       status: 'success',
       pagination: {
         currentPage: pageNum,
-        total: count,
+        totalUsers: count,
         totalPages,
         hasNext: pageNum < totalPages,
         hasPrev: pageNum > 1,
@@ -136,9 +85,11 @@ export const deleteUser = async (req, res) => {
       (typeof req.body?.permanent === 'string'
         ? req.body.permanent.toLowerCase() === 'true'
         : !!req.body?.permanent);
-    const user = await User.findOne({ _id: req.params.id, status: 'all' }).select(
-      '+password +isDeleted'
-    );
+
+    const user = await prisma.user.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, role: true, passwordHash: true, isDeleted: true },
+    });
 
     if (!user) {
       return res.status(404).json({
@@ -148,7 +99,8 @@ export const deleteUser = async (req, res) => {
     }
 
     // Allow deletion only if admin or the user themselves
-    if (user._id.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+    const actorId = req.user?.id?.toString();
+    if (user.id.toString() !== actorId && req.user.role !== 'admin') {
       return res.status(403).json({
         status: 'error',
         message: 'Not authorized to delete this user',
@@ -156,7 +108,7 @@ export const deleteUser = async (req, res) => {
     }
 
     // If user is deleting their own account, require password
-    if (user._id.toString() === req.user._id.toString()) {
+    if (user.id.toString() === actorId) {
       if (!password) {
         return res.status(400).json({
           status: 'error',
@@ -164,7 +116,9 @@ export const deleteUser = async (req, res) => {
         });
       }
 
-      const isMatch = await user.matchPassword(password);
+      const isMatch = user.passwordHash
+        ? await bcrypt.compare(password, user.passwordHash)
+        : false;
       if (!isMatch) {
         return res.status(400).json({
           status: 'error',
@@ -174,7 +128,7 @@ export const deleteUser = async (req, res) => {
     }
 
     // Prevent admin from deleting themselves
-    if (user.role === 'admin' && user._id.toString() === req.user._id.toString()) {
+    if (user.role === 'admin' && user.id.toString() === actorId) {
       return res.status(400).json({
         status: 'error',
         message: 'Admins cannot delete themselves',
@@ -190,9 +144,21 @@ export const deleteUser = async (req, res) => {
     }
 
     if (permanent) {
-      await User.permanentDelete(user._id);
+      // Cascade delete related data, then delete the user
+      await prisma.$transaction([
+        prisma.auction.deleteMany({ where: { sellerId: user.id } }),
+        prisma.bid.deleteMany({ where: { bidderId: user.id } }),
+        prisma.user.delete({ where: { id: user.id } }),
+      ]);
     } else {
-      await user.softDelete(req.user._id);
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          isDeleted: true,
+          deletedAt: new Date(),
+          deletedById: actorId,
+        },
+      });
     }
 
     res.status(200).json({
@@ -220,25 +186,52 @@ export const deleteUser = async (req, res) => {
 // @access  Private
 export const getMe = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).select('-password -__v');
+    const actorId = req.user?.id?.toString();
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: {
+        id: true,
+        firstname: true,
+        middlename: true,
+        lastname: true,
+        username: true,
+        email: true,
+        phone: true,
+        profilePicture: true,
+        role: true,
+        rating: true,
+        bio: true,
+        location: true,
+        isVerified: true,
+        isDeleted: true,
+        deletedAt: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+
     if (!user) {
       return res.status(404).json({
-        status: 'error',
+        success: false,
         message: 'User not found',
       });
     }
 
-    res.json({
-      status: 'success',
-      data: {
-        user,
-      },
+    // Format the response
+    const userData = {
+      ...user,
+      fullname: `${user.firstname} ${user.lastname}`.trim(),
+    };
+
+    res.status(200).json({
+      success: true,
+      data: userData,
     });
   } catch (error) {
     logger.error('Get me error:', {
       error: error.message,
       stack: error.stack,
-      userId: req.user._id,
+      userId: req.user?.id,
     });
     res.status(500).json({
       status: 'error',
@@ -261,8 +254,10 @@ export const restoreUser = async (req, res) => {
       });
     }
 
-    // Include status: 'all' so pre(/^find/) middleware does not exclude soft-deleted users
-    const user = await User.findOne({ _id: req.params.id, status: 'all' }).select('+isDeleted');
+    const user = await prisma.user.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, isDeleted: true, firstname: true, middlename: true, lastname: true, email: true, username: true, role: true },
+    });
 
     if (!user) {
       return res.status(404).json({
@@ -278,14 +273,17 @@ export const restoreUser = async (req, res) => {
       });
     }
 
-    await user.restore();
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { isDeleted: false, deletedAt: null, deletedById: null },
+    });
 
     res.status(200).json({
       status: 'success',
       message: 'User restored successfully',
       data: {
         user: {
-          _id: user._id,
+          id: user.id,
           firstname: user.firstname,
           middlename: user.middlename,
           lastname: user.lastname,
@@ -322,7 +320,15 @@ export const uploadProfilePicture = async (req, res) => {
     }
 
     const uploadedFile = req.uploadedFiles[0];
-    const user = await User.findById(req.user._id);
+    const actorId = req.user?.id?.toString();
+    const user = await prisma.user.findUnique({ 
+      where: { id: actorId },
+      select: { 
+        id: true, 
+        profilePicture: true 
+      } 
+    });
+
     if (!user) {
       return res.status(404).json({
         status: 'error',
@@ -331,7 +337,7 @@ export const uploadProfilePicture = async (req, res) => {
     }
 
     // Delete old profile picture if exists
-    if (user.profilePicture && user.profilePicture.publicId) {
+    if (user.profilePicture?.publicId) {
       try {
         const cloudinary = await getCloudinary();
         await cloudinary.uploader.destroy(user.profilePicture.publicId);
@@ -339,30 +345,35 @@ export const uploadProfilePicture = async (req, res) => {
         logger.error('Error deleting old profile picture:', {
           error: error.message,
           stack: error.stack,
-          userId: req.user._id,
+          userId: actorId,
           publicId: user.profilePicture.publicId,
         });
       }
     }
 
-    // Update user with new profile picture
-    user.profilePicture = {
+    // Create new profile picture object
+    const profilePicture = {
       url: uploadedFile.url,
       publicId: uploadedFile.publicId,
+      uploadedAt: new Date().toISOString()
     };
 
-    await user.save();
+    // Update user with new profile picture
+    await prisma.user.update({
+      where: { id: actorId },
+      data: { profilePicture },
+    });
 
     res.status(200).json({
       success: true,
       message: 'Profile picture uploaded successfully',
-      data: user.profilePicture,
+      data: { profilePicture },
     });
   } catch (error) {
     logger.error('Error uploading profile picture:', {
       error: error.message,
       stack: error.stack,
-      userId: req.user._id,
+      userId: req.user?.id,
     });
     res.status(500).json({
       success: false,
@@ -377,7 +388,12 @@ export const uploadProfilePicture = async (req, res) => {
 // @access  Private
 export const deleteProfilePicture = async (req, res) => {
   try {
-    const user = await User.findById(req.user._id);
+    const actorId = req.user?.id?.toString();
+    const user = await prisma.user.findUnique({ 
+      where: { id: actorId },
+      select: { id: true, profilePicture: true } 
+    });
+
     if (!user) {
       return res.status(404).json({
         status: 'error',
@@ -385,10 +401,10 @@ export const deleteProfilePicture = async (req, res) => {
       });
     }
 
-    if (!user.profilePicture || !user.profilePicture.publicId) {
+    if (!user.profilePicture?.publicId) {
       return res.status(400).json({
         success: false,
-        message: 'No profile picture found to delete',
+        message: 'No profile picture to delete',
       });
     }
 
@@ -400,25 +416,27 @@ export const deleteProfilePicture = async (req, res) => {
       logger.error('Error deleting profile picture from Cloudinary:', {
         error: error.message,
         stack: error.stack,
-        userId: req.user._id,
+        userId: actorId,
         publicId: user.profilePicture.publicId,
       });
-      // Continue even if Cloudinary deletion fails to update the database
+      // Continue even if Cloudinary deletion fails
     }
 
-    // Clear profile picture in database
-    user.profilePicture = { url: '', publicId: '' };
-    await user.save();
+    // Remove from user
+    await prisma.user.update({
+      where: { id: actorId },
+      data: { profilePicture: null },
+    });
 
     res.status(200).json({
       success: true,
-      message: 'Profile picture removed successfully',
+      message: 'Profile picture deleted successfully',
     });
   } catch (error) {
     logger.error('Error removing profile picture:', {
       error: error.message,
       stack: error.stack,
-      userId: req.user._id,
+      userId: req.user?.id,
     });
     res.status(500).json({
       success: false,
@@ -448,15 +466,25 @@ export const updateUser = async (req, res) => {
     }
 
     // Ensure request has a valid user object (from protect middleware)
-    if (!req.user || !req.user._id) {
+    if (!req.user || !req.user.id) {
       return res.status(401).json({
         status: 'error',
         message: 'Authentication required',
       });
     }
 
-    // Find the user and include the password for verification
-    let user = await User.findById(id).select('+password');
+    // Find the user and include the password hash for verification
+    let user = await prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        passwordHash: true,
+        role: true,
+        email: true,
+        phone: true,
+        username: true,
+      },
+    });
 
     if (!user) {
       return res.status(404).json({
@@ -466,7 +494,8 @@ export const updateUser = async (req, res) => {
     }
 
     // Check if the user is updating their own profile or is an admin
-    if (user._id.toString() !== req.user._id.toString() && req.user.role !== 'admin') {
+    const actorId = req.user?.id?.toString();
+    if (user.id.toString() !== actorId && req.user.role !== 'admin') {
       return res.status(403).json({
         status: 'error',
         message: 'Not authorized to update this user',
@@ -490,7 +519,9 @@ export const updateUser = async (req, res) => {
         });
       }
 
-      const isPasswordValid = await user.matchPassword(updateData.currentPassword);
+      const isPasswordValid = user.passwordHash
+        ? await bcrypt.compare(updateData.currentPassword, user.passwordHash)
+        : false;
       if (!isPasswordValid) {
         return res.status(400).json({
           status: 'error',
@@ -498,7 +529,9 @@ export const updateUser = async (req, res) => {
         });
       }
 
-      const isSamePassword = await user.matchPassword(updateData.password);
+      const isSamePassword = user.passwordHash
+        ? await bcrypt.compare(updateData.password, user.passwordHash)
+        : false;
       if (isSamePassword) {
         return res.status(400).json({
           status: 'error',
@@ -513,9 +546,9 @@ export const updateUser = async (req, res) => {
 
     // Check if the email is being updated and if it's already in use by another user
     if (updateData.email && updateData.email !== user.email) {
-      const emailExists = await User.findOne({
-        email: updateData.email,
-        _id: { $ne: user._id }, // Exclude current user from the check
+      const emailExists = await prisma.user.findFirst({
+        where: { email: updateData.email, NOT: { id: user.id } },
+        select: { id: true },
       });
       if (emailExists) {
         return res.status(400).json({ message: 'Email already in use by another user.' });
@@ -533,9 +566,9 @@ export const updateUser = async (req, res) => {
           message: 'Invalid phone number format',
         });
       }
-      const phoneExists = await User.findOne({
-        phone: normalizedPhone,
-        _id: { $ne: user._id }, // Exclude current user from the check
+      const phoneExists = await prisma.user.findFirst({
+        where: { phone: normalizedPhone, NOT: { id: user.id } },
+        select: { id: true },
       });
       if (phoneExists) {
         return res.status(400).json({ message: 'Phone already in use by another user.' });
@@ -544,9 +577,9 @@ export const updateUser = async (req, res) => {
 
     // Check if the username is being updated and if it's already in use by another user
     if (updateData.username && updateData.username !== user.username) {
-      const usernameExists = await User.findOne({
-        username: updateData.username,
-        _id: { $ne: user._id }, // Exclude current user from the check
+      const usernameExists = await prisma.user.findFirst({
+        where: { username: updateData.username, NOT: { id: user.id } },
+        select: { id: true },
       });
       if (usernameExists) {
         return res.status(400).json({ message: 'Username already in use by another user.' });
@@ -561,21 +594,54 @@ export const updateUser = async (req, res) => {
       });
     }
 
-    // Apply the updates
-    Object.assign(user, updateData);
+    // Build update payload
+    const data = { ...updateData };
+    if (data.phone) data.phone = normalizeToE164(data.phone);
+    if (data.password) {
+      const salt = await bcrypt.genSalt(10);
+      data.passwordHash = await bcrypt.hash(data.password, salt);
+      delete data.password;
+    }
+    delete data.currentPassword;
 
-    // If a password is being updated (though not in the current validation schema),
-    // it would be hashed by the pre-save hook in the User model.
-    await user.save();
+    await prisma.user.update({ where: { id }, data });
 
-    // Re-fetch the user to return a clean object without the password field
-    user = await User.findById(id).select('-password -__v');
+    // Re-fetch the user to return a clean object without sensitive fields
+    const refreshed = await prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        createdAt: true,
+        updatedAt: true,
+        firstname: true,
+        middlename: true,
+        lastname: true,
+        username: true,
+        email: true,
+        phone: true,
+        role: true,
+        rating: true,
+        bio: true,
+        location: true,
+        isVerified: true,
+        isDeleted: true,
+        deletedAt: true,
+        profilePictureUrl: true,
+        profilePictureId: true,
+      },
+    });
 
     res.json({
       status: 'success',
       message: 'User updated successfully',
       data: {
-        user,
+        user: {
+          ...refreshed,
+          profilePicture: {
+            url: refreshed.profilePictureUrl || '',
+            publicId: refreshed.profilePictureId || '',
+          },
+        },
       },
     });
   } catch (error) {

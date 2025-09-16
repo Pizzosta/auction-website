@@ -1,9 +1,11 @@
-import mongoose from 'mongoose';
+import { PrismaClient } from '@prisma/client';
 import dotenv from 'dotenv';
-import User from '../src/models/User.js';
+import bcrypt from 'bcryptjs';
 
 // Load environment variables
 dotenv.config();
+
+const prisma = new PrismaClient();
 
 // System users configuration
 const SYSTEM_USERS = [
@@ -21,7 +23,7 @@ const SYSTEM_USERS = [
     username: 'SystemAdmin',
     email: 'test1@example.com',
     phone: '+233547654321',
-    password: process.env.SYSTEM_ADMIN_PASSWORD,
+    password: process.env.SYSTEM_ADMIN_PASSWORD || 'System@1234',
     role: 'admin',
     firstname: 'System',
     lastname: 'Admin',
@@ -51,7 +53,7 @@ const SYSTEM_USERS = [
     username: 'DummyUser',
     email: 'dummy@example.com',
     phone: '+233223456780',
-    password: process.env.DUMMY_USER_PASSWORD,
+    password: process.env.DUMMY_USER_PASSWORD || 'Dummy@1234',
     role: 'user',
     firstname: 'Dummy',
     lastname: 'User',
@@ -59,45 +61,61 @@ const SYSTEM_USERS = [
   },
 ];
 
+async function hashPassword(password) {
+  const salt = await bcrypt.genSalt(10);
+  return bcrypt.hash(password, salt);
+}
+
 async function createSystemUsers() {
   try {
-    // Connect to MongoDB
-    await mongoose.connect(process.env.MONGODB_URI);
-
-    console.log('Connected to MongoDB');
+    console.log('Connecting to database...');
 
     for (const userData of SYSTEM_USERS) {
-      const { email } = userData;
+      const { password, ...userDataWithoutPassword } = userData; // Don't destructure email here
+      const passwordHash = await hashPassword(password);
 
-      // Check if user already exists
-      const existingUser = await User.findOne({ email });
+      try {
+        // Check if user exists
+        const existingUser = await prisma.user.findUnique({
+          where: { email: userData.email }
+        });
 
-      if (existingUser) {
-        console.log(`User ${email} already exists, updating if needed...`);
+        if (existingUser) {
+          console.log(`User ${userData.email} already exists, updating if needed...`);
 
-        // Update user role if needed
-        if (existingUser.role !== userData.role) {
-          existingUser.role = userData.role;
-          await existingUser.save();
-          console.log(`Updated role for ${email} to ${userData.role}`);
+          // Update user role if needed
+          if (existingUser.role !== userData.role) {
+            await prisma.user.update({
+              where: { id: existingUser.id },
+              data: { role: userData.role }
+            });
+            console.log(`Updated role for ${userData.email} to ${userData.role}`);
+          }
+          continue;
         }
-        continue;
+
+        // Create new user
+        await prisma.user.create({
+          data: {
+            ...userDataWithoutPassword, // This now includes email
+            passwordHash,
+            phone: userData.phone.startsWith('+') ? userData.phone : `+${userData.phone}`
+          }
+        });
+
+        console.log(`Created system user: ${userData.email}`);
+      } catch (error) {
+        console.error(`Error processing user ${userData.email}:`, error);
       }
-
-      // Create new user
-      const user = new User({
-        ...userData,
-      });
-
-      await user.save();
-      console.log(`Created system user: ${email}`);
     }
 
     console.log('System users setup completed');
-    process.exit(0);
   } catch (error) {
     console.error('Error setting up system users:', error);
     process.exit(1);
+  } finally {
+    await prisma.$disconnect();
+    process.exit(0);
   }
 }
 

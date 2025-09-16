@@ -4,7 +4,7 @@ import {
   revokeRefreshToken,
   revokeAllRefreshTokens,
 } from '../services/tokenService.js';
-import User from '../models/User.js';
+import prisma from '../config/prisma.js';
 import logger from '../utils/logger.js';
 import { env } from '../config/env.js';
 
@@ -15,8 +15,17 @@ export const refreshToken = async (req, res) => {
   try {
     const { userId, refreshToken } = req;
 
-    // Get user from database
-    const user = await User.findById(userId);
+    // Get user from database (Prisma)
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        firstname: true,
+        lastname: true,
+        email: true,
+        role: true,
+      },
+    });
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -25,10 +34,10 @@ export const refreshToken = async (req, res) => {
     }
 
     // Generate new access token
-    const newAccessToken = generateAccessToken(user._id, user.email, user.role);
+    const newAccessToken = generateAccessToken(user.id, user.email, user.role);
 
     // Optionally rotate refresh token (uncomment if you want to rotate refresh tokens on each use)
-    const newRefreshToken = await generateRefreshToken(user._id, user.email, user.role);
+    const newRefreshToken = await generateRefreshToken(user.id, user.email, user.role);
 
     // Set new refresh token cookie (if rotating refresh tokens)
     res.cookie('refreshToken', newRefreshToken, {
@@ -48,7 +57,7 @@ export const refreshToken = async (req, res) => {
         expiresIn: env.accessTokenExpiry,
         refreshToken: newRefreshToken,
         user: {
-          _id: user._id,
+          id: user.id,
           firstname: user.firstname,
           lastname: user.lastname,
           email: user.email,

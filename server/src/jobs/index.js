@@ -7,7 +7,6 @@ import {
 } from '../utils/auctionCleanup.js';
 import logger from '../utils/logger.js';
 import { env, validateEnv } from '../config/env.js';
-import Auction from '../models/Auction.js';
 
 // Validate required environment variables
 const missingVars = validateEnv();
@@ -56,7 +55,7 @@ if (!env.isTest && !env.isDev) {
     try {
       logger.info('Running old data cleanup...');
       const result = await cleanupOldData();
-      logger.info(`Old data cleanup completed: ${result.deletedCount} items removed`);
+      logger.info(`Old data cleanup completed: ${result.count || result.deletedCount || 0} items removed`);
     } catch (error) {
       logger.error('Error in old data cleanup job:', error);
     }

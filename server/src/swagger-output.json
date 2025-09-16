@@ -245,6 +245,21 @@
         "description": "",
         "parameters": [
           {
+            "name": "page",
+            "in": "query",
+            "type": "string"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "string"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "type": "string"
+          },
+          {
             "name": "status",
             "in": "query",
             "type": "string"
@@ -255,12 +270,17 @@
             "type": "string"
           },
           {
-            "name": "startDate",
+            "name": "search",
             "in": "query",
             "type": "string"
           },
           {
-            "name": "endDate",
+            "name": "seller",
+            "in": "query",
+            "type": "string"
+          },
+          {
+            "name": "winner",
             "in": "query",
             "type": "string"
           },
@@ -275,7 +295,12 @@
             "type": "string"
           },
           {
-            "name": "search",
+            "name": "startDate",
+            "in": "query",
+            "type": "string"
+          },
+          {
+            "name": "endDate",
             "in": "query",
             "type": "string"
           },
@@ -285,22 +310,12 @@
             "type": "string"
           },
           {
-            "name": "upcoming",
+            "name": "fields",
             "in": "query",
             "type": "string"
           },
           {
-            "name": "page",
-            "in": "query",
-            "type": "string"
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "type": "string"
-          },
-          {
-            "name": "sort",
+            "name": "showDeleted",
             "in": "query",
             "type": "string"
           }
@@ -531,7 +546,7 @@
             "schema": {
               "type": "object",
               "properties": {
-                "auctionId": {
+                "req.body": {
                   "example": "any"
                 },
                 "amount": {
@@ -553,6 +568,9 @@
           },
           "404": {
             "description": "Not Found"
+          },
+          "429": {
+            "description": "Too Many Requests"
           },
           "500": {
             "description": "Internal Server Error"
@@ -620,6 +638,11 @@
             "type": "string"
           },
           {
+            "name": "status",
+            "in": "query",
+            "type": "string"
+          },
+          {
             "name": "page",
             "in": "query",
             "type": "string"
@@ -630,7 +653,7 @@
             "type": "string"
           },
           {
-            "name": "status",
+            "name": "sort",
             "in": "query",
             "type": "string"
           },
@@ -649,9 +672,6 @@
           },
           "401": {
             "description": "Unauthorized"
-          },
-          "403": {
-            "description": "Forbidden"
           },
           "500": {
             "description": "Internal Server Error"
@@ -1045,6 +1065,50 @@
           },
           "404": {
             "description": "Not Found"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/api/admin/hot-auctions": {
+      "get": {
+        "description": "",
+        "parameters": [
+          {
+            "name": "authorization",
+            "in": "header",
+            "type": "string"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/api/admin/metrics": {
+      "get": {
+        "description": "",
+        "produces": [
+          "text/plain; version=0.0.4"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
           },
           "500": {
             "description": "Internal Server Error"

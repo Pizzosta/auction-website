@@ -8,7 +8,7 @@ import cookieParser from 'cookie-parser';
 import csrf from 'csurf';
 import { env, validateEnv } from '../config/env.js';
 import logger from '../utils/logger.js';
-import { getRedisClient } from '../config/redis.js';
+import { getRedisClient, executeRedisCommand } from '../config/redis.js';
 import { apiLogger, errorLogger } from './apiLogger.js';
 
 // Validate required environment variables
@@ -47,7 +47,7 @@ const createRateLimiter = ({
     standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
     legacyHeaders: false, // Disable the `X-RateLimit-*` headers
     message,
-    handler: (req, res, _next, options) => {
+    handler: async (req, res, _next, options) => {
       if (logAbuse) {
         logger.warn('Rate limit triggered', {
           method: req.method,
@@ -58,6 +58,11 @@ const createRateLimiter = ({
           max,
           timestamp: new Date().toISOString(),
         });
+      }
+      try {
+        await executeRedisCommand('incr', 'metrics:rate_limit_429_total');
+      } catch (e) {
+        // non-fatal
       }
       res.status(options.statusCode).json({ message: options.message });
     },
@@ -122,8 +127,8 @@ const presets = {
   },
 
   bid: {
-    windowMs: env.rateLimit.bid.windowMs || env.rateLimit.windowMs || 5 * 60_000,
-    max: env.rateLimit.bid.max || env.rateLimit.max || 5,
+    windowMs: env.rateLimit.bid.windowMs || env.rateLimit.windowMs || 60_000,
+    max: env.rateLimit.bid.max || env.rateLimit.max || 10,
     message: 'Too many bid requests, please try again later.',
   },
 };
@@ -149,8 +154,15 @@ export const otpLimiter = createRateLimiter({
 
 export const bidLimiter = createRateLimiter({
   ...presets.bid,
-  keyByUser: true, // Use user-based limiting
-  keyGenerator: req => `bid:${req.user.id}`, // Explicit key for bid
+  // Rate limit per user per auction to avoid blocking a user from bidding on different auctions
+  keyByUser: false,
+  keyGenerator: req => {
+    const userId = req.user?.id || 'anon';
+    const auctionId = req.body?.auctionId || req.params?.auctionId || req.query?.auctionId || 'unknown';
+    return `bid:${userId}:${auctionId}`;
+  },
+  // Do not count failed requests (e.g., validation errors) against the limit
+  skipFailedRequests: true,
 });
 
 // CORS configuration

@@ -1,4 +1,4 @@
-import User from '../models/User.js';
+import prisma from '../config/prisma.js';
 import { verifyToken, isRefreshTokenValid } from '../services/tokenService.js';
 import logger from '../utils/logger.js';
 
@@ -43,8 +43,26 @@ export const protect = async (req, res, next) => {
         });
       }
 
-      // Get user from the token
-      const user = await User.findById(decoded.userId).select('-password -__v');
+      // Get user from the token via Prisma
+      const user = await prisma.user.findUnique({
+        where: { id: decoded.userId },
+        select: {
+          id: true,
+          createdAt: true,
+          updatedAt: true,
+          firstname: true,
+          middlename: true,
+          lastname: true,
+          username: true,
+          email: true,
+          phone: true,
+          role: true,
+          rating: true,
+          bio: true,
+          location: true,
+          isVerified: true,
+        },
+      });
       
       if (!user) {
         return res.status(401).json({ 
@@ -53,8 +71,8 @@ export const protect = async (req, res, next) => {
         });
       }
 
-      // Attach user to request object
-      req.user = user;
+      // Attach user to request object (id only)
+      req.user = { ...user };
       next();
     } catch (error) {
       if (error.message === 'Token expired') {
