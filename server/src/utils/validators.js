@@ -65,12 +65,10 @@ export const bidQuerySchema = Joi.object({
 
 // ID schema validation
 export const idSchema = Joi.object({
-  id: Joi.string().uuid({ version: 'uuidv4' })
-    .required()
-    .messages({
-      'string.uuid': 'Invalid UUID format',
-      'any.required': 'ID is required',
-    }),
+  id: Joi.string().uuid({ version: 'uuidv4' }).required().messages({
+    'string.uuid': 'Invalid UUID format',
+    'any.required': 'ID is required',
+  }),
 });
 
 // Token schema validation
@@ -458,14 +456,11 @@ export const userSchema = {
 
   // Profile picture validation
   profilePicture: Joi.object({
-    url: Joi.string()
-      .uri()
-      .required()
-      .messages({
-        'string.uri': 'Profile picture must be a valid URL',
-        'string.empty': 'Profile picture URL cannot be empty',
-        'any.required': 'Profile picture URL is required',
-      }),
+    url: Joi.string().uri().required().messages({
+      'string.uri': 'Profile picture must be a valid URL',
+      'string.empty': 'Profile picture URL cannot be empty',
+      'any.required': 'Profile picture URL is required',
+    }),
     publicId: Joi.string()
       .required()
       .pattern(/^[a-zA-Z0-9_\-\/]+$/)
