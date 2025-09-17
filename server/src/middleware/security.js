@@ -30,6 +30,7 @@ try {
   logger.info('rate-limit-redis not installed; using in-memory rate limiting');
 }
 
+/*
 // Rate limiter factory
 const createRateLimiter = ({
   windowMs = env.rateLimit.windowMs || 15 * 60_000, // 15 minutes
@@ -47,7 +48,7 @@ const createRateLimiter = ({
     standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
     legacyHeaders: false, // Disable the `X-RateLimit-*` headers
     message,
-    handler: async (req, res, _next, options) => {
+    handler: (req, res, _next, options) => {
       if (logAbuse) {
         logger.warn('Rate limit triggered', {
           method: req.method,
@@ -59,12 +60,24 @@ const createRateLimiter = ({
           timestamp: new Date().toISOString(),
         });
       }
-      try {
-        await executeRedisCommand('incr', 'metrics:rate_limit_429_total');
-      } catch (e) {
-        // non-fatal
-      }
-      res.status(options.statusCode).json({ message: options.message });
+
+      // Ensure we're sending a JSON response
+      res.setHeader('Content-Type', 'application/json');
+
+      // Increment the rate limit counter (but don't block the response if it fails)
+      executeRedisCommand('incr', 'metrics:rate_limit_429_total')
+        .catch(e => logger.error('Failed to increment rate limit counter:', e));
+
+      // Send JSON response with rate limit information
+      const response = {
+        success: false,
+        message: options.message,
+        status: 'error',
+        code: 'RATE_LIMIT_EXCEEDED',
+        retryAfter: Math.ceil(options.windowMs / 1000) // in seconds
+      };
+
+      res.status(options.statusCode).json(response);
     },
   };
 
@@ -75,7 +88,7 @@ const createRateLimiter = ({
       // If client is null, throw to make the failure explicit and surface in logs
       if (!client) throw new Error('Redis client unavailable');
       try {
-        // For Redis v4+, use client[command](...args) pattern
+        // For Redis v4+, use client.sendCommand
         return await client.sendCommand(args);
       } catch (err) {
         logger.error('Redis command failed:', {
@@ -89,7 +102,13 @@ const createRateLimiter = ({
 
     options.store = new RedisStoreCtor({
       sendCommand,
-      prefix: 'rl:',
+      prefix: 'rate-limit:',
+      // Explicitly set the expiry to match the windowMs
+      expiry: windowMs / 1000, // Convert to seconds
+      // Add error handler
+      onError: (err) => {
+        logger.error('Redis store error:', err);
+      },
       // Add a small delay to help with race conditions
       retryStrategy: times => Math.min(times * 50, 200), // 50ms, 100ms, 150ms, 200ms, 200ms...
     });
@@ -105,6 +124,7 @@ const createRateLimiter = ({
     skipFailedRequests, // Don't count failed requests against the limit
   });
 };
+*/
 
 // Presets for common use-cases
 const presets = {
@@ -133,26 +153,111 @@ const presets = {
   },
 };
 
+// Helper function to create a simple rate limiter
+const createSimpleRateLimiter = (options = {}) => {
+  const {
+    windowMs = 15 * 60 * 1000, // 15 minutes
+    max = 1000,
+    message = 'Too many requests, please try again later.',
+    keyGenerator = (req) => {
+      // Simple IP-based key
+      const ip = req.ip || req.connection.remoteAddress || 'unknown-ip';
+      return ip.replace(/[:.]/g, '-');
+    },
+    keyPrefix = 'rate-limit:',
+    skipFailedRequests = false,
+    logAbuse = true,
+  } = options;
+
+  const store = new Map();
+
+  return async (req, res, next) => {
+    const key = `${keyPrefix}${keyGenerator(req)}`;
+    const now = Date.now();
+
+    // Initialize or get the request count for this key
+    if (!store.has(key)) {
+      store.set(key, {
+        totalHits: 0,
+        resetTime: now + windowMs,
+      });
+    }
+
+    const entry = store.get(key);
+
+    // Reset the counter if the window has passed
+    if (entry.resetTime <= now) {
+      entry.totalHits = 0;
+      entry.resetTime = now + windowMs;
+    }
+
+    // Increment the hit counter
+    entry.totalHits++;
+
+    // Set rate limit headers
+    res.set({
+      'X-RateLimit-Limit': max,
+      'X-RateLimit-Remaining': Math.max(0, max - entry.totalHits),
+      'X-RateLimit-Reset': Math.ceil(entry.resetTime / 1000),
+    });
+
+    // Check if rate limit is exceeded
+    if (entry.totalHits > max) {
+      const retryAfter = Math.ceil((entry.resetTime - now) / 1000);
+      res.set('Retry-After', retryAfter);
+
+      if (logAbuse) {
+        logger.warn('Rate limit triggered', {
+          method: req.method,
+          path: req.originalUrl,
+          ip: req.ip,
+          userId: req.user?.id,
+          windowMs: windowMs,
+          max: max,
+          totalHits: entry.totalHits,
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      // Format time remaining in human-readable format
+      const minutes = Math.floor(retryAfter / 60);
+      const seconds = retryAfter % 60;
+      const timeRemaining = minutes > 0
+        ? `${minutes} minute${minutes !== 1 ? 's' : ''} and ${seconds} second${seconds !== 1 ? 's' : ''}`
+        : `${seconds} second${seconds !== 1 ? 's' : ''}`;
+
+      return res.status(429).json({
+        success: false,
+        message: `${message} Please try again in ${timeRemaining}.`,
+        status: 'error',
+        code: 'RATE_LIMIT_EXCEEDED',
+        retryAfter: timeRemaining,
+      });
+    }
+
+    next();
+  };
+};
+
 // Exported specific limiters
-export const forgotLimiter = createRateLimiter({
+export const forgotLimiter = createSimpleRateLimiter({
   ...presets.forgotPassword,
-  keyByUser: false, // Use IP-based limiting
-  keyGenerator: req => `forgot-pwd:${req.ip}`, // Explicit key for forgot password
+  keyPrefix: 'forgot-password:',
 });
 
-export const loginLimiter = createRateLimiter({
+export const loginLimiter = createSimpleRateLimiter({
   ...presets.login,
   keyByUser: false, // Use IP-based limiting
   keyGenerator: req => `login:${req.ip}`, // Explicit key for login
 });
 
-export const otpLimiter = createRateLimiter({
+export const otpLimiter = createSimpleRateLimiter({
   ...presets.otp,
   keyByUser: false, // Use IP-based limiting
   keyGenerator: req => `otp:${req.ip}`, // Explicit key for OTP
 });
 
-export const bidLimiter = createRateLimiter({
+export const bidLimiter = createSimpleRateLimiter({
   ...presets.bid,
   // Rate limit per user per auction to avoid blocking a user from bidding on different auctions
   keyByUser: false,
@@ -310,7 +415,7 @@ const securityMiddleware = [
   },
 
   // Rate limiting
-  createRateLimiter(),
+  createSimpleRateLimiter(),
 
   // Data sanitization against XSS
   (req, res, next) => {
