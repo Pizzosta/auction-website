@@ -1,6 +1,5 @@
 import express from 'express';
 import helmet from 'helmet';
-// import { rateLimit, ipKeyGenerator } from 'express-rate-limit';
 import xss from 'xss';
 import hpp from 'hpp';
 import cors from 'cors';
