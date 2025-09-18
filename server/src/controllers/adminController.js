@@ -1,5 +1,4 @@
 import { getRedisClient } from '../config/redis.js';
-import { admin } from '../middleware/authMiddleware.js';
 import logger from '../utils/logger.js';
 
 // Helper: scan keys with pattern (avoids KEYS on large datasets)
