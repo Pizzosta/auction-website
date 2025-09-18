@@ -45,7 +45,7 @@ const presets = {
 };
 
 // Helper function to create a rate limiter that uses Redis when available, falls back to in-memory
-const createSimpleRateLimiter = (options = {}) => {
+const createRateLimiter = (options = {}) => {
   const {
     windowMs = env.rateLimit.windowMs || 15 * 60_000, // 15 minutes
     max = env.rateLimit.max || 1000, // limit each IP to 1000 requests per windowMs
@@ -251,24 +251,24 @@ const createSimpleRateLimiter = (options = {}) => {
 };
 
 // Exported specific limiters
-export const forgotLimiter = createSimpleRateLimiter({
+export const forgotLimiter = createRateLimiter({
   ...presets.forgotPassword,
   keyPrefix: 'forgot-password:',
 });
 
-export const loginLimiter = createSimpleRateLimiter({
+export const loginLimiter = createRateLimiter({
   ...presets.login,
   keyByUser: false, // Use IP-based limiting
   keyGenerator: req => `login:${req.ip}`, // Explicit key for login
 });
 
-export const otpLimiter = createSimpleRateLimiter({
+export const otpLimiter = createRateLimiter({
   ...presets.otp,
   keyByUser: false, // Use IP-based limiting
   keyGenerator: req => `otp:${req.ip}`, // Explicit key for OTP
 });
 
-export const bidLimiter = createSimpleRateLimiter({
+export const bidLimiter = createRateLimiter({
   ...presets.bid,
   // Rate limit per user per auction to avoid blocking a user from bidding on different auctions
   keyByUser: false,
@@ -414,7 +414,7 @@ const securityMiddleware = [
   },
 
   // Rate limiting
-  createSimpleRateLimiter(),
+  createRateLimiter(),
 
   // Data sanitization against XSS
   (req, res, next) => {

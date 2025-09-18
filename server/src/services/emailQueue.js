@@ -18,11 +18,11 @@ const emailQueue = new Queue('emailQueue', {
 });
 
 // Process jobs from the queue
-emailQueue.process(async (job) => {
+emailQueue.process(async job => {
   const { type, to, context = {} } = job.data;
-  
+
   logger.info(`Processing email job: ${job.id} - ${type} to ${to}`);
-  
+
   try {
     const result = await sendTemplateEmail(type, to, context);
     logger.info(`Email sent successfully: ${job.id}`);
@@ -34,7 +34,15 @@ emailQueue.process(async (job) => {
 });
 
 // Handle queue events
-emailQueue.on('completed', (job, result) => {
+emailQueue.on('waiting', jobId => {
+  logger.info(`Email job ${jobId} waiting`);
+});
+
+emailQueue.on('active', job => {
+  logger.info(`Email job ${job.id} active`);
+});
+
+emailQueue.on('completed', job => {
   logger.info(`Email job ${job.id} completed`);
 });
 
@@ -42,17 +50,14 @@ emailQueue.on('failed', (job, error) => {
   logger.error(`Email job ${job.id} failed:`, error);
 });
 
-emailQueue.on('error', (error) => {
+emailQueue.on('error', error => {
   logger.error('Email queue error:', error);
 });
 
 const addToQueue = async (type, to, context = {}) => {
-  return emailQueue.add({
-    type,
-    to,
-    context,
-    timestamp: Date.now(),
-  });
+  const payload = { type, to, context, timestamp: Date.now() };
+  logger.info('Queueing email job', { type, to });
+  return emailQueue.add(payload);
 };
 
 export { emailQueue, addToQueue };

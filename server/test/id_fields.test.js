@@ -103,12 +103,12 @@ describe('API id fields', () => {
 
   it('resetPassword responds with user.id and no _id', async () => {
     // Provide a 64-char hex token (decodedToken) to satisfy validation
-    const rawToken = 'a'.repeat(64);
+    const resetToken = 'a'.repeat(64);
     const req = {
-      params: { token: rawToken },
+      params: { token: resetToken },
       body: { password: 'NewStr0ng!Pass', confirmPassword: 'NewStr0ng!Pass' },
       ip: '127.0.0.1',
-      originalUrl: '/api/auth/reset-password/' + rawToken,
+      originalUrl: '/api/auth/reset-password/' + resetToken,
     };
     const res = createRes();
 

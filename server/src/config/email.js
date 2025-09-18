@@ -21,13 +21,13 @@ const DEFAULT_SMTP = {
   port: 587,
   secure: false,
   auth: {
-    user: 'eslcqauj67dpeag6@ethereal.email',
-    pass: 'pabgW62TYtg37qmkPS',
+    user: 'billie.bergnaum37@ethereal.email',
+    pass: 'rXYhCmGxQZ1DF4dHTj',
   },
   // Timeout configurations
   connectionTimeout: 30000, // 30 seconds
-  greetingTimeout: 20000,   // 20 seconds
-  socketTimeout: 30000,     // 30 seconds
+  greetingTimeout: 20000, // 20 seconds
+  socketTimeout: 30000, // 30 seconds
   // Enable debug in development
   debug: env.isDev,
 };
@@ -77,7 +77,7 @@ const getSmtpConfig = () => {
         pass: env.email.pass,
       },
       // DKIM configuration
-      dkim: loadDkimConfig()
+      dkim: loadDkimConfig(),
     };
   }
 
@@ -97,7 +97,7 @@ const createTransporter = () => {
   const transporter = nodemailer.createTransport(smtpConfig);
 
   // Verify connection on startup
-  transporter.verify((error) => {
+  transporter.verify(error => {
     if (error) {
       logger.error('Email transporter failed to connect:', error.message);
       if (env.isProd) {
@@ -107,7 +107,7 @@ const createTransporter = () => {
     } else {
       const dkimStatus = smtpConfig.dkim ? 'active' : 'inactive';
       logger.info(`Email transporter connected successfully (DKIM: ${dkimStatus})`);
-      
+
       logger.debug('SMTP Configuration:', {
         host: smtpConfig.host,
         port: smtpConfig.port,
@@ -116,8 +116,8 @@ const createTransporter = () => {
         dkim: dkimStatus,
         ...(smtpConfig.dkim && {
           dkimDomain: smtpConfig.dkim.domainName,
-          dkimSelector: smtpConfig.dkim.keySelector
-        })
+          dkimSelector: smtpConfig.dkim.keySelector,
+        }),
       });
     }
   });
@@ -140,8 +140,8 @@ const emailConfig = {
 
   // Email templates configuration
   templates: {
-    dir: 'src/templates/emails',  // Relative to project root
-    viewEngine: 'handlebars'
+    dir: 'src/templates/emails', // Relative to project root
+    viewEngine: 'handlebars',
   },
 
   // Default template variables
@@ -150,7 +150,7 @@ const emailConfig = {
     appUrl: env.clientUrl || 'http://localhost:5173',
     year: new Date().getFullYear(),
     supportEmail: env.email.supportEmail || 'support@kawodze.com',
-  }
+  },
 };
 
 export default emailConfig;

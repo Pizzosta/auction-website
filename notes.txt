@@ -44,3 +44,9 @@ Consistent across endpoints
 Lighter (less data transfer)
 Focused on what the client needs
 Easier to work with in the frontend
+
+Redis scan or keys which is better?
+
+config files serialize .. uinform   
+
+the 3 loggers combine into one api/http/request(Logger)

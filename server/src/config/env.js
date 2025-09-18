@@ -39,7 +39,9 @@ const DEFAULT_REQUIRED_VARS = [
 ];
 
 export function validateEnv(requiredVars = DEFAULT_REQUIRED_VARS) {
-  const missing = requiredVars.filter((name) => !process.env[name] || String(process.env[name]).trim() === '');
+  const missing = requiredVars.filter(
+    name => !process.env[name] || String(process.env[name]).trim() === ''
+  );
   return missing;
 }
 
@@ -70,7 +72,7 @@ export const env = {
   },
 
   // Helper function to safely evaluate expressions in env vars
-  _evaluateValue: (value) => {
+  _evaluateValue: value => {
     if (!value) return undefined;
     try {
       // Replace _ with nothing to handle numbers like 60_000
@@ -85,51 +87,55 @@ export const env = {
 
   rateLimit: {
     // generic fallback
-    windowMs: process.env.DEFAULT_RATE_LIMIT_WINDOW_MS ? 
-      (() => {
-        const value = String(process.env.DEFAULT_RATE_LIMIT_WINDOW_MS).replace(/_/g, '');
-        return new Function(`return ${value}`)();
-      })() : 15 * 60 * 1000, // Default to 15 minutes
-    
-    max: process.env.DEFAULT_RATE_LIMIT_MAX ? 
-      parseInt(process.env.DEFAULT_RATE_LIMIT_MAX, 10) : 100,
+    windowMs: process.env.DEFAULT_RATE_LIMIT_WINDOW_MS
+      ? (() => {
+          const value = String(process.env.DEFAULT_RATE_LIMIT_WINDOW_MS).replace(/_/g, '');
+          return new Function(`return ${value}`)();
+        })()
+      : 15 * 60 * 1000, // Default to 15 minutes
+
+    max: process.env.DEFAULT_RATE_LIMIT_MAX
+      ? parseInt(process.env.DEFAULT_RATE_LIMIT_MAX, 10)
+      : 100,
 
     // specific overrides
     otp: {
-      windowMs: process.env.OTP_RATE_LIMIT_WINDOW_MS ? 
-        (() => {
-          const value = String(process.env.OTP_RATE_LIMIT_WINDOW_MS).replace(/_/g, '');
-          return new Function(`return ${value}`)();
-        })() : 60 * 1000, // Default to 1 minute
-      max: process.env.OTP_RATE_LIMIT_MAX ? 
-        parseInt(process.env.OTP_RATE_LIMIT_MAX, 10) : 3,
+      windowMs: process.env.OTP_RATE_LIMIT_WINDOW_MS
+        ? (() => {
+            const value = String(process.env.OTP_RATE_LIMIT_WINDOW_MS).replace(/_/g, '');
+            return new Function(`return ${value}`)();
+          })()
+        : 60 * 1000, // Default to 1 minute
+      max: process.env.OTP_RATE_LIMIT_MAX ? parseInt(process.env.OTP_RATE_LIMIT_MAX, 10) : 3,
     },
     login: {
-      windowMs: process.env.LOGIN_RATE_LIMIT_WINDOW_MS ? 
-        (() => {
-          const value = String(process.env.LOGIN_RATE_LIMIT_WINDOW_MS).replace(/_/g, '');
-          return new Function(`return ${value}`)();
-        })() : 10 * 60 * 1000, // Default to 10 minutes
-      max: process.env.LOGIN_RATE_LIMIT_MAX ? 
-        parseInt(process.env.LOGIN_RATE_LIMIT_MAX, 10) : 10,
+      windowMs: process.env.LOGIN_RATE_LIMIT_WINDOW_MS
+        ? (() => {
+            const value = String(process.env.LOGIN_RATE_LIMIT_WINDOW_MS).replace(/_/g, '');
+            return new Function(`return ${value}`)();
+          })()
+        : 10 * 60 * 1000, // Default to 10 minutes
+      max: process.env.LOGIN_RATE_LIMIT_MAX ? parseInt(process.env.LOGIN_RATE_LIMIT_MAX, 10) : 10,
     },
     forgotPassword: {
-      windowMs: process.env.FORGOTPASSWORD_RATE_LIMIT_WINDOW_MS ? 
-        (() => {
-          const value = String(process.env.FORGOTPASSWORD_RATE_LIMIT_WINDOW_MS).replace(/_/g, '');
-          return new Function(`return ${value}`)();
-        })() : 5 * 60 * 1000, // Default to 5 minutes
-      max: process.env.FORGOTPASSWORD_RATE_LIMIT_MAX ? 
-        parseInt(process.env.FORGOTPASSWORD_RATE_LIMIT_MAX, 10) : 5,
+      windowMs: process.env.FORGOTPASSWORD_RATE_LIMIT_WINDOW_MS
+        ? (() => {
+            const value = String(process.env.FORGOTPASSWORD_RATE_LIMIT_WINDOW_MS).replace(/_/g, '');
+            return new Function(`return ${value}`)();
+          })()
+        : 5 * 60 * 1000, // Default to 5 minutes
+      max: process.env.FORGOTPASSWORD_RATE_LIMIT_MAX
+        ? parseInt(process.env.FORGOTPASSWORD_RATE_LIMIT_MAX, 10)
+        : 5,
     },
     bid: {
-      windowMs: process.env.BID_RATE_LIMIT_WINDOW_MS ? 
-        (() => {
-          const value = String(process.env.BID_RATE_LIMIT_WINDOW_MS).replace(/_/g, '');
-          return new Function(`return ${value}`)();
-        })() : 60 * 1000, // Default to 1 minute
-      max: process.env.BID_RATE_LIMIT_MAX ? 
-        parseInt(process.env.BID_RATE_LIMIT_MAX, 10) : 10,
+      windowMs: process.env.BID_RATE_LIMIT_WINDOW_MS
+        ? (() => {
+            const value = String(process.env.BID_RATE_LIMIT_WINDOW_MS).replace(/_/g, '');
+            return new Function(`return ${value}`)();
+          })()
+        : 60 * 1000, // Default to 1 minute
+      max: process.env.BID_RATE_LIMIT_MAX ? parseInt(process.env.BID_RATE_LIMIT_MAX, 10) : 10,
     },
   },
 

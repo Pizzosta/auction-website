@@ -16,21 +16,20 @@ export async function getRedisClient() {
         host: env.redis?.host || '127.0.0.1',
         port: env.redis?.port || 6379,
         tls: env.redis?.tls || false,
-        reconnectStrategy: (retries) => {
+        reconnectStrategy: retries =>
           // Exponential backoff with max delay
-          return Math.min(retries * 100, 3000);
-        }
+          Math.min(retries * 100, 3000),
       },
       password: env.redis?.password || undefined,
       // Add prefix to all keys
-      legacyMode: false // Use new Redis commands
+      legacyMode: false, // Use new Redis commands
     });
 
     // Event handlers
     redisClient.on('connect', () => {
       logger.info('Redis client connecting', {
         host: env.redis?.host,
-        port: env.redis?.port
+        port: env.redis?.port,
       });
     });
 
@@ -38,12 +37,12 @@ export async function getRedisClient() {
       logger.info('Redis client ready', {
         host: env.redis?.host,
         port: env.redis?.port,
-        auth: Boolean(env.redis?.password) ? 'enabled' : 'disabled',
-        tls: Boolean(env.redis?.tls) ? 'enabled' : 'disabled',
+        auth: env.redis?.password ? 'enabled' : 'disabled',
+        tls: env.redis?.tls ? 'enabled' : 'disabled',
       });
     });
 
-    redisClient.on('error', (err) => {
+    redisClient.on('error', err => {
       logger.error('Redis client error', { error: err.message });
     });
 
@@ -57,9 +56,8 @@ export async function getRedisClient() {
 
     // Connect to Redis
     await redisClient.connect();
-    
-    return redisClient;
 
+    return redisClient;
   } catch (error) {
     logger.error('Failed to create Redis client', { error: error.message });
     throw error;
@@ -72,9 +70,9 @@ export async function executeRedisCommand(command, ...args) {
     const client = await getRedisClient();
     return await client[command](...args);
   } catch (error) {
-    logger.error(`Redis command ${command} failed`, { 
+    logger.error(`Redis command ${command} failed`, {
       error: error.message,
-      args 
+      args,
     });
     throw error;
   }

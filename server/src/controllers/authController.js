@@ -138,11 +138,9 @@ export const register = async (req, res) => {
     }
 
     // Generate JWT token
-    const token = jwt.sign(
-      { userId: user.id, email: user.email, role: user.role },
-      env.jwtSecret,
-      { expiresIn: env.jwtExpire }
-    );
+    const token = jwt.sign({ userId: user.id, email: user.email, role: user.role }, env.jwtSecret, {
+      expiresIn: env.jwtExpire,
+    });
 
     res.status(201).json({
       status: 'success',
@@ -252,8 +250,8 @@ export const forgotPassword = async (req, res) => {
     }
 
     // Generate reset token and save hashed version to database
-    const rawToken = crypto.randomBytes(32).toString('hex');
-    const hashed = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const hashed = crypto.createHash('sha256').update(resetToken).digest('hex');
 
     // compute expire (default 10 minutes if not configured)
     const parseExpiry = val => {
@@ -282,14 +280,14 @@ export const forgotPassword = async (req, res) => {
 
     // Send email
     try {
-      const rawExpire = env.resetTokenExpire;
-      const expireInMinutes = rawExpire.endsWith('m')
-        ? `${rawExpire.replace('m', '')} minutes`
-        : rawExpire;
+      const rawExpire = env.resetTokenExpire || '10m';
+      const expireInMinutes = String(rawExpire).endsWith('m')
+        ? `${String(rawExpire).replace('m', '')} minutes`
+        : String(rawExpire);
 
       await addToQueue('resetPassword', user.email, {
         name: user.firstname,
-        resetUrl,
+        resetUrl: resetUrl,
         expiresIn: expireInMinutes,
       });
 
@@ -317,7 +315,7 @@ export const forgotPassword = async (req, res) => {
     logger.error('Forgot password error:', {
       error: error.message,
       stack: error.stack,
-      userEmail: email,
+      userEmail: req.body?.email,
     });
     return res.status(500).json({
       status: 'error',
