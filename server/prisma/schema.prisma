@@ -74,6 +74,8 @@ model Bid {
   amount      Decimal   @db.Decimal(12, 2)
   auctionId   String
   bidderId    String
+  isOutbid   Boolean   @default(false)
+  outbidAt   DateTime?
   deletedAt   DateTime?
   deletedById String?
   isDeleted   Boolean   @default(false)
@@ -89,4 +91,5 @@ enum AuctionStatus {
   upcoming
   ended
   sold
+  cancelled
 }

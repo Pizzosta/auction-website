@@ -1,12 +1,13 @@
 import express from 'express';
 import {
   createAuction,
+  getPublicAuctions,
   getAuctions,
   getAuctionById,
   updateAuction,
   deleteAuction,
 } from '../controllers/auctionController.js';
-import { protect } from '../middleware/authMiddleware.js';
+import { protect, admin } from '../middleware/authMiddleware.js';
 import { validate } from '../middleware/validationMiddleware.js';
 import { auctionSchema, idSchema, auctionQuerySchema } from '../utils/validators.js';
 import { uploadAuctionImagesMiddleware } from '../middleware/uploadMiddleware.js';
@@ -20,7 +21,16 @@ const router = express.Router();
  * @returns {object} 200 - List of auctions
  * @returns {Error}  default - Unexpected error
  */
-router.get('/', validate(auctionQuerySchema, 'query'), getAuctions);
+router.get('/', validate(auctionQuerySchema, 'query'), getPublicAuctions);
+
+/**
+ * @route GET /api/auctions/admin
+ * @group Auctions - auction management
+ * @description Retrieve a list of all auctions with optional filters. Requires authentication and admin role.
+ * @returns {object} 200 - List of auctions
+ * @returns {Error}  default - Unexpected error
+ */
+router.get('/admin', protect, admin, validate(auctionQuerySchema, 'query'), getAuctions);
 
 /**
  * @route POST /api/auctions

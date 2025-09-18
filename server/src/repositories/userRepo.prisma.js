@@ -9,7 +9,7 @@ export async function listUsersPrisma({
   page = 1,
   limit = 10,
   sort = 'createdAt:desc',
-  status = 'active',
+  status,
 }) {
   const pageNum = Math.max(1, parseInt(page));
   const take = Math.min(Math.max(1, parseInt(limit)), 100);
@@ -18,13 +18,19 @@ export async function listUsersPrisma({
   // Build where filter
   const where = {};
 
-  // status mapping
-  if (status === 'active' || !status) {
-    where.isDeleted = { not: true };
-  } else if (status === 'deleted') {
-    where.isDeleted = true;
-  } else if (status === 'all') {
-    // no filter
+  // Handle status filter (case-insensitive via normalization)
+  if (status) {
+    const normalizedStatus = status.toLowerCase();
+    if (normalizedStatus === 'active') {
+      where.isDeleted = { not: true };
+    } else if (normalizedStatus === 'deleted') {
+      where.isDeleted = true;
+    } else if (normalizedStatus === 'all') {
+      // no filter
+    } else {
+      // fallback for unknown status strings
+      where.status = normalizedStatus;
+    }
   }
 
   if (role) where.role = role;

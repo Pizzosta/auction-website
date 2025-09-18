@@ -15,7 +15,6 @@ export async function listAuctionsPrisma({
   page = 1,
   limit = 10,
   sort = 'createdAt:desc',
-  showDeleted = false,
 }) {
   const pageNum = Math.max(1, parseInt(page));
   const take = Math.min(Math.max(1, parseInt(limit)), 100);
@@ -24,42 +23,47 @@ export async function listAuctionsPrisma({
   // Build where filter
   const where = {};
 
-  // Handle status filter
+  // Handle status filter (case-insensitive via normalization)
   if (status) {
-    if (status === 'active') {
+    const normalizedStatus = status.toLowerCase();
+
+    if (normalizedStatus === 'active') {
       where.AND = [
         { status: 'active' },
         { endDate: { gt: new Date() } },
       ];
-    } else if (status === 'upcoming') {
+    } else if (normalizedStatus === 'upcoming') {
       where.AND = [
         { status: 'upcoming' },
         { startDate: { gt: new Date() } },
       ];
-    } else if (status === 'ended') {
+    } else if (normalizedStatus === 'ended') {
       where.OR = [
         { status: 'ended' },
-        { 
+        {
           AND: [
             { status: 'active' },
             { endDate: { lte: new Date() } },
           ],
         },
       ];
-    } else if (status === 'sold') {
+    } else if (normalizedStatus === 'sold') {
       where.status = 'sold';
+    } else if (normalizedStatus === 'cancelled') {
+      where.AND = [
+        { status: 'cancelled' },
+        { isDeleted: true },
+      ];
+    } else if (normalizedStatus === 'all') {
+      // no filter (include everything)
     } else {
-      where.status = status;
+      // fallback for unknown status strings
+      where.status = normalizedStatus;
     }
   }
 
-  // Handle deleted items
-  if (!showDeleted) {
-    where.isDeleted = false;
-  }
-
   // Other filters
-  if (category) where.category = category;
+  if (category) where.category = { equals: category, mode: 'insensitive' };
   if (seller) where.sellerId = seller;
   if (winner) where.winnerId = winner;
   if (minPrice) where.currentPrice = { gte: parseFloat(minPrice) };
@@ -85,7 +89,7 @@ export async function listAuctionsPrisma({
   let [field, order] = String(sort).split(':');
   if (!field) field = 'createdAt';
   const allowedSortFields = new Set([
-    'title', 'description', 'startingPrice', 'currentPrice', 
+    'title', 'description', 'startingPrice', 'currentPrice',
     'startDate', 'endDate', 'createdAt', 'bidCount'
   ]);
   if (!allowedSortFields.has(field)) field = 'createdAt';

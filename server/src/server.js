@@ -57,15 +57,6 @@ import adminRoutes from './routes/adminRoutes.js';
 import webhookRoutes from './routes/webhookRoutes.js';
 
 const app = express();
-const server = http.createServer(app);
-// Serve API documentation
-app.use('/api-docs', apiDocsRouter);
-const io = new SocketIO(server, {
-  cors: {
-    origin: env.clientUrl || 'http://localhost:5173',
-    methods: ['GET', 'POST'],
-  },
-});
 
 // Configure trust proxy for production
 if (env.isProd) {
@@ -78,6 +69,9 @@ if (env.isProd) {
 
 // Apply security middleware (includes cookie parsing, CORS, etc.)
 app.use(securityMiddleware);
+
+// Serve API documentation
+app.use('/api-docs', apiDocsRouter);
 
 // Enhanced API request/response logging
 app.use(apiLogger);
@@ -117,6 +111,44 @@ app.use('/api/users', userRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/v1/webhook', webhookRoutes);
 
+// Create HTTP server
+const server = http.createServer(app);
+
+// Initialize Socket.IO
+const io = new SocketIO(server, {
+  cors: {
+    origin: env.clientUrl || 'http://localhost:5173',
+    methods: ['GET', 'POST'],
+    credentials: true
+  }
+});
+
+// Socket.IO middleware
+const wrap = middleware => (socket, next) => middleware(socket.request, {}, next);
+
+io.use(wrap(express.json()));
+io.use(wrap(express.urlencoded({ extended: true })));
+
+// Socket.IO connection handler
+io.on('connection', socket => {
+  logger.info('New client connected');
+
+  // Join auction room
+  socket.on('joinAuction', auctionId => {
+    if (auctionId) {
+    socket.join(auctionId);
+      logger.info(`Client joined auction room: ${auctionId}`);
+    }
+  });
+
+  socket.on('disconnect', () => {
+    logger.info('Client disconnected');
+  });
+});
+
+// Make io available in app locals
+app.set('io', io);
+
 // Serve static assets in production
 if (env.isProd) {
   // Set static folder
@@ -126,34 +158,6 @@ if (env.isProd) {
     res.sendFile(join(__dirname, '../../client/build', 'index.html'));
   });
 }
-
-// Socket.io for real-time bidding
-const wrap = middleware => (socket, next) => middleware(socket.request, {}, next);
-
-io.use(wrap(express.json()));
-io.use(wrap(express.urlencoded({ extended: true })));
-
-io.on('connection', socket => {
-  logger.info('New client connected');
-
-  // Join auction room
-  socket.on('joinAuction', auctionId => {
-    socket.join(auctionId);
-    logger.info(`User joined auction: ${auctionId}`);
-  });
-
-  // Handle new bid
-  socket.on('placeBid', data => {
-    io.to(data.auctionId).emit('newBid', data);
-  });
-
-  socket.on('disconnect', () => {
-    logger.info('Client disconnected');
-  });
-});
-
-// Store io instance in app for use in controllers
-app.set('io', io);
 
 // 404 handler
 app.use((req, res, next) => {

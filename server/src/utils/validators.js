@@ -14,7 +14,7 @@ export const userQuerySchema = Joi.object({
     .optional(),
   search: Joi.string().optional(),
   role: Joi.string().valid('user', 'admin').optional(),
-  status: Joi.string().valid('active', 'deleted', 'all').default('active'),
+  status: Joi.string().valid('active', 'deleted', 'all').default('active').lowercase() ,
 });
 
 // Auction query schema validation
@@ -27,7 +27,7 @@ export const auctionQuerySchema = Joi.object({
     )
     .default('createdAt:desc')
     .optional(),
-  status: Joi.string().valid('upcoming', 'active', 'ended', 'sold', 'cancelled').optional(),
+  status: Joi.string().valid('upcoming', 'active', 'ended', 'sold', 'cancelled', 'all').lowercase().optional(),
   showDeleted: Joi.boolean().default(false).optional(),
   category: Joi.string().optional(),
   search: Joi.string().optional(),
@@ -57,7 +57,13 @@ export const bidQuerySchema = Joi.object({
     .pattern(/^(amount|createdAt):(asc|desc)$/)
     .default('createdAt:desc')
     .optional(),
-  status: Joi.string().valid('active', 'won', 'lost', 'outbid').optional(),
+  status: Joi.string().valid('active', 'won', 'lost', 'outbid', 'cancelled', 'all').lowercase().optional(),
+  auctionId: Joi.string().uuid({ version: 'uuidv4' }).optional(),
+  bidderId: Joi.string().uuid({ version: 'uuidv4' }).optional(),
+  minAmount: Joi.number().min(0).optional(),
+  maxAmount: Joi.number().min(0).optional(),
+  startDate: Joi.date().iso().optional(),
+  endDate: Joi.date().iso().optional(),
   showDeleted: Joi.boolean().default(false).optional().messages({
     'boolean.base': 'showDeleted must be a boolean',
   }),
@@ -67,6 +73,7 @@ export const bidQuerySchema = Joi.object({
 export const idSchema = Joi.object({
   id: Joi.string().uuid({ version: 'uuidv4' }).required().messages({
     'string.uuid': 'Invalid UUID format',
+    'string.length': 'ID must be 36 characters long',
     'any.required': 'ID is required',
   }),
 });
@@ -74,9 +81,27 @@ export const idSchema = Joi.object({
 // Token schema validation
 export const tokenSchema = Joi.object({
   token: Joi.string().length(64).hex().required().messages({
-    'string.length': 'Invalid token format',
+    'string.length': 'ID must be 64 characters long',
     'string.hex': 'Invalid token format',
     'string.empty': 'Reset token is required',
+  }),
+});
+
+// Auction ID schema validation
+export const auctionIdSchema = Joi.object({
+  auctionId: Joi.string().uuid({ version: 'uuidv4' }).required().messages({
+    'string.uuid': 'Invalid UUID format',
+    'string.length': 'ID must be 36 characters long',
+    'any.required': 'Auction ID is required',
+  }),
+});
+
+// Bid ID schema validation
+export const bidIdSchema = Joi.object({
+  bidId: Joi.string().uuid({ version: 'uuidv4' }).required().messages({
+    'string.uuid': 'Invalid UUID format',
+    'string.length': 'ID must be 36 characters long',
+    'any.required': 'Bid ID is required',
   }),
 });
 
@@ -274,15 +299,20 @@ export const auctionSchema = {
 export const bidSchema = {
   create: Joi.object({
     amount: Joi.number().min(0.01).required(),
-    auctionId: Joi.string().hex().length(24).required().messages({
-      'string.hex': 'Invalid auction ID format',
-      'string.length': 'Auction ID must be 24 characters long',
-      'any.required': 'Auction ID is required',
+    auctionId: Joi.string().uuid({ version: 'uuidv4' }).required().messages({
+      'string.uuid': 'Invalid UUID format',
+      'string.length': 'ID must be 36 characters long',
+      'any.required': 'ID is required',
     }),
   }),
   delete: Joi.object({
     permanent: Joi.boolean().default(false).messages({
       'boolean.base': 'permanent must be a boolean',
+    }),
+    bidId: Joi.string().uuid({ version: 'uuidv4' }).required().messages({
+      'string.uuid': 'Invalid UUID format',
+      'string.length': 'ID must be 36 characters long',
+      'any.required': 'ID is required',
     }),
   }).messages({
     'object.unknown': 'Unknown parameters provided',

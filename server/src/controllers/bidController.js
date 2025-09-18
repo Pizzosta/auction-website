@@ -1,8 +1,9 @@
+import { Prisma } from '@prisma/client';
 import prisma from '../config/prisma.js';
 import logger from '../utils/logger.js';
 import { acquireLock } from '../utils/lock.js';
 import { executeRedisCommand } from '../config/redis.js';
-import { listBidsPrisma, listBidsByAuctionPrisma } from '../repositories/bidRepo.prisma.js';
+import { listBidsPrisma, listBidsByAuctionPrisma, listAllBidsPrisma } from '../repositories/bidRepo.prisma.js';
 
 // @desc    Delete a bid (with support for soft and permanent delete)
 // @route   DELETE /api/bids/:bidId
@@ -204,7 +205,7 @@ export const placeBid = async (req, res) => {
         // Create new bid
         const bid = await tx.bid.create({
           data: {
-            amount: new prisma.Prisma.Decimal(amount),
+            amount: new Prisma.Decimal(amount),
             auctionId: auction.id,
             bidderId: actorId,
           },
@@ -221,22 +222,27 @@ export const placeBid = async (req, res) => {
         }
         await tx.auction.update({
           where: { id: auction.id },
-          data: { currentPrice: new prisma.Prisma.Decimal(amount), endDate: newEndDate },
+          data: { currentPrice: new Prisma.Decimal(amount), endDate: newEndDate },
         });
 
         return bid;
       });
 
+      // Get io instance from app settings
+      const io = req.app.get('io');
+
       // Emit socket event for real-time updates
-      req.io.to(auctionId).emit('newBid', {
-        auctionId,
-        amount,
-        bidder: {
-          id: req.user?.id?.toString(),
-          username: req.user.username,
-        },
-        createdAt: result.createdAt,
-      });
+      if (io) {
+        io.to(auctionId).emit('newBid', {
+          auctionId,
+          amount,
+          bidder: {
+            id: req.user?.id?.toString(),
+            username: req.user.username,
+          },
+          createdAt: result.createdAt,
+        });
+      }
 
       res.status(201).json(result);
     } finally {
@@ -294,70 +300,70 @@ export const placeBid = async (req, res) => {
 // @route   GET /api/bids/auction/:auctionId
 // @access  Public
 export const getBidsByAuction = async (req, res) => {
-try {
-  const { auctionId } = req.params;
-  const { 
-    page = 1, 
-    limit = 10, 
-    sort = 'amount:desc',
-    showDeleted = false,
-  } = req.query;
+  try {
+    const { auctionId } = req.params;
+    const {
+      page = 1,
+      limit = 10,
+      sort = 'amount:desc',
+      showDeleted = false,
+    } = req.query;
 
-  // Check if auction exists
-  const auctionExists = await prisma.auction.findUnique({ 
-    where: { id: auctionId }, 
-    select: { id: true } 
-  });
-  
-  if (!auctionExists) {
-    return res.status(404).json({
+    // Check if auction exists
+    const auctionExists = await prisma.auction.findUnique({
+      where: { id: auctionId },
+      select: { id: true }
+    });
+
+    if (!auctionExists) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Auction not found',
+      });
+    }
+
+    // Check if user has permission to see deleted bids
+    if (showDeleted === 'true' && (!req.user || req.user.role !== 'admin')) {
+      return res.status(403).json({
+        status: 'error',
+        message: 'Not authorized to view deleted bids',
+      });
+    }
+
+    // Use the repository to get paginated and filtered bids
+    const { bids, count, pageNum, take } = await listBidsByAuctionPrisma({
+      auctionId,
+      showDeleted: showDeleted === 'true',
+      page: parseInt(page),
+      limit: parseInt(limit),
+      sort,
+    });
+
+    const totalPages = Math.ceil(count / take);
+    const hasNext = pageNum < totalPages;
+    const hasPrev = pageNum > 1;
+
+    res.status(200).json({
+      status: 'success',
+      results: bids.length,
+      pagination: {
+        currentPage: pageNum,
+        total: count,
+        totalPages,
+        hasNext,
+        hasPrev,
+      },
+      data: {
+        bids,
+      },
+    });
+  } catch (error) {
+    logger.error('Get bids by auction error:', { error: error.message, stack: error.stack });
+    res.status(500).json({
       status: 'error',
-      message: 'Auction not found',
+      message: 'Failed to fetch bids',
     });
   }
-
-  // Check if user has permission to see deleted bids
-  if (showDeleted === 'true' && (!req.user || req.user.role !== 'admin')) {
-    return res.status(403).json({
-      status: 'error',
-      message: 'Not authorized to view deleted bids',
-    });
-  }
-
-  // Use the repository to get paginated and filtered bids
-  const { bids, count, pageNum, take } = await listBidsByAuctionPrisma({
-    auctionId,
-    showDeleted: showDeleted === 'true',
-    page: parseInt(page),
-    limit: parseInt(limit),
-    sort,
-  });
-
-  const totalPages = Math.ceil(count / take);
-  const hasNext = pageNum < totalPages;
-  const hasPrev = pageNum > 1;
-
-  res.status(200).json({
-    status: 'success',
-    results: bids.length,
-    pagination: {
-      currentPage: pageNum,
-      total: count,
-      totalPages,
-      hasNext,
-      hasPrev,
-    },
-    data: {
-      bids,
-    },
-  });
-} catch (error) {
-  logger.error('Get bids by auction error:', { error: error.message, stack: error.stack });
-  res.status(500).json({
-    status: 'error',
-    message: 'Failed to fetch bids',
-  });
-}
 };
 
 // @desc    Get my bids
@@ -365,10 +371,10 @@ try {
 // @access  Private
 export const getMyBids = async (req, res) => {
   try {
-    const { 
-      status, 
-      page = 1, 
-      limit = 10, 
+    const {
+      status,
+      page = 1,
+      limit = 10,
       sort = 'createdAt:desc',
       showDeleted = false,
     } = req.query;
@@ -429,5 +435,67 @@ export const getMyBids = async (req, res) => {
   } catch (error) {
     logger.error('Get my bids error:', { error: error.message, stack: error.stack });
     res.status(500).json({ message: 'Server error' });
+  }
+};
+
+/**
+ * @desc    Get all bids with optional filtering
+ * @route   GET /api/bids
+ * @access  Admin
+ */
+export const getAllBids = async (req, res) => {
+  try {
+    const {
+      page = 1,
+      limit = 10,
+      sort = 'createdAt:desc',
+      status,
+      auctionId,
+      bidderId,
+      minAmount,
+      maxAmount,
+      startDate,
+      endDate
+    } = req.query;
+
+    // Use the repository to get paginated and filtered bids
+    const { bids, count } = await listAllBidsPrisma({
+      page: parseInt(page),
+      limit: parseInt(limit),
+      sort,
+      status,
+      auctionId,
+      bidderId,
+      minAmount: minAmount ? parseFloat(minAmount) : undefined,
+      maxAmount: maxAmount ? parseFloat(maxAmount) : undefined,
+      startDate,
+      endDate
+    });
+
+    const totalPages = Math.ceil(count / limit);
+    const hasNext = page < totalPages;
+    const hasPrev = page > 1;
+
+    res.status(200).json({
+      status: 'success',
+      results: bids.length,
+      pagination: {
+        currentPage: parseInt(page),
+        total: count,
+        totalPages,
+        hasNext,
+        hasPrev,
+      },
+      data: {
+        bids,
+      },
+    });
+  } catch (error) {
+    logger.error('Get all bids error:', { error: error.message, stack: error.stack });
+    res.status(500).json({
+      status: 'error',
+      message: 'Failed to fetch bids',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
   }
 };

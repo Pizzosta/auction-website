@@ -3,11 +3,12 @@ import {
   placeBid,
   getBidsByAuction,
   getMyBids,
+  getAllBids,
   deleteBid,
   restoreBid,
 } from '../controllers/bidController.js';
-import { protect } from '../middleware/authMiddleware.js';
-import { bidSchema, idSchema, bidQuerySchema } from '../utils/validators.js';
+import { protect, admin } from '../middleware/authMiddleware.js';
+import { bidSchema, bidIdSchema, auctionIdSchema, bidQuerySchema } from '../utils/validators.js';
 import { validate } from '../middleware/validationMiddleware.js';
 import { bidLimiter } from '../middleware/security.js';
 
@@ -33,7 +34,8 @@ router.post('/', protect, bidLimiter, validate(bidSchema.create, 'body'), placeB
  */
 router.get(
   '/auction/:auctionId',
-  [validate(idSchema, 'params', { key: 'auctionId' }), validate(bidQuerySchema, 'query')],
+  validate(auctionIdSchema, 'params', { key: 'auctionId' }),
+  validate(bidQuerySchema, 'query'),
   getBidsByAuction
 );
 
@@ -60,7 +62,7 @@ router.get('/me', protect, validate(bidQuerySchema, 'query'), getMyBids);
 router.delete(
   '/:bidId',
   protect,
-  validate(idSchema, 'params', { key: 'bidId' }),
+  validate(bidIdSchema, 'params', { key: 'bidId' }),
   validate(bidSchema.delete, 'query'),
   deleteBid
 );
@@ -75,6 +77,31 @@ router.delete(
  * @returns {Error} 404 - Bid not found or not deleted
  * @returns {Error} default - Unexpected error
  */
-router.post('/:bidId/restore', protect, validate(idSchema, 'params', { key: 'bidId' }), restoreBid);
+router.post('/:bidId/restore', protect, validate(bidIdSchema, 'params', { key: 'bidId' }), restoreBid);
+
+/**
+ * @route GET /api/bids
+ * @group Bids - bid management
+ * @description Get all bids with filtering and pagination (Admin only)
+ * @param {string} status.query.optional - Filter by status (active, won, lost, outbid)
+ * @param {string} auctionId.query.optional - Filter by auction ID
+ * @param {string} bidderId.query.optional - Filter by bidder ID
+ * @param {number} minAmount.query.optional - Minimum bid amount
+ * @param {number} maxAmount.query.optional - Maximum bid amount
+ * @param {string} startDate.query.optional - Filter bids after this date (ISO format)
+ * @param {string} endDate.query.optional - Filter bids before this date (ISO format)
+ * @param {number} page.query - Page number (default: 1)
+ * @param {number} limit.query - Items per page (default: 10, max: 100)
+ * @param {string} sort.query - Sort field and direction (format: field:asc or field:desc)
+ * @returns {object} 200 - Paginated list of bids
+ * @returns {Error}  default - Unexpected error
+ */
+router.get(
+  '/',
+  protect,
+  admin,
+  validate(bidQuerySchema, 'query'),
+  getAllBids
+);
 
 export default router;

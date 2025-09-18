@@ -85,14 +85,11 @@ export const createAuction = async (req, res) => {
 };
 
 // @desc    Get all auctions
-// @route   GET /api/auctions
-// @access  Public
+// @route   GET /api/auctions/admin
+// @access  Admin
 export const getAuctions = async (req, res) => {
   try {
     const { 
-      page = 1, 
-      limit = 10, 
-      sort = 'createdAt:desc',
       status,
       category,
       search,
@@ -104,8 +101,20 @@ export const getAuctions = async (req, res) => {
       endDate,
       endingSoon,
       fields,
-      showDeleted,
+      page = 1, 
+      limit = 10, 
+      sort = 'createdAt:desc',
     } = req.query;
+
+    const role = req.user?.role || null;
+
+    // Only admins can see soft-deleted auctions
+    if ((status === 'cancelled' || status === 'all') && role !== 'admin') {
+      return res.status(403).json({
+        status: 'error',
+        message: 'Only admins can view deleted auctions',
+      });
+    }
 
     // Use the repository to get paginated and filtered auctions
     const { auctions, count, pageNum, take } = await listAuctionsPrisma({
@@ -118,11 +127,10 @@ export const getAuctions = async (req, res) => {
       maxPrice,
       startDate,
       endDate,
-      endingSoon: endingSoon === 'true',
+      endingSoon,
       page,
       limit,
       sort,
-      showDeleted: showDeleted === 'true',
     });
 
     // Field selection
@@ -159,12 +167,29 @@ export const getAuctions = async (req, res) => {
       },
     });
   } catch (error) {
-    logger.error('Error fetching auctions:', { error: error.message, stack: error.stack });
+    logger.error('Error fetching auctions:', { error: error.message, stack: error.stack, query: req.query, });
     res.status(500).json({
       status: 'error',
       message: 'Failed to fetch auctions',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
+};
+
+// @desc    Get public auctions
+// @route   GET /api/auctions
+// @access  Public
+export const getPublicAuctions = async (req, res, next) => {
+  // If user is trying to access admin-only statuses without being an admin
+  if (['cancelled', 'all'].includes(req.query.status)) {
+    return res.status(401).json({
+      status: 'error',
+      message: 'Authentication required to view these auctions'
+    });
+  }
+  
+  // If no restricted status is being accessed, continue with normal auction fetching
+  return getAuctions(req, res, next);
 };
 
 // @desc    Get single auction
@@ -306,15 +331,16 @@ export const updateAuction = async (req, res) => {
 // @route   DELETE /api/auctions/:id
 // @access  Private/Owner or Admin
 export const deleteAuction = async (req, res) => {
+  const auctionId = req.params.id;
+  const actorId = req.user?.id?.toString();
+  // Check both query params and body for the permanent flag
+  //const permanent = req.query.permanent === 'false'; // || req.body.permanent === 'false'
+  const { permanent = false } = req.query;
+  
   try {
-    const { permanent = false } = req.body;
-    const auctionId = req.params.id;
-
     // Find the auction
     const auction = await prisma.auction.findUnique({ where: { id: auctionId } });
     if (!auction) {
-      //await session.abortTransaction();
-      //session.endSession();
       return res.status(404).json({
         success: false,
         message: 'Auction not found',
@@ -322,10 +348,7 @@ export const deleteAuction = async (req, res) => {
     }
 
     // Check if user is the owner or admin
-    const actorId = req.user?.id?.toString();
     if (auction.sellerId.toString() !== actorId && req.user.role !== 'admin') {
-      //await session.abortTransaction();
-      //session.endSession();
       return res.status(403).json({
         success: false,
         message: 'Not authorized to delete this auction',
@@ -384,18 +407,12 @@ export const deleteAuction = async (req, res) => {
       });
     }
 
-    // await session.commitTransaction();
-    // session.endSession();
-
     res.status(200).json({
       success: true,
       message: 'Auction and all associated bids have been deleted',
       data: { id: auctionId },
     });
   } catch (error) {
-    // await session.abortTransaction();
-    // session.endSession();
-
     logger.error('Delete auction error:', {
       error: error.message,
       stack: error.stack,
