@@ -1,0 +1,90 @@
+{{!-- src/templates/emails/outBid.hbs --}}
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>{{subject}}</title>
+  <style>
+    body {
+      font-family: 'Arial', sans-serif;
+      line-height: 1.6;
+      color: #333;
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .header {
+      text-align: center;
+      padding: 20px 0;
+      border-bottom: 2px solid #f0f0f0;
+      margin-bottom: 30px;
+    }
+    .logo {
+      max-width: 150px;
+      margin-bottom: 20px;
+    }
+    .content {
+      padding: 0 20px;
+    }
+    .button {
+      display: inline-block;
+      background-color: #4CAF50;
+      color: white !important;
+      padding: 12px 25px;
+      text-decoration: none;
+      border-radius: 4px;
+      font-weight: bold;
+      margin: 20px 0;
+    }
+    .footer {
+      margin-top: 40px;
+      padding-top: 20px;
+      border-top: 1px solid #f0f0f0;
+      font-size: 12px;
+      color: #777;
+      text-align: center;
+    }
+    .bid-amount {
+      font-size: 24px;
+      font-weight: bold;
+      color: #e74c3c;
+      margin: 15px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <!--<img src="{{logoUrl}}" alt="Auction Website Logo" class="logo">-->
+    <h1>You've Been Outbid!</h1>
+  </div>
+
+  <div class="content">
+    <p>Hello {{name}},</p>
+    
+    <p>We wanted to let you know that your bid on <strong>{{auctionTitle}}</strong> has been outbid.</p>
+    
+    <div class="bid-amount">New Highest Bid: {{newBidAmount}}</div>
+    
+    <p>Don't worry, you can still place a higher bid to stay in the running!</p>
+    
+    <div style="text-align: center;">
+      <a href="{{auctionUrl}}" class="button">Place New Bid</a>
+    </div>
+    
+    <p>This auction is still active, so you still have a chance to win. The auction will end on {{auctionEndDate}}.</p>
+    
+    <p>Good luck with your bidding!</p>
+    
+    <p>Best regards,<br>The {{appName}} Team</p>
+  </div>
+
+  <div class="footer">
+    <p>You received this email because you placed a bid on {{appName}}. If you believe this was sent in error, please contact our support team.</p>
+    <p>&copy; {{year}} {{appName}}. All rights reserved.</p>
+    <p>
+      <a href="{{appUrl}}/unsubscribe" style="color: #777; text-decoration: underline;">Unsubscribe</a> | 
+      <a href="{{appUrl}}/privacy" style="color: #777; text-decoration: underline;">Privacy Policy</a>
+    </p>
+  </div>
+</body>
+</html>

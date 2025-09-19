@@ -1,6 +1,6 @@
 import prisma from '../config/prisma.js';
-import { sendEmail } from './emailService.js';
-import logger from './logger.js';
+import { addToQueue } from '../services/emailQueue.js';
+import logger from '../utils/logger.js';
 
 /**
  * Check and close expired auctions
@@ -32,46 +32,31 @@ export const closeExpiredAuctions = async () => {
           });
 
           // Send notification to the seller
-          await sendEmail({
-            to: auction.seller?.email,
-            subject: 'Your auction has ended',
-            template: 'auctionEndedSeller',
-            context: {
-              username: auction.seller?.username,
-              title: auction.title,
-              amount: highestBid.amount,
-              winner: highestBid.bidder?.username,
-              auctionId: auction.id,
-            },
+          await addToQueue('auctionEndedSeller', auction.seller?.email, {
+            username: auction.seller?.username,
+            title: auction.title,
+            amount: highestBid.amount,
+            winner: highestBid.bidder?.username,
+            auctionId: auction.id,
           });
 
           // Send notification to the winner
-          await sendEmail({
-            to: highestBid.bidder?.email,
-            subject: 'You won an auction!',
-            template: 'auctionWon',
-            context: {
-              username: highestBid.bidder?.username,
-              title: auction.title,
-              amount: highestBid.amount,
-              seller: auction.seller?.username,
-              auctionId: auction.id,
-            },
+          await addToQueue('auctionWon', highestBid.bidder?.email, {
+            username: highestBid.bidder?.username,
+            title: auction.title,
+            amount: highestBid.amount,
+            seller: auction.seller?.username,
+            auctionId: auction.id,
           });
         } else {
           // No bids, just mark as ended
           await prisma.auction.update({ where: { id: auction.id }, data: { status: 'ended' } });
 
           // Notify seller that auction ended with no bids
-          await sendEmail({
-            to: auction.seller?.email,
-            subject: 'Your auction has ended with no bids',
-            template: 'auctionEndedNoBids',
-            context: {
-              username: auction.seller?.username,
-              title: auction.title,
-              auctionId: auction.id,
-            },
+          await addToQueue('auctionEndedNoBids', auction.seller?.email, {
+            username: auction.seller?.username,
+            title: auction.title,
+            auctionId: auction.id,
           });
         }
       } catch (error) {
@@ -149,16 +134,11 @@ export const sendAuctionEndingReminders = async () => {
 
         // Send reminder to each bidder
         for (const { bidder } of bids) {
-          await sendEmail({
-            to: bidder?.email,
-            subject: 'Auction ending soon!',
-            template: 'auctionEndingReminder',
-            context: {
-              username: bidder?.username,
-              title: auction.title,
-              endTime: auction.endDate,
-              auctionId: auction.id,
-            },
+          await addToQueue('auctionEndingReminder', bidder?.email, {
+            username: bidder?.username,
+            title: auction.title,
+            endTime: auction.endDate,
+            auctionId: auction.id,
           });
         }
       } catch (error) {
@@ -186,40 +166,63 @@ export const sendAuctionEndingReminders = async () => {
 
 /**
  * Start auctions whose startDate has passed
- * This function should be called periodically (e.g., every minute) using a job scheduler
+ * @returns {Promise<{started: number, updated: number}>} Number of auctions started and updated
  */
 export const startScheduledAuctions = async () => {
+  let startedCount = 0;
+  let updatedCount = 0;
+
   try {
     // Find all upcoming auctions whose startDate has passed
     const auctionsToStart = await prisma.auction.findMany({
       where: { status: 'upcoming', startDate: { lte: new Date() } },
-      include: { seller: { select: { email: true, username: true } } },
+      include: { seller: { select: { id: true, email: true, firstname: true } } },
     });
 
-    for (const auction of auctionsToStart) {
-      await prisma.auction.update({ where: { id: auction.id }, data: { status: 'active' } });
-      // Optionally notify seller that auction has started
-      if (auction.seller?.email) {
-        await sendEmail({
-          to: auction.seller.email,
-          subject: 'Your auction has started',
-          template: 'auctionStarted',
-          context: {
-            username: auction.seller.username,
-            title: auction.title,
-            auctionId: auction.id,
-            startTime: auction.startDate,
-          },
-        });
-      }
+    if (auctionsToStart.length === 0) {
+      return { started: 0, updated: 0 };
     }
 
-    logger.info('Started scheduled auctions', {
-      count: auctionsToStart.length,
+    // Update all auctions in a transaction
+    const results = await prisma.$transaction(async (tx) => {
+      const updatePromises = auctionsToStart.map(async (auction) => {
+        // Update the auction status to active
+        const updatedAuction = await tx.auction.update({
+          where: { id: auction.id },
+          data: { status: 'active' },
+        });
+
+        // Send notification to the seller
+        try {
+          await addToQueue('auctionStarted', auction.seller.email, {
+            name: auction.seller.firstname,
+            auctionTitle: auction.title,
+            auctionUrl: `${process.env.FRONTEND_URL}/auctions/${auction.id}`,
+            startDate: formatDateTime(auction.startDate),
+            endDate: formatDateTime(auction.endDate),
+          });
+          updatedCount++;
+        } catch (error) {
+          logger.error('Failed to queue auction started notification:', {
+            error: error.message,
+            auctionId: auction.id,
+            userId: auction.seller.id,
+          });
+        }
+
+        return updatedAuction;
+      });
+
+      return Promise.all(updatePromises);
     });
-    return { started: auctionsToStart.length };
+
+    startedCount = results.length;
+
+    logger.info(`Started ${startedCount} auctions and sent ${updatedCount} notifications`);
+
+    return { started: startedCount, updated: updatedCount };
   } catch (error) {
-    logger.error('Error in startScheduledAuctions:', {
+    logger.error('Error starting scheduled auctions:', {
       error: error.message,
       stack: error.stack,
     });

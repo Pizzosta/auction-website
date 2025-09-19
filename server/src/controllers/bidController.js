@@ -4,6 +4,107 @@ import logger from '../utils/logger.js';
 import { acquireLock } from '../utils/lock.js';
 import { executeRedisCommand } from '../config/redis.js';
 import { listBidsPrisma, listBidsByAuctionPrisma, listAllBidsPrisma } from '../repositories/bidRepo.prisma.js';
+import { addToQueue } from '../services/emailQueue.js';
+import { formatCurrency, formatDateTime } from '../utils/format.js';
+
+const updateOutbidBids = async (req, auctionId, newBidAmount, currentBidId) => {
+  try {
+    // Find all bids that are now outbid
+    const outbidBids = await prisma.bid.findMany({
+      where: {
+        auctionId,
+        amount: { lt: newBidAmount },
+        isOutbid: false,
+        id: { not: currentBidId }
+      },
+      include: {
+        bidder: {
+          select: {
+            id: true,
+            email: true,
+            firstname: true
+          }
+        },
+        auction: {
+          select: {
+            id: true,
+            title: true,
+            endDate: true
+          }
+        }
+      }
+    });
+
+    if (outbidBids.length === 0) return;
+
+    // Get the socket instance
+    const io = req?.app?.get('io');
+
+    // Update all outbid bids in a transaction
+    await prisma.$transaction(async (prisma) => {
+      // Update all outbid bids
+      await prisma.bid.updateMany({
+        where: {
+          id: { in: outbidBids.map(bid => bid.id) }
+        },
+        data: {
+          isOutbid: true,
+          outbidAt: new Date()
+        }
+      });
+
+      // Emit real-time notifications to outbid users
+      if (io) {
+        outbidBids.forEach(bid => {
+          io.to(`user_${bid.bidder.id}`).emit('bid:outbid', {
+            auctionId,
+            bidId: bid.id,
+            newBidAmount,
+            outbidAt: new Date()
+          });
+        });
+      }
+    });
+
+    // Add outbid email to queue
+    for (const bid of outbidBids) {
+      try {
+        await addToQueue('outBid', bid.bidder.email, {
+          name: bid.bidder.firstname,
+          auctionTitle: bid.auction.title,
+          newBidAmount: formatCurrency(newBidAmount),
+          auctionUrl: `${process.env.FRONTEND_URL}/auctions/${auctionId}`,
+          auctionEndDate: formatDateTime(bid.auction.endDate),
+        });
+        logger.info('Outbid User email queued', { userEmail: bid.bidder.email });
+      } catch (error) {
+        logger.error('Failed to queue outbid user email:', {
+          error: error.message,
+          stack: error.stack,
+          userEmail: bid.bidder.email,
+        });
+        // Continue with bid even if queueing fails
+      }
+    }
+
+    /*
+    // Optionally send email notifications
+    if (process.env.NODE_ENV === 'production') {
+      outbidBids.forEach(async (bid) => {
+        await sendOutbidNotification(bid.bidderId, auctionId, newBidAmount);
+      });
+    }
+*/
+
+  } catch (error) {
+    logger.error('Error updating outbid status:', {
+      error: error.message,
+      auctionId,
+      newBidAmount
+    });
+    // Don't fail the entire request if outbid update fails
+  }
+};
 
 // @desc    Delete a bid (with support for soft and permanent delete)
 // @route   DELETE /api/bids/:bidId
@@ -225,6 +326,9 @@ export const placeBid = async (req, res) => {
           data: { currentPrice: new Prisma.Decimal(amount), endDate: newEndDate },
         });
 
+        // Update outbid status for lower bids
+        await updateOutbidBids(req, auctionId, amount, bid.id);
+
         return bid;
       });
 
@@ -233,7 +337,7 @@ export const placeBid = async (req, res) => {
 
       // Emit socket event for real-time updates
       if (io) {
-        io.to(auctionId).emit('newBid', {
+        io.to(`auction_${auctionId}`).emit('newBid', {
           auctionId,
           amount,
           bidder: {

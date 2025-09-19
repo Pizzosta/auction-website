@@ -25,13 +25,14 @@ export const createAuction = async (req, res) => {
       data: {
         title,
         description,
-        category: category || null,
+        category,
         startingPrice: new Prisma.Decimal(startingPrice),
         currentPrice: new Prisma.Decimal(startingPrice),
         startDate: new Date(startDate),
         endDate: new Date(endDate),
+        status: 'upcoming',
         bidIncrement: new Prisma.Decimal(bidIncrement),
-        images: images || [],
+        images,
         sellerId,
       },
       include: {

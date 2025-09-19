@@ -157,6 +157,10 @@ const emailTemplates = {
     subject: 'Auction Started: Your Item is Now Live!',
     template: 'auctionStarted',
   },
+  outBid: {
+    subject: 'Outbid Notification',
+    template: 'outBid',
+  },
 };
 
 export const sendTemplateEmail = async (type, to, context = {}) => {

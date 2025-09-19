@@ -1,64 +1,81 @@
+<!DOCTYPE html>
 <html>
-  <head>
-    <meta charset='UTF-8' />
-    <title>Your Auction Has Started</title>
-    <style>
-      body {
-        font-family: Arial, sans-serif;
-        background: #f7f7f7;
-        color: #333;
-        margin: 0;
-        padding: 0;
-      }
-      .container {
-        background: #fff;
-        max-width: 600px;
-        margin: 40px auto;
-        border-radius: 8px;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.07);
-        padding: 32px;
-      }
-      h2 {
-        color: #2a7ae2;
-        margin-top: 0;
-      }
-      .info {
-        background: #eaf4fe;
-        border-left: 4px solid #2a7ae2;
-        padding: 16px;
-        margin: 24px 0;
-        border-radius: 4px;
-      }
-      .button {
-        display: inline-block;
-        background: #2a7ae2;
-        color: #fff;
-        text-decoration: none;
-        padding: 12px 24px;
-        border-radius: 4px;
-        font-weight: bold;
-        margin-top: 24px;
-      }
-      .footer {
-        font-size: 13px;
-        color: #888;
-        margin-top: 32px;
-        text-align: center;
-      }
-    </style>
-  </head>
-  <body>
-    <div class='container'>
-      <h2>Hello {{username}},</h2>
-      <div class='info'>
-        <p>Your auction <strong>{{title}}</strong> has just started!</p>
-        <p><strong>Start Time:</strong> {{startTime}}</p>
-      </div>
-      <a class='button' href='{{baseUrl}}/auctions/{{auctionId}}'>View Auction</a>
-      <p>Goodluck!</p>
-      <div class='footer'>
-        <p>© {{year}} {{appName}}. All rights reserved.</p>
-      </div>
+
+<head>
+  <meta charset="utf-8">
+  <title>{{subject}}</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      line-height: 1.6;
+      color: #333;
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    .header {
+      text-align: center;
+      padding: 20px 0;
+      border-bottom: 2px solid #f0f0f0;
+      margin-bottom: 30px;
+    }
+
+    .content {
+      padding: 0 20px;
+    }
+
+    .button {
+      display: inline-block;
+      background-color: #4CAF50;
+      color: white !important;
+      padding: 12px 25px;
+      text-decoration: none;
+      border-radius: 4px;
+      font-weight: bold;
+      margin: 20px 0;
+    }
+
+    .footer {
+      margin-top: 40px;
+      padding-top: 20px;
+      border-top: 1px solid #f0f0f0;
+      font-size: 12px;
+      color: #777;
+      text-align: center;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="header">
+    <h1>Your Auction Has Started!</h1>
+  </div>
+
+  <div class="content">
+    <p>Hello {{name}},</p>
+
+    <p>Your auction "<strong>{{auctionTitle}}</strong>" is now live and accepting bids!</p>
+
+    <p><strong>Auction Details:</strong></p>
+    <ul>
+      <li><strong>Start Date:</strong> {{startDate}}</li>
+      <li><strong>End Date:</strong> {{endDate}}</li>
+    </ul>
+
+    <div style="text-align: center;">
+      <a href="{{auctionUrl}}" class="button">View Auction</a>
     </div>
-  </body>
+
+    <p>Good luck with your auction!</p>
+
+    <p>Best regards,<br>The {{appName}} Team</p>
+  </div>
+
+  <div class="footer">
+    <p>You received this email because you created an auction on {{appName}}.</p>
+    <p>&copy; {{year}} {{appName}}. All rights reserved.</p>
+  </div>
+</body>
+
 </html>

@@ -51,7 +51,7 @@ model Auction {
   bidIncrement  Decimal       @db.Decimal(12, 2)
   startDate     DateTime
   endDate       DateTime
-  status        AuctionStatus @default(active)
+  status        AuctionStatus @default(upcoming)
   category      String?
   sellerId      String
   winnerId      String?
@@ -74,8 +74,8 @@ model Bid {
   amount      Decimal   @db.Decimal(12, 2)
   auctionId   String
   bidderId    String
-  isOutbid   Boolean   @default(false)
-  outbidAt   DateTime?
+  isOutbid    Boolean   @default(false)
+  outbidAt    DateTime?
   deletedAt   DateTime?
   deletedById String?
   isDeleted   Boolean   @default(false)
