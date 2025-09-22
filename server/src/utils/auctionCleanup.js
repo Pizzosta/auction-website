@@ -1,7 +1,7 @@
 import prisma from '../config/prisma.js';
 import { addToQueue } from '../services/emailQueue.js';
 import logger from '../utils/logger.js';
-
+import { formatDateTime } from '../utils/format.js'; 
 /**
  * Check and close expired auctions
  * This function should be called periodically (e.g., every minute) using a job scheduler
@@ -27,7 +27,7 @@ export const closeExpiredAuctions = async () => {
         if (highestBid) {
           // Update auction status to 'sold' and set the winner
           await prisma.auction.update({
-            where: { id: auction.id },
+            where: { id: auction.id },  
             data: { status: 'sold', winnerId: highestBid.bidderId },
           });
 
@@ -37,7 +37,8 @@ export const closeExpiredAuctions = async () => {
             title: auction.title,
             amount: highestBid.amount,
             winner: highestBid.bidder?.username,
-            auctionId: auction.id,
+            auctionUrl: `${process.env.FRONTEND_URL}/auctions/${auction.id}`,
+            endDate: formatDateTime(auction.endDate),
           });
 
           // Send notification to the winner
@@ -46,7 +47,8 @@ export const closeExpiredAuctions = async () => {
             title: auction.title,
             amount: highestBid.amount,
             seller: auction.seller?.username,
-            auctionId: auction.id,
+            auctionUrl: `${process.env.FRONTEND_URL}/auctions/${auction.id}`,
+            endDate: formatDateTime(auction.endDate),
           });
         } else {
           // No bids, just mark as ended
@@ -56,7 +58,10 @@ export const closeExpiredAuctions = async () => {
           await addToQueue('auctionEndedNoBids', auction.seller?.email, {
             username: auction.seller?.username,
             title: auction.title,
-            auctionId: auction.id,
+            category: auction.category,
+            startingPrice: auction.startingPrice,
+            auctionUrl: `${process.env.FRONTEND_URL}/auctions/${auction.id}`,
+            endDate: formatDateTime(auction.endDate),
           });
         }
       } catch (error) {
@@ -125,20 +130,42 @@ export const sendAuctionEndingReminders = async () => {
 
     for (const auction of endingAuctions) {
       try {
-        // Get distinct bidders for this auction
-        const bids = await prisma.bid.findMany({
+        // Get distinct bidders for this auction with their max bid
+        const bids = await prisma.bid.groupBy({
+          by: ['bidderId'],
           where: { auctionId: auction.id },
-          distinct: ['bidderId'],
-          select: { bidder: { select: { email: true, username: true } } },
+          _max: {
+            amount: true,
+          },
+          _count: {
+            id: true,
+          },
         });
 
+        // Get bidder details for each unique bidder
+        const bidderDetails = await Promise.all(
+          bids.map(async (bid) => {
+            const user = await prisma.user.findUnique({
+              where: { id: bid.bidderId },
+              select: { email: true, username: true },
+            });
+            return {
+              ...user,
+              maxBid: bid._max.amount,
+            };
+          })
+        );
+
         // Send reminder to each bidder
-        for (const { bidder } of bids) {
+        for (const bidder of bidderDetails) {
           await addToQueue('auctionEndingReminder', bidder?.email, {
             username: bidder?.username,
             title: auction.title,
-            endTime: auction.endDate,
-            auctionId: auction.id,
+            timeRemaining: formatTimeRemaining(auction.endDate),
+            currentBid: auction.currentPrice,
+            maxBid: bidder.maxBid,
+            endDate: formatDateTime(auction.endDate),
+            auctionUrl: `${process.env.FRONTEND_URL}/auctions/${auction.id}`,
           });
         }
       } catch (error) {

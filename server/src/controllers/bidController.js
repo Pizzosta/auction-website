@@ -9,13 +9,25 @@ import { formatCurrency, formatDateTime } from '../utils/format.js';
 
 const updateOutbidBids = async (req, auctionId, newBidAmount, currentBidId) => {
   try {
-    // Find all bids that are now outbid
+    // Get the current bid to identify the bidder
+    const currentBid = await prisma.bid.findUnique({
+      where: { id: currentBidId },
+      select: { bidderId: true }
+    });
+
+    if (!currentBid) {
+      logger.warn('Current bid not found', { bidId: currentBidId });
+      return;
+    }
+
+    // Find all bids that are now outbid, excluding the current bid and the current bidder's other bids
     const outbidBids = await prisma.bid.findMany({
       where: {
         auctionId,
         amount: { lt: newBidAmount },
         isOutbid: false,
-        id: { not: currentBidId }
+        id: { not: currentBidId },
+        bidderId: { not: currentBid.bidderId } // Exclude the current bidder's other bids
       },
       include: {
         bidder: {
@@ -71,10 +83,10 @@ const updateOutbidBids = async (req, auctionId, newBidAmount, currentBidId) => {
       try {
         await addToQueue('outBid', bid.bidder.email, {
           name: bid.bidder.firstname,
-          auctionTitle: bid.auction.title,
+          title: bid.auction.title,
           newBidAmount: formatCurrency(newBidAmount),
           auctionUrl: `${process.env.FRONTEND_URL}/auctions/${auctionId}`,
-          auctionEndDate: formatDateTime(bid.auction.endDate),
+          endDate: formatDateTime(bid.auction.endDate),
         });
         logger.info('Outbid User email queued', { userEmail: bid.bidder.email });
       } catch (error) {

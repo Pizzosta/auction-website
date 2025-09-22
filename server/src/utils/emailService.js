@@ -48,6 +48,20 @@ const isTemporaryEmailError = err => {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Register formatDate helper
+handlebars.registerHelper('formatDate', function(dateString) {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  return date.toLocaleString('en-GH', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  });
+});
+
 // Compile email templates
 const compileTemplate = async (templateName, context) => {
   // Go up one level from src/utils to src, then to templates/emails

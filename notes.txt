@@ -49,4 +49,11 @@ Redis scan or keys which is better?
 
 config files serialize .. uinform   
 
-the 3 loggers combine into one api/http/request(Logger)
+the 3 loggers combine into one api/http/request(Logger). globalErrorHandler or AppError we have to app.use one at the server.js
+
+Redis is not logging so admin routes dont work
+
+format all the currencies
+make the emails template uniform. it should called the firstname instead of username
+
+create auction ended relisting

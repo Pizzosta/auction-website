@@ -16,7 +16,7 @@ if (missingVars.length > 0) {
 }
 
 // Only schedule jobs if not in test or development environment
-if (!env.isTest && !env.isDev) {
+if (!env.isTest && env.isDev) {
   // Run every minute to check for expired auctions
   cron.schedule('* * * * *', async () => {
     try {

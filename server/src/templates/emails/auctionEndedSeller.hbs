@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <meta charset="utf-8">
   <title>{{subject}}</title>
@@ -12,14 +13,17 @@
       margin: 0 auto;
       padding: 20px;
     }
+
     .header {
       text-align: center;
       padding: 20px 0;
       border-bottom: 1px solid #eee;
     }
+
     .content {
       padding: 20px 0;
     }
+
     .footer {
       text-align: center;
       padding: 20px 0;
@@ -27,6 +31,7 @@
       font-size: 12px;
       color: #777;
     }
+
     .button {
       display: inline-block;
       padding: 10px 20px;
@@ -36,6 +41,7 @@
       border-radius: 4px;
       margin: 15px 0;
     }
+
     .auction-details {
       background-color: #f9f9f9;
       padding: 15px;
@@ -44,38 +50,42 @@
     }
   </style>
 </head>
+
 <body>
   <div class="header">
     <h1>Your Auction Has Ended!</h1>
   </div>
-  
+
   <div class="content">
     <p>Hello {{username}},</p>
-    
+
     <p>Your auction for <strong>{{title}}</strong> has ended successfully!</p>
-    
+
     <div class="auction-details">
       <h3>Auction Details:</h3>
       <p><strong>Winning Bid:</strong> ${{amount}}</p>
       <p><strong>Winner:</strong> {{winner}}</p>
-      <p><strong>End Time:</strong> {{formatDate endTime}}</p>
+      <p><strong>End Time:</strong> {{endDate}}</p>
+
+      <a href="{{auctionUrl}}" class="button">View Auction</a>
     </div>
-    
+
     <p>Next steps:</p>
     <ol>
       <li>Contact the winner to arrange payment and shipping details</li>
       <li>Once payment is received, ship the item to the provided address</li>
       <li>Update the shipping information in your seller dashboard</li>
     </ol>
-    
+
     <p>If you have any questions or need assistance, please contact our support team.</p>
-    
+
     <p>Thank you for using {{appName}}!</p>
   </div>
-  
+
   <div class="footer">
     <p>© {{year}} {{appName}}. All rights reserved.</p>
     <p><a href="{{appUrl}}/support" style="color: #777; text-decoration: underline;">Contact Support</a></p>
   </div>
 </body>
+
 </html>
