@@ -272,7 +272,11 @@ export const updateAuction = async (req, res) => {
     const updates = {};
     if (title) updates.title = title;
     if (description) updates.description = description;
-    if (startingPrice !== undefined) updates.startingPrice = Number(startingPrice);
+    if (startingPrice !== undefined) {
+      updates.startingPrice = new Prisma.Decimal(startingPrice);
+      // Update currentPrice to match the new startingPrice if it's being updated
+      updates.currentPrice = new Prisma.Decimal(startingPrice);
+    }
     if (startDate) updates.startDate = new Date(startDate);
     if (endDate) updates.endDate = new Date(endDate);
     if (category) updates.category = category;

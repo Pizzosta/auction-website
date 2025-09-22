@@ -216,7 +216,6 @@ export const auctionSchema = {
     title: Joi.string().trim().min(3).max(50).required(),
     description: Joi.string().trim().min(3).max(500).required(),
     startingPrice: Joi.number().min(0).required(),
-    currentPrice: Joi.number().min(0),
     bidIncrement: Joi.number().min(0.01).required(),
     startDate: Joi.date().iso().greater('now').required(),
     endDate: Joi.date().iso().greater(Joi.ref('startDate')).required(),
@@ -254,15 +253,14 @@ export const auctionSchema = {
   }),
 
   update: Joi.object({
-    title: Joi.string().trim().min(3).max(50).required(),
-    description: Joi.string().trim().min(3).max(500).required(),
-    startingPrice: Joi.number().min(0).required(),
-    currentPrice: Joi.number().min(0),
-    bidIncrement: Joi.number().min(0.01).required(),
-    startDate: Joi.date().iso().greater('now').required(),
-    endDate: Joi.date().iso().greater(Joi.ref('startDate')).required(),
+    title: Joi.string().trim().min(3).max(50).optional(),
+    description: Joi.string().trim().min(3).max(500).optional(),
+    startingPrice: Joi.number().min(0).optional(),
+    bidIncrement: Joi.number().min(0.01).optional(),
+    startDate: Joi.date().iso().greater('now').optional(),
+    endDate: Joi.date().iso().greater(Joi.ref('startDate')).optional(),
     category: Joi.string()
-      .required()
+      .optional()
       .valid(
         ...[
           'Electronics',
@@ -276,8 +274,7 @@ export const auctionSchema = {
           'Jewelry',
           'Toys',
         ]
-      )
-      .required(),
+      ),
     images: Joi.array()
       .items(
         Joi.object({
@@ -286,7 +283,7 @@ export const auctionSchema = {
         })
       )
       .min(1)
-      .required()
+      .optional()
       .messages({
         'array.min': 'At least one image is required',
         'array.base': 'Images must be an array',
