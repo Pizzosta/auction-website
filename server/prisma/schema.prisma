@@ -11,6 +11,7 @@ model User {
   id                      String    @id @default(uuid())
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
+  version                 Int       @default(1) // For optimistic concurrency control
   firstname               String
   middlename              String?   @default("")
   lastname                String
@@ -44,6 +45,7 @@ model Auction {
   id            String        @id @default(uuid())
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
+  version       Int           @default(1) // For optimistic concurrency control
   title         String
   description   String
   startingPrice Decimal       @db.Decimal(12, 2)
@@ -71,6 +73,8 @@ model Auction {
 model Bid {
   id          String    @id @default(uuid())
   createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  version     Int       @default(1) // For optimistic concurrency control
   amount      Decimal   @db.Decimal(12, 2)
   auctionId   String
   bidderId    String

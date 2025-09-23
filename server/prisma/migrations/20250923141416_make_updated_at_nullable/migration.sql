@@ -1,0 +1,9 @@
+-- AlterTable
+ALTER TABLE "Auction" ADD COLUMN     "version" INTEGER NOT NULL DEFAULT 1;
+
+-- AlterTable
+ALTER TABLE "Bid" ADD COLUMN     "updatedAt" TIMESTAMP(3),
+ADD COLUMN     "version" INTEGER NOT NULL DEFAULT 1;
+
+-- AlterTable
+ALTER TABLE "User" ADD COLUMN     "version" INTEGER NOT NULL DEFAULT 1;

@@ -24,45 +24,79 @@ export const closeExpiredAuctions = async () => {
           include: { bidder: { select: { email: true, username: true } } },
         });
 
-        if (highestBid) {
-          // Update auction status to 'sold' and set the winner
-          await prisma.auction.update({
-            where: { id: auction.id },  
-            data: { status: 'sold', winnerId: highestBid.bidderId },
-          });
+        try {
+          if (highestBid) {
+            // Update auction status to 'sold' and set the winner with version check
+            const updatedAuction = await prisma.auction.update({
+              where: {
+                id: auction.id,
+                version: auction.version // Optimistic concurrency control
+              },
+              data: {
+                status: 'sold',
+                winnerId: highestBid.bidderId,
+                version: { increment: 1 }
+              },
+            });
 
-          // Send notification to the seller
-          await addToQueue('auctionEndedSeller', auction.seller?.email, {
-            username: auction.seller?.username,
-            title: auction.title,
-            amount: highestBid.amount,
-            winner: highestBid.bidder?.username,
-            auctionUrl: `${process.env.FRONTEND_URL}/auctions/${auction.id}`,
-            endDate: formatDateTime(auction.endDate),
-          });
+            if (updatedAuction) {
+              // Send notification to the seller
+              await addToQueue('auctionEndedSeller', auction.seller?.email, {
+                username: auction.seller?.username,
+                title: auction.title,
+                amount: highestBid.amount,
+                winner: highestBid.bidder?.username,
+                auctionUrl: `${process.env.FRONTEND_URL}/auctions/${auction.id}`,
+                endDate: formatDateTime(auction.endDate),
+              });
 
-          // Send notification to the winner
-          await addToQueue('auctionWon', highestBid.bidder?.email, {
-            username: highestBid.bidder?.username,
-            title: auction.title,
-            amount: highestBid.amount,
-            seller: auction.seller?.username,
-            auctionUrl: `${process.env.FRONTEND_URL}/auctions/${auction.id}`,
-            endDate: formatDateTime(auction.endDate),
-          });
-        } else {
-          // No bids, just mark as ended
-          await prisma.auction.update({ where: { id: auction.id }, data: { status: 'ended' } });
+              // Send notification to the winner
+              await addToQueue('auctionWon', highestBid.bidder?.email, {
+                username: highestBid.bidder?.username,
+                title: auction.title,
+                amount: highestBid.amount,
+                seller: auction.seller?.username,
+                auctionUrl: `${process.env.FRONTEND_URL}/auctions/${auction.id}`,
+                endDate: formatDateTime(auction.endDate),
+              });
+            }
+          } else {
+            // No bids, just mark as ended with version check
+            const updatedAuction = await prisma.auction.update({
+              where: {
+                id: auction.id,
+                version: auction.version // Optimistic concurrency control
+              },
+              data: {
+                status: 'ended',
+                version: { increment: 1 }
+              }
+            });
 
-          // Notify seller that auction ended with no bids
-          await addToQueue('auctionEndedNoBids', auction.seller?.email, {
-            username: auction.seller?.username,
-            title: auction.title,
-            category: auction.category,
-            startingPrice: auction.startingPrice,
-            auctionUrl: `${process.env.FRONTEND_URL}/auctions/${auction.id}`,
-            endDate: formatDateTime(auction.endDate),
-          });
+            if (updatedAuction) {
+              // Notify seller that auction ended with no bids
+              await addToQueue('auctionEndedNoBids', auction.seller?.email, {
+                username: auction.seller?.username,
+                title: auction.title,
+                category: auction.category,
+                startingPrice: auction.startingPrice,
+                auctionUrl: `${process.env.FRONTEND_URL}/auctions/${auction.id}`,
+                endDate: formatDateTime(auction.endDate),
+              });
+            }
+          }
+        } catch (error) {
+          if (error.code === 'P2025') {
+            logger.info('Auction already closed (race condition)', {
+              auctionId: auction.id,
+              currentVersion: auction.version
+            });
+            // Continue to next auction - it was already processed
+            continue;
+          }
+          logger.error(`Failed to process expired auction ${auction.id}:`, error);
+          // Continue with next auction even if one fails
+          continue;
         }
       } catch (error) {
         logger.error('Error processing expired auction:', {
@@ -128,6 +162,11 @@ export const sendAuctionEndingReminders = async () => {
       include: { seller: { select: { email: true, username: true } } },
     });
 
+    logger.info('Found auctions ending soon', {
+      count: endingAuctions.length,
+      auctionIds: endingAuctions.map(a => a.id)
+    });
+
     for (const auction of endingAuctions) {
       try {
         // Get distinct bidders for this auction with their max bid
@@ -158,18 +197,27 @@ export const sendAuctionEndingReminders = async () => {
 
         // Send reminder to each bidder
         for (const bidder of bidderDetails) {
-          await addToQueue('auctionEndingReminder', bidder?.email, {
-            username: bidder?.username,
-            title: auction.title,
-            timeRemaining: formatTimeRemaining(auction.endDate),
-            currentBid: auction.currentPrice,
-            maxBid: bidder.maxBid,
-            endDate: formatDateTime(auction.endDate),
-            auctionUrl: `${process.env.FRONTEND_URL}/auctions/${auction.id}`,
-          });
+          try {
+            await addToQueue('auctionEndingReminder', bidder?.email, {
+              username: bidder?.username,
+              title: auction.title,
+              timeRemaining: formatTimeRemaining(auction.endDate),
+              currentBid: auction.currentPrice,
+              maxBid: bidder.maxBid,
+              endDate: formatDateTime(auction.endDate),
+              auctionUrl: `${process.env.FRONTEND_URL}/auctions/${auction.id}`,
+            });
+          } catch (error) {
+            logger.error('Failed to queue ending reminder:', {
+              error: error.message,
+              auctionId: auction.id,
+              bidderEmail: bidder?.email
+            });
+            // Continue with other bidders even if one fails
+          }
         }
       } catch (error) {
-        logger.error('Error sending auction reminders:', {
+        logger.error('Error processing auction reminders:', {
           error: error.message,
           stack: error.stack,
           auctionId: auction.id,
@@ -210,40 +258,101 @@ export const startScheduledAuctions = async () => {
       return { started: 0, updated: 0 };
     }
 
+    logger.info('Found auctions to start', {
+      count: auctionsToStart.length,
+      auctionIds: auctionsToStart.map(a => a.id)
+    });
+
     // Update all auctions in a transaction
     const results = await prisma.$transaction(async (tx) => {
       const updatePromises = auctionsToStart.map(async (auction) => {
-        // Update the auction status to active
-        const updatedAuction = await tx.auction.update({
-          where: { id: auction.id },
-          data: { status: 'active' },
-        });
-
-        // Send notification to the seller
         try {
-          await addToQueue('auctionStarted', auction.seller.email, {
-            name: auction.seller.firstname,
-            auctionTitle: auction.title,
-            auctionUrl: `${process.env.FRONTEND_URL}/auctions/${auction.id}`,
-            startDate: formatDateTime(auction.startDate),
-            endDate: formatDateTime(auction.endDate),
+          // Update the auction status to active with version check to prevent race conditions
+          const updatedAuction = await tx.auction.update({
+            where: {
+              id: auction.id,
+              version: auction.version // Add version check to prevent race conditions
+            },
+            data: {
+              status: 'active',
+              version: { increment: 1 }
+            },
           });
-          updatedCount++;
-        } catch (error) {
-          logger.error('Failed to queue auction started notification:', {
-            error: error.message,
-            auctionId: auction.id,
-            userId: auction.seller.id,
-          });
-        }
 
-        return updatedAuction;
+          // Send notification to the seller (outside transaction for reliability)
+          try {
+            await addToQueue('auctionStarted', auction.seller.email, {
+              name: auction.seller.firstname,
+              auctionTitle: auction.title,
+              auctionUrl: `${process.env.FRONTEND_URL}/auctions/${auction.id}`,
+              startDate: formatDateTime(auction.startDate),
+              endDate: formatDateTime(auction.endDate),
+            });
+            updatedCount++;
+          } catch (error) {
+            logger.error('Failed to queue auction started notification:', {
+              error: error.message,
+              auctionId: auction.id,
+              userId: auction.seller.id,
+            });
+            // Don't fail the transaction if email queuing fails
+          }
+
+          return updatedAuction;
+        } catch (error) {
+          // Handle race conditions where auction was already updated
+          if (error.code === 'P2025') {
+            logger.info('Auction already started (race condition)', {
+              auctionId: auction.id,
+              currentVersion: auction.version
+            });
+
+            // Check current auction status
+            const currentAuction = await tx.auction.findUnique({
+              where: { id: auction.id },
+              select: { id: true, status: true, version: true }
+            });
+
+            if (currentAuction && currentAuction.status === 'active') {
+              // Auction is already active, but we should still send notification
+              // in case it wasn't sent in the previous attempt
+              try {
+                await addToQueue('auctionStarted', auction.seller.email, {
+                  name: auction.seller.firstname,
+                  auctionTitle: auction.title,
+                  auctionUrl: `${process.env.FRONTEND_URL}/auctions/${auction.id}`,
+                  startDate: formatDateTime(auction.startDate),
+                  endDate: formatDateTime(auction.endDate),
+                });
+                updatedCount++;
+                logger.info('Sent auction started notification for already-active auction', {
+                  auctionId: auction.id
+                });
+              } catch (emailError) {
+                logger.error('Failed to queue auction started notification for already-active auction:', {
+                  error: emailError.message,
+                  auctionId: auction.id,
+                  userId: auction.seller.id,
+                });
+              }
+              return currentAuction;
+            } else {
+              // Auction was updated to a different status, skip it
+              logger.info('Auction updated to different status, skipping', {
+                auctionId: auction.id,
+                status: currentAuction?.status
+              });
+              return null;
+            }
+          }
+          throw error; // Re-throw other errors
+        }
       });
 
       return Promise.all(updatePromises);
     });
 
-    startedCount = results.length;
+    startedCount = results.filter(result => result !== null).length;
 
     logger.info(`Started ${startedCount} auctions and sent ${updatedCount} notifications`);
 

@@ -7,27 +7,18 @@ import { listBidsPrisma, listBidsByAuctionPrisma, listAllBidsPrisma } from '../r
 import { addToQueue } from '../services/emailQueue.js';
 import { formatCurrency, formatDateTime } from '../utils/format.js';
 
-const updateOutbidBids = async (req, auctionId, newBidAmount, currentBidId) => {
+const updateOutbidBids = async (req, auctionId, newBidAmount, newBidId, currentBidderId) => {
   try {
-    // Get the current bid to identify the bidder
-    const currentBid = await prisma.bid.findUnique({
-      where: { id: currentBidId },
-      select: { bidderId: true }
-    });
-
-    if (!currentBid) {
-      logger.warn('Current bid not found', { bidId: currentBidId });
-      return;
-    }
-
-    // Find all bids that are now outbid, excluding the current bid and the current bidder's other bids
+    // Find all bids that are now outbid by the new bid
+    // These are bids with lower amounts that are not already marked as outbid
+    // Exclude bids from the current bidder to avoid self-outbid notifications
     const outbidBids = await prisma.bid.findMany({
       where: {
         auctionId,
         amount: { lt: newBidAmount },
         isOutbid: false,
-        id: { not: currentBidId },
-        bidderId: { not: currentBid.bidderId } // Exclude the current bidder's other bids
+        isDeleted: false,
+        bidderId: { not: currentBidderId } // Exclude current bidder's other bids
       },
       include: {
         bidder: {
@@ -47,23 +38,42 @@ const updateOutbidBids = async (req, auctionId, newBidAmount, currentBidId) => {
       }
     });
 
-    if (outbidBids.length === 0) return;
+    if (outbidBids.length === 0) {
+      logger.info('No bids to mark as outbid', { auctionId, newBidAmount, currentBidderId });
+      return;
+    }
 
     // Get the socket instance
     const io = req?.app?.get('io');
 
-    // Update all outbid bids in a transaction
-    await prisma.$transaction(async (prisma) => {
-      // Update all outbid bids
-      await prisma.bid.updateMany({
+    // Update all outbid bids in a transaction with versioning
+    await prisma.$transaction(async (tx) => {
+      // Get current versions of all outbid bids
+      const bidsToUpdate = await tx.bid.findMany({
         where: {
-          id: { in: outbidBids.map(bid => bid.id) }
+          id: { in: outbidBids.map(bid => bid.id) },
+          isOutbid: false // Only update if not already outbid
+        },
+        select: {
+          id: true,
+          version: true
+        }
+      });
+
+      // Update each bid with version check
+      for (const bid of bidsToUpdate) {
+        await tx.bid.updateMany({
+          where: {
+            id: bid.id,
+            version: bid.version // Optimistic concurrency control
         },
         data: {
           isOutbid: true,
-          outbidAt: new Date()
+            outbidAt: new Date(),
+            version: { increment: 1 }
         }
       });
+      }
 
       // Emit real-time notifications to outbid users
       if (io) {
@@ -99,14 +109,14 @@ const updateOutbidBids = async (req, auctionId, newBidAmount, currentBidId) => {
       }
     }
 
-    /*
-    // Optionally send email notifications
-    if (process.env.NODE_ENV === 'production') {
-      outbidBids.forEach(async (bid) => {
-        await sendOutbidNotification(bid.bidderId, auctionId, newBidAmount);
-      });
-    }
-*/
+    // Log successful outbid processing for debugging
+    logger.info('Successfully processed outbid notifications', {
+      auctionId,
+      newBidId,
+      currentBidderId,
+      outbidBidsCount: outbidBids.length,
+      newBidAmount
+    });
 
   } catch (error) {
     logger.error('Error updating outbid status:', {
@@ -171,7 +181,7 @@ export const deleteBid = async (req, res) => {
     const now = new Date();
     const endTime = new Date(bid.auction.endDate);
     const fifteenMinutesInMs = 15 * 60 * 1000; // 15 minutes in milliseconds
-    
+
     if (now >= new Date(endTime - fifteenMinutesInMs) && bid.auction.status === 'active') {
       return res.status(400).json({
         success: false,
@@ -198,46 +208,126 @@ export const deleteBid = async (req, res) => {
       }
     }
 
-    // Check if this was the highest bid
-    const highestBid = await prisma.bid.findFirst({
-      where: { 
-        auctionId: bid.auctionId,
-        isDeleted: false,
-        id: { not: bidId } // Exclude the current bid we're about to delete
-      },
-      orderBy: { amount: 'desc' },
-      take: 1
-    });
+    // Add retry logic for concurrent operations
+    const MAX_RETRIES = 3;
+    let retries = 0;
+    let result;
 
-    // Start a transaction to ensure data consistency
-    await prisma.$transaction(async (tx) => {
-      if (permanent) {
-        // Permanent delete
-        await tx.bid.delete({ where: { id: bidId } });
-      } else {
-        // Soft delete
-        await tx.bid.update({
-          where: { id: bidId },
-          data: { 
-            isDeleted: true, 
-            deletedAt: new Date(), 
-            deletedById: actorId 
-          },
-        });
-      }
+    while (retries < MAX_RETRIES) {
+      try {
+        // Use a transaction with FOR UPDATE to lock the rows
+        result = await prisma.$transaction(async (tx) => {
+          // 1. Reload the bid with current version
+          const currentBid = await tx.bid.findUnique({
+            where: { id: bidId },
+            select: { version: true, amount: true }
+          });
 
-      // If the deleted bid was the highest bid, update the auction's current price
-      if (bid.amount === bid.auction.currentPrice) {
-        await tx.auction.update({
-          where: { id: bid.auctionId },
-          data: {
-            currentPrice: highestBid ? highestBid.amount : bid.auction.startingPrice,
-            // If there are no more bids, set the highestBidId to null
-            highestBidId: highestBid ? highestBid.id : null
+          if (!currentBid) {
+            throw new Error('Bid not found');
           }
+
+          // 2. Find the highest active bid (excluding the one being deleted)
+          const highestBid = await tx.bid.findFirst({
+            where: {
+              auctionId: bid.auctionId,
+              isDeleted: false,
+              id: { not: bidId } // Exclude the current bid we're about to delete
+            },
+            orderBy: [
+              { amount: 'desc' },
+              { createdAt: 'asc' } // For tie-breaking
+            ],
+            take: 1,
+            select: {
+              id: true,
+              amount: true
+            }
+          });
+
+          // 3. Get current auction state
+          const currentAuction = await tx.auction.findUnique({
+            where: { id: bid.auctionId },
+            select: { version: true, status: true, startingPrice: true }
+          });
+
+          // 4. Delete the bid (soft or hard)
+          if (permanent) {
+            await tx.bid.delete({
+              where: {
+                id: bidId,
+                version: currentBid.version // Ensure version matches
+              }
+            });
+          } else {
+            await tx.bid.update({
+              where: {
+                id: bidId,
+                version: currentBid.version // Ensure version matches
+              },
+              data: {
+                isDeleted: true,
+                deletedAt: new Date(),
+                deletedById: actorId,
+                version: { increment: 1 }
+              },
+            });
+          }
+
+          // 5. If this was the highest bid, update the auction
+          if (currentBid.amount === bid.auction.currentPrice) {
+            const newPrice = highestBid ? highestBid.amount : currentAuction.startingPrice;
+            const newHighestBidId = highestBid ? highestBid.id : null;
+
+            await tx.auction.update({
+              where: {
+                id: bid.auctionId,
+                version: currentAuction.version // Ensure no concurrent updates
+              },
+              data: {
+                currentPrice: newPrice,
+                version: { increment: 1 }
+              }
+            });
+
+            return { newPrice, newHighestBidId };
+          }
+
+          return { newPrice: null, newHighestBidId: null };
+        }, {
+          maxWait: 5000, // Max time to wait for the transaction (5s)
+          timeout: 10000, // Max time to process the transaction (10s)
+          isolationLevel: 'Serializable' // Strongest isolation level
         });
+
+        // If we get here, the transaction succeeded
+        break;
+      } catch (error) {
+        // If it's a version conflict, retry
+        if (error.code === 'P2025' || error.message.includes('version')) {
+          retries++;
+          if (retries === MAX_RETRIES) {
+            throw new Error('Failed to process bid cancellation due to concurrent modifications. Please try again.');
+          }
+          // Add exponential backoff
+          await new Promise(resolve => setTimeout(resolve, 100 * Math.pow(2, retries)));
+          continue;
+        }
+        throw error; // Re-throw other errors
       }
-    });
+    }
+
+    // Cache invalidation for the highest bid
+    if (result?.newPrice !== null) {
+      // Invalidate any caches related to this auction's highest bid
+      try {
+        await cache.del(`auction:${bid.auctionId}:highestBid`);
+        await cache.del(`auction:${bid.auctionId}:currentPrice`);
+      } catch (cacheError) {
+        logger.error('Cache invalidation failed:', { error: cacheError.message });
+        // Continue even if cache invalidation fails
+      }
+    }
 
     res.status(200).json({
       success: true,
@@ -314,12 +404,54 @@ export const restoreBid = async (req, res) => {
 // @route   POST /api/bids
 // @access  Private
 export const placeBid = async (req, res) => {
+  const MAX_RETRIES = 3;
+  let retries = 0;
+  let result;
+  const { auctionId, amount } = req.body;
+  const actorId = req.user?.id?.toString();
+
+  // Input validation
+  if (!auctionId || !amount) {
+    return res.status(400).json({ success: false, message: 'Missing required fields' });
+  }
+
+  // Acquire a distributed lock per auction to serialize concurrent bids
+  const lockKey = `lock:auction:${auctionId}`;
+  let lock;
   try {
-    const { auctionId, amount } = req.body;
-    const actorId = req.user?.id?.toString();
-    // Acquire a distributed lock per auction to serialize concurrent bids
-    const lockKey = `lock:auction:${auctionId}`;
-    const lock = await acquireLock(lockKey, 5000, { retries: 20, retryDelay: 25, jitter: 25 });
+    lock = await acquireLock(lockKey, 5000, { retries: 20, retryDelay: 25, jitter: 25 });
+  } catch (error) {
+    if (error.message === 'AUCTION_LOCK_TIMEOUT') {
+      // Metrics: count lock timeouts per auction to identify hot auctions
+      const key = `metrics:auction:${auctionId}:lock_timeouts`;
+      try {
+        const waitTime = error.details?.waitTimeMs || 0;
+        await executeRedisCommand('incrBy', key, Math.floor(waitTime));
+        const newVal = await executeRedisCommand('get', key);
+        if (newVal === '1') {
+          await executeRedisCommand('expire', key, 3600);
+        }
+        await executeRedisCommand('incr', 'metrics:bid_lock_timeout_429_total');
+      } catch (e) {
+        logger.warn('Failed to increment lock timeout metric', { auctionId, error: e.message });
+      }
+      logger.warn('Bid lock acquisition failed (contention)', {
+        auctionId,
+        waitMs: error.details?.waitTimeMs,
+        retries: error.details?.retries
+      });
+      const userMessage = error.details?.message || 'This auction is experiencing high bid activity. Please wait a moment and try again.';
+      return res.status(429).json({
+        success: false,
+        message: userMessage,
+        retryAfter: Math.ceil(error.details?.ttlMs / 1000) || 5
+      });
+    }
+    throw error; // Re-throw if it's a different error
+  }
+  
+  try {
+    // Log lock acquisition metrics
     if (lock.waitMs) {
       // metrics for lock wait time
       const sumKey = `metrics:auction:${auctionId}:lock_wait_sum`;
@@ -331,79 +463,144 @@ export const placeBid = async (req, res) => {
         logger.warn('Failed to record lock wait metrics', { auctionId, error: e.message });
       }
     }
+    
     if (lock.waitMs && lock.waitMs > 200) {
       logger.warn('High lock acquisition latency', { auctionId, waitMs: lock.waitMs });
     }
-    try {
-      // Run in a transaction
-      const result = await prisma.$transaction(async tx => {
-        const auction = await tx.auction.findUnique({ where: { id: auctionId } });
 
-        if (!auction) {
-          throw new Error('AUCTION_NOT_FOUND');
-        }
+    while (retries < MAX_RETRIES) {
+      try {
+        // Run in a transaction with retry logic
+        result = await prisma.$transaction(async (tx) => {
+          // 1. Get current auction state with version
+          const auction = await tx.auction.findUnique({
+            where: { id: auctionId },
+            select: {
+              id: true,
+              status: true,
+              currentPrice: true,
+              bidIncrement: true,
+              endDate: true,
+              sellerId: true,
+              version: true
+            }
+          });
 
-        // Enforce bid increment
-        const minAllowedBid = Number(auction.currentPrice) + Number(auction.bidIncrement);
-        if (Number(amount) < minAllowedBid) {
-          const err = new Error('BID_TOO_LOW');
-          err.details = { minAllowedBid, bidIncrement: Number(auction.bidIncrement) };
-          throw err;
-        }
+          if (!auction) {
+            throw new Error('AUCTION_NOT_FOUND');
+          }
 
-        // Check if auction is active
-        if (auction.status !== 'active') {
-          throw new Error('NOT_ACTIVE');
-        }
+          // 2. Validate bid
+          const minAllowedBid = Number(auction.currentPrice) + Number(auction.bidIncrement);
+          if (Number(amount) < minAllowedBid) {
+            const err = new Error('BID_TOO_LOW');
+            err.details = { minAllowedBid, bidIncrement: Number(auction.bidIncrement) };
+            throw err;
+          }
 
-        // Check if auction has ended
-        if (new Date(auction.endDate) < new Date()) {
-          await tx.auction.update({ where: { id: auctionId }, data: { status: 'ended' } });
-          const err = new Error('ALREADY_ENDED');
-          throw err;
-        }
+          if (auction.status !== 'active') {
+            throw new Error('NOT_ACTIVE');
+          }
 
-        // Check if bid amount is higher than current price
-        if (Number(amount) <= Number(auction.currentPrice)) {
-          const err = new Error('BID_NOT_HIGHER');
-          err.details = { currentPrice: Number(auction.currentPrice) };
-          throw err;
-        }
+          const now = new Date();
+          if (new Date(auction.endDate) < now) {
+            await tx.auction.update({ 
+              where: { id: auctionId, version: auction.version },
+              data: { status: 'ended', version: { increment: 1 } } 
+            });
+            throw new Error('ALREADY_ENDED');
+          }
 
-        // Check if user is not the seller
-        if (auction.sellerId.toString() === actorId) {
-          const err = new Error('BID_ON_OWN_AUCTION');
-          throw err;
-        }
+          if (auction.sellerId.toString() === actorId) {
+            throw new Error('BID_ON_OWN_AUCTION');
+          }
 
-        // Create new bid
-        const bid = await tx.bid.create({
-          data: {
-            amount: new Prisma.Decimal(amount),
-            auctionId: auction.id,
-            bidderId: actorId,
-          },
-          include: { bidder: { select: { username: true } } },
+          // 3. Create new bid with version
+          const bid = await tx.bid.create({
+            data: {
+              amount: new Prisma.Decimal(amount),
+              auctionId: auction.id,
+              bidderId: actorId,
+              version: 1
+            },
+            select: {
+              id: true,
+              amount: true,
+              createdAt: true,
+              bidder: { select: { id: true, username: true } }
+            }
+          });
+
+          // 4. Check if this is the first bid
+          const bidCount = await tx.bid.count({ 
+            where: { 
+              auctionId: auction.id,
+              isDeleted: false
+            } 
+          });
+
+          // 5. Update auction with version check
+          const updateData = {
+            currentPrice: new Prisma.Decimal(amount),
+            version: { increment: 1 }
+          };
+
+          // Extend auction end time if it's the first bid (sniping protection)
+          if (bidCount === 1) {
+            const tenMinutesFromNow = new Date();
+            tenMinutesFromNow.setMinutes(tenMinutesFromNow.getMinutes() + 10);
+            updateData.endDate = tenMinutesFromNow;
+          }
+
+          await tx.auction.update({
+            where: { 
+              id: auction.id,
+              version: auction.version // Ensure no concurrent updates
+            },
+            data: updateData,
+          });
+
+          // 6. Update outbid status for lower bids
+          await updateOutbidBids(req, auctionId, amount, bid.id, actorId);
+
+          return bid;
+        }, {
+          maxWait: 5000,
+          timeout: 10000,
+          isolationLevel: 'Serializable'
         });
 
-        // Update auction current price and (optionally) extend end date if first bid
-        const bidCount = await tx.bid.count({ where: { auctionId: auction.id } });
-        let newEndDate = auction.endDate;
-        if (bidCount === 1) {
-          const tenMinutesFromNow = new Date();
-          tenMinutesFromNow.setMinutes(tenMinutesFromNow.getMinutes() + 10);
-          newEndDate = tenMinutesFromNow;
-        }
-        await tx.auction.update({
-          where: { id: auction.id },
-          data: { currentPrice: new Prisma.Decimal(amount), endDate: newEndDate },
+        // If we get here, the transaction succeeded
+        break;
+      } catch (error) {
+        // Log the error for debugging
+        logger.warn('Bid placement retry attempt', {
+          attempt: retries + 1,
+          errorCode: error.code,
+          errorMessage: error.message,
+          auctionId: auctionId
         });
 
-        // Update outbid status for lower bids
-        await updateOutbidBids(req, auctionId, amount, bid.id);
-
-        return bid;
-      });
+        // If it's a version conflict, retry
+        if (error.code === 'P2025' || error.message.includes('version') ||
+            error.message.includes('concurrent') || error.message.includes('optimistic')) {
+          retries++;
+          if (retries === MAX_RETRIES) {
+            logger.error('Bid placement failed after max retries', {
+              totalRetries: retries,
+              auctionId: auctionId,
+              errorCode: error.code,
+              errorMessage: error.message
+            });
+            throw new Error('Failed to place bid due to concurrent modifications. Please try again.');
+          }
+          // Add exponential backoff
+          await new Promise(resolve => setTimeout(resolve, 100 * Math.pow(2, retries)));
+          continue;
+        }
+        throw error; // Re-throw other errors
+      }
+    }
 
       // Get io instance from app settings
       const io = req.app.get('io');
@@ -422,22 +619,26 @@ export const placeBid = async (req, res) => {
       }
 
       res.status(201).json(result);
+    /*
     } finally {
       // Always release the lock
       await lock.release();
     }
+    */
   } catch (error) {
     if (error.message === 'AUCTION_NOT_FOUND') {
       return res.status(404).json({ success: false, message: 'Auction not found' });
     }
-    if (error.message === 'LOCK_TIMEOUT') {
+    if (error.message === 'AUCTION_LOCK_TIMEOUT') {
       // Metrics: count lock timeouts per auction to identify hot auctions
       const auctionId = req.body?.auctionId;
       const key = `metrics:auction:${auctionId}:lock_timeouts`;
       try {
-        const newVal = await executeRedisCommand('incr', key);
+        const waitTime = error.details?.waitTimeMs || 0;
+        await executeRedisCommand('incrBy', key, Math.floor(waitTime));
         // Keep rolling window (e.g., 1 hour) on first increment
-        if (newVal === 1) {
+        const newVal = await executeRedisCommand('get', key);
+        if (newVal === '1') {
           await executeRedisCommand('expire', key, 3600);
         }
         await executeRedisCommand('incr', 'metrics:bid_lock_timeout_429_total');
@@ -445,8 +646,17 @@ export const placeBid = async (req, res) => {
         // Non-fatal if metrics fail
         logger.warn('Failed to increment lock timeout metric', { auctionId, error: e.message });
       }
-      logger.warn('Bid lock timeout (contention)', { auctionId });
-      return res.status(429).json({ success: false, message: 'Too many concurrent bids, please retry' });
+      logger.warn('Bid lock timeout (contention)', {
+        auctionId,
+        waitMs: error.details?.waitTimeMs,
+        retries: error.details?.retries
+      });
+      const userMessage = error.details?.message || 'Too many concurrent bids on this auction. Please wait a moment and try again.';
+      return res.status(429).json({
+        success: false,
+        message: userMessage,
+        retryAfter: Math.ceil(error.details?.ttlMs / 1000) || 5
+      });
     }
     if (error.message === 'BID_TOO_LOW') {
       const { minAllowedBid, bidIncrement } = error.details || {};

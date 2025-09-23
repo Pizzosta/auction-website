@@ -90,7 +90,7 @@ export const createAuction = async (req, res) => {
 // @access  Admin
 export const getAuctions = async (req, res) => {
   try {
-    const { 
+    const {
       status,
       category,
       search,
@@ -102,8 +102,8 @@ export const getAuctions = async (req, res) => {
       endDate,
       endingSoon,
       fields,
-      page = 1, 
-      limit = 10, 
+      page = 1,
+      limit = 10,
       sort = 'createdAt:desc',
     } = req.query;
 
@@ -188,7 +188,7 @@ export const getPublicAuctions = async (req, res, next) => {
       message: 'Authentication required to view these auctions'
     });
   }
-  
+
   // If no restricted status is being accessed, continue with normal auction fetching
   return getAuctions(req, res, next);
 };
@@ -306,13 +306,28 @@ export const updateAuction = async (req, res) => {
       updates.images = images;
     }
 
-    const updatedAuction = await prisma.auction.update({ where: { id: auctionId }, data: updates });
+    // Add version to updates
+    updates.version = { increment: 1 };
+
+    const updatedAuction = await prisma.auction.update({
+      where: {
+        id: auctionId,
+        version: auction.version // Optimistic concurrency control
+      },
+      data: updates
+    });
 
     res.status(200).json({
       success: true,
       data: updatedAuction,
     });
   } catch (error) {
+    if (error.code === 'P2025') {
+      return res.status(409).json({
+        success: false,
+        message: 'This auction was modified by another user. Please refresh and try again.'
+      });
+    }
     logger.error('Update auction error:', {
       error: error.message,
       stack: error.stack,
@@ -325,8 +340,8 @@ export const updateAuction = async (req, res) => {
       message:
         error.name === 'ValidationError'
           ? Object.values(error.errors)
-              .map(val => val.message)
-              .join(', ')
+            .map(val => val.message)
+            .join(', ')
           : 'Server error while updating auction',
     });
   }
@@ -341,10 +356,20 @@ export const deleteAuction = async (req, res) => {
   // Check both query params and body for the permanent flag
   //const permanent = req.query.permanent === 'false'; // || req.body.permanent === 'false'
   const { permanent = false } = req.query;
-  
+
   try {
     // Find the auction
-    const auction = await prisma.auction.findUnique({ where: { id: auctionId } });
+    const auction = await prisma.auction.findUnique({
+      where: { id: auctionId },
+      select: {
+        id: true,
+        sellerId: true,
+        startDate: true,
+        images: true,
+        version: true
+      }
+    });
+
     if (!auction) {
       return res.status(404).json({
         success: false,
@@ -402,22 +427,48 @@ export const deleteAuction = async (req, res) => {
       // Permanently delete auction and associated bids
       await prisma.$transaction([
         prisma.bid.deleteMany({ where: { auctionId } }),
-        prisma.auction.delete({ where: { id: auctionId } }),
+        prisma.auction.delete({
+          where: {
+            id: auctionId,
+            version: auction.version, // Optimistic concurrency control
+          },
+        }),
       ]);
     } else {
-      // Soft delete
-      await prisma.auction.update({
-        where: { id: auctionId },
-        data: { isDeleted: true, deletedAt: new Date(), deletedById: actorId },
+      // Soft delete with version check
+      const updatedAuction = await prisma.auction.update({
+        where: {
+          id: auctionId,
+          version: auction.version, // Optimistic concurrency control
+        },
+        data: {
+          isDeleted: true,
+          deletedAt: new Date(),
+          deletedById: actorId,
+          version: { increment: 1 }, // Increment version
+        },
       });
+
+      if (!updatedAuction) {
+        throw new Error('Failed to soft delete auction - version mismatch');
+      }
     }
 
     res.status(200).json({
       success: true,
-      message: 'Auction and all associated bids have been deleted',
+      message: permanent 
+        ? 'Auction and all associated bids have been permanently deleted' 
+        : 'Auction has been soft deleted',
       data: { id: auctionId },
     });
   } catch (error) {
+    if (error.code === 'P2025') {
+      return res.status(409).json({
+        success: false,
+        message: 'This auction was modified by another user. Please refresh and try again.'
+      });
+    }
+    
     logger.error('Delete auction error:', {
       error: error.message,
       stack: error.stack,

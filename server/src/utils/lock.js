@@ -27,8 +27,15 @@ export async function acquireLock(key, ttlMs = 5000, options = {}) {
     await new Promise(r => setTimeout(r, delay));
   }
 
-  const err = new Error('LOCK_TIMEOUT');
-  err.details = { key, ttlMs, retries };
+  const err = new Error('AUCTION_LOCK_TIMEOUT');
+  err.details = {
+    key,
+    ttlMs,
+    retries,
+    waitTimeMs: Date.now() - start,
+    message: `Unable to acquire lock for auction after ${retries} attempts (${Math.round((Date.now() - start) / 1000)}s). This auction is experiencing high bid activity.`
+  };
+  err.statusCode = 429; // Too Many Requests
   throw err;
 }
 
