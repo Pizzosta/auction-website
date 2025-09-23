@@ -77,7 +77,7 @@ router.delete(
  * @returns {Error} 404 - Bid not found or not deleted
  * @returns {Error} default - Unexpected error
  */
-router.post('/:bidId/restore', protect, validate(bidIdSchema, 'params', { key: 'bidId' }), restoreBid);
+router.post('/:bidId/restore', protect, admin, validate(bidIdSchema, 'params', { key: 'bidId' }), restoreBid);
 
 /**
  * @route GET /api/bids

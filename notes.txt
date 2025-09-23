@@ -57,3 +57,7 @@ format all the currencies
 make the emails template uniform. it should called the firstname instead of username
 
 create auction ended relisting
+
+Bidder Notification:
+Notify the bidder when their bid is cancelled (if not self-initiated, like by an admin)
+Include the reason for cancellation in the notification

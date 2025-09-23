@@ -28,7 +28,6 @@ export const auctionQuerySchema = Joi.object({
     .default('createdAt:desc')
     .optional(),
   status: Joi.string().valid('upcoming', 'active', 'ended', 'sold', 'cancelled', 'all').lowercase().optional(),
-  showDeleted: Joi.boolean().default(false).optional(),
   category: Joi.string().optional(),
   search: Joi.string().optional(),
   endingSoon: Joi.boolean()
@@ -64,9 +63,6 @@ export const bidQuerySchema = Joi.object({
   maxAmount: Joi.number().min(0).optional(),
   startDate: Joi.date().iso().optional(),
   endDate: Joi.date().iso().optional(),
-  showDeleted: Joi.boolean().default(false).optional().messages({
-    'boolean.base': 'showDeleted must be a boolean',
-  }),
 });
 
 // ID schema validation
@@ -305,11 +301,6 @@ export const bidSchema = {
   delete: Joi.object({
     permanent: Joi.boolean().default(false).messages({
       'boolean.base': 'permanent must be a boolean',
-    }),
-    bidId: Joi.string().uuid({ version: 'uuidv4' }).required().messages({
-      'string.uuid': 'Invalid UUID format',
-      'string.length': 'ID must be 36 characters long',
-      'any.required': 'ID is required',
     }),
   }).messages({
     'object.unknown': 'Unknown parameters provided',

@@ -697,7 +697,7 @@
             "type": "string"
           },
           {
-            "name": "showDeleted",
+            "name": "status",
             "in": "query",
             "type": "string"
           }
@@ -749,11 +749,6 @@
             "name": "sort",
             "in": "query",
             "type": "string"
-          },
-          {
-            "name": "showDeleted",
-            "in": "query",
-            "type": "string"
           }
         ],
         "responses": {
@@ -765,6 +760,9 @@
           },
           "401": {
             "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Forbidden"
           },
           "500": {
             "description": "Internal Server Error"

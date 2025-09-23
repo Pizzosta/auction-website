@@ -145,27 +145,41 @@ export async function listBidsPrisma({
   if (bidderId) where.bidderId = bidderId;
 
   // Handle status filter
-  if (status === 'active') {
-    where.auction = {
-      status: 'active',
-      endDate: { gt: new Date() },
-    };
-  } else if (status === 'won') {
-    where.auction = {
-      status: 'sold',
-      winnerId: bidderId,
-    };
-  } else if (status === 'lost') {
-    where.NOT = {
-      auction: {
+  if (status) {
+    const normalizedStatus = status.toLowerCase();
+
+    if (normalizedStatus === 'active') {
+      where.auction = {
+        status: 'active',
+        endDate: { gt: new Date() },
+      };
+    } else if (normalizedStatus === 'won') {
+      where.auction = {
+        status: 'sold',
         winnerId: bidderId,
-      },
-    };
-    where.auction = {
-      status: { in: ['ended', 'sold'] },
-    };
-  } else if (status === 'outbid') {
-    where.isOutbid = true;
+      };
+    } else if (normalizedStatus === 'lost') {
+      where.NOT = {
+        auction: {
+          winnerId: bidderId,
+        },
+      };
+      where.auction = {
+        status: { in: ['ended', 'sold'] },
+      };
+    } else if (normalizedStatus === 'outbid') {
+      where.isOutbid = true;
+    } else if (normalizedStatus === 'cancelled') {
+      where.auction = {
+        status: 'cancelled',
+        isDeleted: true,
+      };
+    } else if (normalizedStatus === 'all') {
+      // no filter
+    } else {
+      // fallback for unknown status strings
+      where.status = normalizedStatus;
+    }
   }
 
   // Handle deleted items
@@ -224,7 +238,7 @@ export async function listBidsPrisma({
  */
 export async function listBidsByAuctionPrisma({
   auctionId,
-  showDeleted = false,
+  status,
   page = 1,
   limit = 10,
   sort = 'amount:desc',
@@ -236,7 +250,36 @@ export async function listBidsByAuctionPrisma({
   // Build where filter
   const where = { auctionId };
 
-  if (!showDeleted) {
+  // Handle status filter
+  if (status) {
+    const normalizedStatus = status.toLowerCase();
+    
+    if (normalizedStatus === 'cancelled') {
+      where.auction = {
+        status: 'cancelled',
+        isDeleted: true,
+      };
+    } else if (normalizedStatus === 'all') {
+      // no additional filters needed
+    } else {
+      // For other statuses, ensure we don't show deleted bids
+      where.isDeleted = false;
+      
+      if (normalizedStatus === 'active') {
+        where.auction = {
+          status: 'active',
+          endDate: { gt: new Date() },
+        };
+      } else if (normalizedStatus === 'won') {
+        where.auction = {
+          status: 'sold',
+        };
+      } else if (normalizedStatus === 'outbid') {
+        where.isOutbid = true;
+      }
+    }
+  } else {
+    // Default behavior - don't show deleted bids
     where.isDeleted = false;
   }
 

@@ -159,24 +159,85 @@ export const deleteBid = async (req, res) => {
       });
     }
 
-    // Check if auction is active
-    if (bid.auction.status === 'active') {
+    // Check if auction is ended or sold
+    if (['ended', 'sold'].includes(bid.auction.status)) {
       return res.status(400).json({
         success: false,
-        message: 'Cannot delete bids on active auctions',
+        message: `Cannot delete bids on ${bid.auction.status} auctions`,
       });
     }
 
-    if (permanent) {
-      // Permanent delete
-      await prisma.bid.delete({ where: { id: bidId } });
-    } else {
-      // Soft delete
-      await prisma.bid.update({
-        where: { id: bidId },
-        data: { isDeleted: true, deletedAt: new Date(), deletedById: actorId },
+    // Check if we're in the last 15 minutes of the auction
+    const now = new Date();
+    const endTime = new Date(bid.auction.endDate);
+    const fifteenMinutesInMs = 15 * 60 * 1000; // 15 minutes in milliseconds
+    
+    if (now >= new Date(endTime - fifteenMinutesInMs) && bid.auction.status === 'active') {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot delete bids in the last 15 minutes of an auction',
       });
     }
+
+    // Check cancellation limit: Max 2 cancellations per user per auction
+    if (!isAdmin) {
+      const userCancellations = await prisma.bid.count({
+        where: {
+          bidderId: req.user.id,
+          auctionId: bid.auctionId,
+          isDeleted: true,
+          deletedById: req.user.id // Ensure it's their own cancellation
+        }
+      });
+
+      if (userCancellations >= 2) {
+        return res.status(400).json({
+          success: false,
+          message: 'Maximum of 2 bid cancellations allowed per auction',
+        });
+      }
+    }
+
+    // Check if this was the highest bid
+    const highestBid = await prisma.bid.findFirst({
+      where: { 
+        auctionId: bid.auctionId,
+        isDeleted: false,
+        id: { not: bidId } // Exclude the current bid we're about to delete
+      },
+      orderBy: { amount: 'desc' },
+      take: 1
+    });
+
+    // Start a transaction to ensure data consistency
+    await prisma.$transaction(async (tx) => {
+      if (permanent) {
+        // Permanent delete
+        await tx.bid.delete({ where: { id: bidId } });
+      } else {
+        // Soft delete
+        await tx.bid.update({
+          where: { id: bidId },
+          data: { 
+            isDeleted: true, 
+            deletedAt: new Date(), 
+            deletedById: actorId 
+          },
+        });
+      }
+
+      // If the deleted bid was the highest bid, update the auction's current price
+      if (bid.amount === bid.auction.currentPrice) {
+        await tx.auction.update({
+          where: { id: bid.auctionId },
+          data: {
+            currentPrice: highestBid ? highestBid.amount : bid.auction.startingPrice,
+            // If there are no more bids, set the highestBidId to null
+            highestBidId: highestBid ? highestBid.id : null
+          }
+        });
+      }
+    });
 
     res.status(200).json({
       success: true,
@@ -422,7 +483,7 @@ export const getBidsByAuction = async (req, res) => {
       page = 1,
       limit = 10,
       sort = 'amount:desc',
-      showDeleted = false,
+      status,
     } = req.query;
 
     // Check if auction exists
@@ -439,7 +500,7 @@ export const getBidsByAuction = async (req, res) => {
     }
 
     // Check if user has permission to see deleted bids
-    if (showDeleted === 'true' && (!req.user || req.user.role !== 'admin')) {
+    if ((status === 'cancelled' || status === 'all') && (!req.user || req.user.role !== 'admin')) {
       return res.status(403).json({
         status: 'error',
         message: 'Not authorized to view deleted bids',
@@ -449,7 +510,7 @@ export const getBidsByAuction = async (req, res) => {
     // Use the repository to get paginated and filtered bids
     const { bids, count, pageNum, take } = await listBidsByAuctionPrisma({
       auctionId,
-      showDeleted: showDeleted === 'true',
+      status,
       page: parseInt(page),
       limit: parseInt(limit),
       sort,
@@ -492,15 +553,21 @@ export const getMyBids = async (req, res) => {
       page = 1,
       limit = 10,
       sort = 'createdAt:desc',
-      showDeleted = false,
     } = req.query;
     const { id: userId } = req.user;
+
+    // Check if user has permission to view cancelled bids
+    if ((status === 'cancelled' || status === 'all') && req.user.role !== 'admin') {
+      return res.status(403).json({
+        status: 'error',
+        message: 'Not authorized to view cancelled bids',
+      });
+    }
 
     // Use the repository to get paginated and filtered bids
     const { bids, count, pageNum, take } = await listBidsPrisma({
       bidderId: userId,
       status,
-      showDeleted: showDeleted === 'true',
       page: parseInt(page),
       limit: parseInt(limit),
       sort,
