@@ -92,11 +92,11 @@ export const env = {
           const value = String(process.env.DEFAULT_RATE_LIMIT_WINDOW_MS).replace(/_/g, '');
           return new Function(`return ${value}`)();
         })()
-      : 15 * 60 * 1000, // Default to 15 minutes
+      : 60 * 1000, // Default to 1 minute
 
     max: process.env.DEFAULT_RATE_LIMIT_MAX
       ? parseInt(process.env.DEFAULT_RATE_LIMIT_MAX, 10)
-      : 100,
+      : 100, // Increased to 100 for better UX
 
     // specific overrides
     otp: {

@@ -47,8 +47,8 @@ const presets = {
 // Helper function to create a rate limiter that uses Redis when available, falls back to in-memory
 const createRateLimiter = (options = {}) => {
   const {
-    windowMs = env.rateLimit.windowMs || 15 * 60_000, // 15 minutes
-    max = env.rateLimit.max || 1000, // limit each IP to 1000 requests per windowMs
+    windowMs = env.rateLimit.windowMs || 60_000, // 1 minute
+    max = env.rateLimit.max || 100, // limit each IP to 100 requests per windowMs
     message = 'Too many requests, please try again later.',
     keyGenerator = req => {
       // Simple IP-based key
@@ -58,9 +58,6 @@ const createRateLimiter = (options = {}) => {
     keyPrefix = 'rate-limit:',
     logAbuse = true,
   } = options;
-
-  // Redis client holder; resolved lazily per-request
-  let redisClient = null;
 
   // In-memory store fallback
   const memoryStore = new Map();
@@ -135,19 +132,30 @@ const createRateLimiter = (options = {}) => {
     next();
   };
 
-  // Redis-based rate limiting
+  // Redis-based rate limiting with robust connection handling
   const redisRateLimit = async (req, res, next) => {
-    // Ensure Redis client is available and connected
-    if (!redisClient || !redisClient.isOpen) {
-      try {
-        redisClient = await getRedisClient();
-      } catch (error) {
-        logger.error('Redis unavailable, falling back to in-memory rate limiting', {
-          error: error?.message,
-        });
-        return memoryRateLimit(req, res, next);
+    let redisClient = null;
+    let isRedisAvailable = false;
+
+    try {
+      // Get Redis client with proper error handling
+      redisClient = await getRedisClient();
+      if (redisClient && redisClient.isOpen) {
+        isRedisAvailable = true;
       }
+    } catch (error) {
+      logger.warn('Redis unavailable for rate limiting, using memory fallback', {
+        error: error?.message,
+        stack: error?.stack?.split('\n')[0]
+      });
+      return memoryRateLimit(req, res, next);
     }
+
+    if (!isRedisAvailable || !redisClient) {
+      logger.warn('Redis client not available, falling back to memory rate limiting');
+      return memoryRateLimit(req, res, next);
+    }
+
     const key = keyGenerator(req);
     const redisKey = getRedisKey(key);
     const now = Date.now();
@@ -165,8 +173,8 @@ const createRateLimiter = (options = {}) => {
 
       // Get current count and reset time from Redis
       const [count, reset] = await Promise.all([
-        redisClient.get(redisKey),
-        redisClient.get(`${redisKey}:reset`),
+        redisClient.get(redisKey).catch(() => '0'),
+        redisClient.get(`${redisKey}:reset`).catch(() => '0'),
       ]);
 
       const currentCount = parseInt(count, 10) || 0;
@@ -176,14 +184,23 @@ const createRateLimiter = (options = {}) => {
       const shouldReset = resetTimeMs <= now;
       const newCount = shouldReset ? 1 : currentCount + 1;
 
-      // Set new values in Redis
-      if (shouldReset) {
-        await Promise.all([
-          redisClient.set(redisKey, '1', { PX: windowMs, NX: true }),
-          redisClient.set(`${redisKey}:reset`, String(resetTime), { PX: windowMs, NX: true }),
-        ]);
-      } else {
-        await redisClient.incr(redisKey);
+      // Set new values in Redis with error handling
+      try {
+        if (shouldReset) {
+          await Promise.all([
+            redisClient.set(redisKey, '1', { PX: windowMs, NX: true }),
+            redisClient.set(`${redisKey}:reset`, String(resetTime), { PX: windowMs, NX: true }),
+          ]);
+        } else {
+          await redisClient.incr(redisKey);
+        }
+      } catch (redisError) {
+        logger.error('Redis operation failed, falling back to memory', {
+          error: redisError?.message,
+          operation: shouldReset ? 'set' : 'incr',
+          key: redisKey
+        });
+        return memoryRateLimit(req, res, next);
       }
 
       // Set rate limit headers
@@ -237,14 +254,15 @@ const createRateLimiter = (options = {}) => {
       next();
     } catch (error) {
       // If Redis fails, fall back to in-memory
-      logger.error('Redis rate limiting failed, falling back to in-memory:', error);
-      memoryRateLimit(req, res, next);
+      logger.error('Redis rate limiting failed, falling back to in-memory:', {
+        error: error?.message,
+        stack: error?.stack?.split('\n')[0]
+      });
+      return memoryRateLimit(req, res, next);
     } finally {
       memoryLocks.delete(redisKey);
     }
   };
-
-  // (memoryRateLimit defined above)
 
   // Always use the Redis-aware limiter; it falls back to memory internally
   return redisRateLimit;
