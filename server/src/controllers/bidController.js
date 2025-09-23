@@ -545,11 +545,29 @@ export const placeBid = async (req, res) => {
             version: { increment: 1 }
           };
 
-          // Extend auction end time if it's the first bid (sniping protection)
+          // Extend auction end time if it's the first bid AND auction is ending soon (sniping protection)
           if (bidCount === 1) {
-            const tenMinutesFromNow = new Date();
-            tenMinutesFromNow.setMinutes(tenMinutesFromNow.getMinutes() + 10);
-            updateData.endDate = tenMinutesFromNow;
+            const currentEndDate = new Date(auction.endDate);
+            const now = new Date();
+            const tenMinutesFromNow = new Date(now.getTime() + 10 * 60 * 1000); // 10 minutes from now
+            const timeUntilEnd = currentEndDate.getTime() - now.getTime();
+            const tenMinutesInMs = 10 * 60 * 1000;
+
+            // Only extend if the auction is ending within the next 10 minutes
+            if (timeUntilEnd <= tenMinutesInMs) {
+              updateData.endDate = tenMinutesFromNow;
+              logger.info('Extended auction end time due to first bid', {
+                auctionId: auction.id,
+                originalEndDate: auction.endDate,
+                newEndDate: tenMinutesFromNow,
+                timeUntilOriginalEnd: Math.round(timeUntilEnd / 1000 / 60) + ' minutes'
+              });
+            } else {
+              logger.info('First bid placed but auction has plenty of time left, no extension needed', {
+                auctionId: auction.id,
+                timeUntilEnd: Math.round(timeUntilEnd / 1000 / 60 / 60) + ' hours'
+              });
+            }
           }
 
           await tx.auction.update({
