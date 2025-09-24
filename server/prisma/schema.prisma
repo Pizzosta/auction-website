@@ -54,17 +54,21 @@ model Auction {
   startDate     DateTime
   endDate       DateTime
   status        AuctionStatus @default(upcoming)
-  category      String?
+  category      String
   sellerId      String
   winnerId      String?
   deletedAt     DateTime?
   deletedById   String?
   isDeleted     Boolean       @default(false)
   images        Json?
+
   deletedBy     User?         @relation("AuctionDeletedBy", fields: [deletedById], references: [id])
   seller        User          @relation("SellerAuctions", fields: [sellerId], references: [id])
   winner        User?         @relation("WinnerAuctions", fields: [winnerId], references: [id])
-  bids          Bid[]
+  
+  highestBidId  String?       @unique
+  highestBid    Bid?          @relation("AuctionHighestBid", fields: [highestBidId], references: [id])
+  bids          Bid[]         @relation("AuctionBids")
 
   @@index([status])
   @@index([endDate])
@@ -76,18 +80,23 @@ model Bid {
   updatedAt   DateTime  @updatedAt
   version     Int       @default(1) // For optimistic concurrency control
   amount      Decimal   @db.Decimal(12, 2)
+
   auctionId   String
+  auction     Auction   @relation("AuctionBids", fields: [auctionId], references: [id])
+
+  highestBidFor  Auction?  @relation("AuctionHighestBid")
+
   bidderId    String
   isOutbid    Boolean   @default(false)
   outbidAt    DateTime?
   deletedAt   DateTime?
   deletedById String?
   isDeleted   Boolean   @default(false)
-  auction     Auction   @relation(fields: [auctionId], references: [id])
   bidder      User      @relation("BidBidder", fields: [bidderId], references: [id])
   deletedBy   User?     @relation("BidDeletedBy", fields: [deletedById], references: [id])
 
   @@index([auctionId, createdAt])
+  @@unique([auctionId, bidderId, amount])
 }
 
 enum AuctionStatus {

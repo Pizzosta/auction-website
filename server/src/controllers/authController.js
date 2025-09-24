@@ -137,9 +137,16 @@ export const register = async (req, res) => {
       // Continue with registration even if queueing fails
     }
 
-    // Generate JWT token
-    const token = jwt.sign({ userId: user.id, email: user.email, role: user.role }, env.jwtSecret, {
-      expiresIn: env.jwtExpire,
+    // Generate access token using the same function as login
+    const accessToken = generateAccessToken(user.id, user.email, user.role);
+    const refreshToken = await generateRefreshToken(user.id, user.email, user.role);
+
+    // Set refresh token as HTTP-only cookie
+    res.cookie('refreshToken', refreshToken, {
+      httpOnly: true,
+      secure: env.nodeEnv === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
 
     res.status(201).json({
@@ -155,7 +162,8 @@ export const register = async (req, res) => {
           phone: user.phone,
           role: user.role,
         },
-        token,
+        accessToken,
+        expiresIn: env.accessTokenExpiry,
       },
     });
   } catch (error) {

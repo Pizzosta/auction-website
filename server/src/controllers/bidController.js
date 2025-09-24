@@ -88,9 +88,24 @@ const updateOutbidBids = async (req, auctionId, newBidAmount, newBidId, currentB
       }
     });
 
-    // Add outbid email to queue
+    // Add outbid email to queue (outside transaction to avoid rollback issues)
     for (const bid of outbidBids) {
       try {
+        // Double-check that this bid hasn't already been marked as outbid
+        // to prevent duplicate notifications
+        const currentBid = await prisma.bid.findUnique({
+          where: { id: bid.id },
+          select: { isOutbid: true }
+        });
+
+        if (currentBid?.isOutbid) {
+          logger.info('Bid already marked as outbid, skipping notification', {
+            bidId: bid.id,
+            userEmail: bid.bidder.email
+          });
+          continue;
+        }
+
         await addToQueue('outBid', bid.bidder.email, {
           name: bid.bidder.firstname,
           title: bid.auction.title,
@@ -132,10 +147,11 @@ const updateOutbidBids = async (req, auctionId, newBidAmount, newBidId, currentB
 // @route   DELETE /api/bids/:bidId
 // @access  Private (Admin for permanent delete)
 export const deleteBid = async (req, res) => {
-  try {
-    const { bidId } = req.params;
-    const { permanent = false } = req.query;
+  const { bidId } = req.params;
+  const { permanent = false } = req.query;
+  const actorId = req.user?.id?.toString(); // Move this outside try block
 
+  try {
     // Find the bid with auction
     const bid = await prisma.bid.findUnique({
       where: { id: bidId },
@@ -151,7 +167,6 @@ export const deleteBid = async (req, res) => {
 
     // Check user permissions
     const isAdmin = req.user.role === 'admin';
-    const actorId = req.user?.id?.toString();
     const isBidder = bid.bidderId.toString() === actorId;
 
     if (!isAdmin && !isBidder) {
@@ -209,7 +224,7 @@ export const deleteBid = async (req, res) => {
     }
 
     // Add retry logic for concurrent operations
-    const MAX_RETRIES = 3;
+    const MAX_RETRIES = 5; // Increased from 3 to 5 for better resilience
     let retries = 0;
     let result;
 
@@ -274,26 +289,53 @@ export const deleteBid = async (req, res) => {
             });
           }
 
-          // 5. If this was the highest bid, update the auction
-          if (currentBid.amount === bid.auction.currentPrice) {
-            const newPrice = highestBid ? highestBid.amount : currentAuction.startingPrice;
-            const newHighestBidId = highestBid ? highestBid.id : null;
+          // 5. Update auction price if the deleted bid was the highest
+          // Find the new highest bid after deletion
+          const newHighestBid = await tx.bid.findFirst({
+            where: {
+              auctionId: bid.auctionId,
+              isDeleted: false,
+              isOutbid: false
+            },
+            orderBy: [
+              { amount: 'desc' },
+              { createdAt: 'asc' } // For tie-breaking
+            ],
+            take: 1,
+            select: {
+              id: true,
+              amount: true
+            }
+          });
 
-            await tx.auction.update({
-              where: {
-                id: bid.auctionId,
-                version: currentAuction.version // Ensure no concurrent updates
-              },
-              data: {
-                currentPrice: newPrice,
-                version: { increment: 1 }
-              }
-            });
+          // Calculate the new current price
+          const newCurrentPrice = newHighestBid ? newHighestBid.amount : currentAuction.startingPrice;
+          const newHighestBidId = newHighestBid ? newHighestBid.id : null;
 
-            return { newPrice, newHighestBidId };
-          }
+          // Log the price update for debugging
+          logger.info('Updating auction price after bid deletion', {
+            auctionId: bid.auctionId,
+            deletedBidAmount: currentBid.amount,
+            oldCurrentPrice: currentAuction.currentPrice,
+            newCurrentPrice: newCurrentPrice,
+            newHighestBidId: newHighestBidId,
+            hasNewHighestBid: !!newHighestBid
+          });
 
-          return { newPrice: null, newHighestBidId: null };
+          // Update auction with new price and highest bid
+          await tx.auction.update({
+            where: {
+              id: bid.auctionId,
+              version: currentAuction.version // Ensure no concurrent updates
+            },
+            data: {
+              currentPrice: newCurrentPrice,
+              highestBidId: newHighestBidId,
+              version: { increment: 1 }
+            }
+          });
+
+          return { newPrice: newCurrentPrice, newHighestBidId };
         }, {
           maxWait: 5000, // Max time to wait for the transaction (5s)
           timeout: 10000, // Max time to process the transaction (10s)
@@ -303,30 +345,45 @@ export const deleteBid = async (req, res) => {
         // If we get here, the transaction succeeded
         break;
       } catch (error) {
+        // Log retry attempts for debugging
+        logger.warn('Bid deletion retry attempt', {
+          attempt: retries + 1,
+          maxRetries: MAX_RETRIES,
+          errorCode: error.code,
+          errorMessage: error.message,
+          auctionId: bid.auctionId
+        });
+
         // If it's a version conflict, retry
         if (error.code === 'P2025' || error.message.includes('version')) {
           retries++;
           if (retries === MAX_RETRIES) {
+            logger.error('Bid deletion failed after max retries', {
+              totalRetries: retries,
+              auctionId: bid.auctionId,
+              errorCode: error.code,
+              errorMessage: error.message
+            });
             throw new Error('Failed to process bid cancellation due to concurrent modifications. Please try again.');
           }
-          // Add exponential backoff
-          await new Promise(resolve => setTimeout(resolve, 100 * Math.pow(2, retries)));
+          // Add exponential backoff with jitter to reduce thundering herd
+          const baseDelay = 100 * Math.pow(2, retries);
+          const jitter = Math.random() * 50; // Add random jitter up to 50ms
+          await new Promise(resolve => setTimeout(resolve, baseDelay + jitter));
           continue;
         }
         throw error; // Re-throw other errors
       }
     }
 
-    // Cache invalidation for the highest bid
+    // Note: Cache invalidation would happen here if cache was configured
+    // For now, the database will be the source of truth
     if (result?.newPrice !== null) {
-      // Invalidate any caches related to this auction's highest bid
-      try {
-        await cache.del(`auction:${bid.auctionId}:highestBid`);
-        await cache.del(`auction:${bid.auctionId}:currentPrice`);
-      } catch (cacheError) {
-        logger.error('Cache invalidation failed:', { error: cacheError.message });
-        // Continue even if cache invalidation fails
-      }
+      logger.info('Bid deletion completed - cache would be invalidated here', {
+        auctionId: bid.auctionId,
+        oldPrice: bid.auction.currentPrice,
+        newPrice: result.newPrice
+      });
     }
 
     res.status(200).json({
@@ -337,7 +394,7 @@ export const deleteBid = async (req, res) => {
     logger.error('Delete bid error:', {
       error: error.message,
       bidId: req.params.bidId,
-      userId: actorId,
+      userId: actorId, // Now actorId is accessible here
     });
 
     res.status(500).json({
@@ -578,10 +635,8 @@ export const placeBid = async (req, res) => {
             data: updateData,
           });
 
-          // 6. Update outbid status for lower bids
-          await updateOutbidBids(req, auctionId, amount, bid.id, actorId);
-
-          return bid;
+          // Return bid data for outbid processing (without calling updateOutbidBids here)
+          return { ...bid, auctionId, amount };
         }, {
           maxWait: 5000,
           timeout: 10000,
@@ -618,6 +673,11 @@ export const placeBid = async (req, res) => {
         }
         throw error; // Re-throw other errors
       }
+    }
+
+    // Only process outbid notifications AFTER successful transaction
+    if (result) {
+      await updateOutbidBids(req, result.auctionId, result.amount, result.id, actorId);
     }
 
       // Get io instance from app settings

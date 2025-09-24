@@ -1,7 +1,7 @@
 import prisma from '../config/prisma.js';
 import { addToQueue } from '../services/emailQueue.js';
 import logger from '../utils/logger.js';
-import { formatDateTime } from '../utils/format.js'; 
+import { formatDateTime, formatTimeRemaining } from '../utils/format.js'; 
 /**
  * Check and close expired auctions
  * This function should be called periodically (e.g., every minute) using a job scheduler
@@ -310,29 +310,41 @@ export const startScheduledAuctions = async () => {
             // Check current auction status
             const currentAuction = await tx.auction.findUnique({
               where: { id: auction.id },
-              select: { id: true, status: true, version: true }
+              select: { id: true, status: true, version: true, updatedAt: true }
             });
 
             if (currentAuction && currentAuction.status === 'active') {
-              // Auction is already active, but we should still send notification
-              // in case it wasn't sent in the previous attempt
-              try {
-                await addToQueue('auctionStarted', auction.seller.email, {
-                  name: auction.seller.firstname,
-                  auctionTitle: auction.title,
-                  auctionUrl: `${process.env.FRONTEND_URL}/auctions/${auction.id}`,
-                  startDate: formatDateTime(auction.startDate),
-                  endDate: formatDateTime(auction.endDate),
-                });
-                updatedCount++;
-                logger.info('Sent auction started notification for already-active auction', {
-                  auctionId: auction.id
-                });
-              } catch (emailError) {
-                logger.error('Failed to queue auction started notification for already-active auction:', {
-                  error: emailError.message,
+              // Only send notification if auction was updated recently (within last 5 minutes)
+              // This prevents sending duplicate notifications for auctions that were started long ago
+              const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+              const wasRecentlyUpdated = currentAuction.updatedAt > fiveMinutesAgo;
+
+              if (wasRecentlyUpdated) {
+                try {
+                  await addToQueue('auctionStarted', auction.seller.email, {
+                    name: auction.seller.firstname,
+                    auctionTitle: auction.title,
+                    auctionUrl: `${process.env.FRONTEND_URL}/auctions/${auction.id}`,
+                    startDate: formatDateTime(auction.startDate),
+                    endDate: formatDateTime(auction.endDate),
+                  });
+                  updatedCount++;
+                  logger.info('Sent auction started notification for recently-updated auction', {
+                    auctionId: auction.id,
+                    updatedAt: currentAuction.updatedAt
+                  });
+                } catch (emailError) {
+                  logger.error('Failed to queue auction started notification for recently-updated auction:', {
+                    error: emailError.message,
+                    auctionId: auction.id,
+                    userId: auction.seller.id,
+                  });
+                }
+              } else {
+                logger.info('Auction was updated long ago, skipping notification', {
                   auctionId: auction.id,
-                  userId: auction.seller.id,
+                  updatedAt: currentAuction.updatedAt,
+                  fiveMinutesAgo: fiveMinutesAgo
                 });
               }
               return currentAuction;
