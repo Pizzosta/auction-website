@@ -11,56 +11,40 @@ import logger from '../utils/logger.js';
  * @param {Error} err - The error object from nodemailer
  * @returns {boolean} True if the error is temporary
  */
-const isTemporaryEmailError = err => {
+const isTemporaryEmailError = (err) => {
   if (!err) return false;
-  const msg = (err.message || '').toLowerCase();
-  const code = err.code ? err.code.toString().toLowerCase() : '';
+  const msg = (err.message || "").toLowerCase();
+  const code = err.code ? err.code.toString().toLowerCase() : "";
 
   // Network / timeout related
   const networkIssues = [
-    'timeout',
-    'timed out',
-    'connection reset',
-    'econnreset',
-    'econnrefused',
-    'etimedout',
-    'enotfound',
-    'esockettimedout',
+    "timeout",
+    "timed out",
+    "connection reset",
+    "econnreset",
+    "econnrefused",
+    "etimedout",
+    "enotfound",
+    "esockettimedout",
   ];
 
   // SMTP 4xx temporary failures
   const smtpTemporary = [
-    '4.0.0', // Generic temporary failure
-    '4.1.0', // Temporary address issue
-    '4.2.0', // Mailbox full / temporarily unavailable
-    '4.4.1', // Connection timed out
-    '4.5.3', // Too many connections
-    'try again later',
-    'server busy',
+    "4.0.0", // Generic temporary failure
+    "4.1.0", // Temporary address issue
+    "4.2.0", // Mailbox full / temporarily unavailable
+    "4.4.1", // Connection timed out
+    "4.5.3", // Too many connections
+    "try again later",
+    "server busy",
   ];
 
-  return (
-    networkIssues.some(k => msg.includes(k) || code.includes(k)) ||
-    smtpTemporary.some(k => msg.includes(k) || code.includes(k))
-  );
+  return networkIssues.some(k => msg.includes(k) || code.includes(k)) ||
+    smtpTemporary.some(k => msg.includes(k) || code.includes(k));
 };
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-// Register formatDate helper
-handlebars.registerHelper('formatDate', function(dateString) {
-  if (!dateString) return '';
-  const date = new Date(dateString);
-  return date.toLocaleString('en-GH', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  });
-});
 
 // Compile email templates
 const compileTemplate = async (templateName, context) => {
@@ -73,13 +57,8 @@ const compileTemplate = async (templateName, context) => {
     const template = handlebars.compile(source);
     return template({ ...emailConfig.templateVars, ...context });
   } catch (error) {
-    logger.error(`Error compiling email template ${templateName}:`, {
-      error: error.message,
-      filePath,
-      templateDir,
-      files: fs.readdirSync(templateDir) // Log available templates
-    });
-    throw new Error(`Failed to load email template: ${templateName}. ${error.message}`);
+    logger.error(`Error compiling email template ${templateName}:`, error);
+    throw new Error(`Failed to load email template: ${templateName}`);
   }
 };
 
@@ -90,11 +69,7 @@ export const sendEmail = async ({ to, subject, template, context = {}, retryCoun
   try {
     // In development, log the email being sent
     if (process.env.NODE_ENV === 'development') {
-      logger.info(`Sending email (attempt ${retryCount + 1}/${maxRetries + 1}):`, {
-        to,
-        subject,
-        template,
-      });
+      logger.info(`Sending email (attempt ${retryCount + 1}/${maxRetries + 1}):`, { to, subject, template });
     }
 
     // Use context from config and merge with provided context
@@ -172,7 +147,7 @@ const emailTemplates = {
     template: 'auctionStarted',
   },
   outBid: {
-    subject: 'Outbid Notification',
+    subject: 'You Have Been Outbid!',
     template: 'outBid',
   },
 };
@@ -180,24 +155,25 @@ const emailTemplates = {
 export const sendTemplateEmail = async (type, to, context = {}) => {
   const template = emailTemplates[type];
   if (!template) {
-    const error = new Error(`Email template '${type}' not found. Available templates: ${Object.keys(emailTemplates).join(', ')}`);
-    logger.error(error.message);
-    throw error;
+    throw new Error(`Email template '${type}' not found`);
   }
 
-  try {
-    return await sendEmail({
-      to,
-      subject: template.subject,
-      template: template.template,
-      context,
-    });
-  } catch (error) {
-    logger.error(`Failed to send ${type} email to ${to}:`, {
-      error: error.message,
-      stack: error.stack,
-      context
-    });
-    throw error;
-  }
+  return sendEmail({
+    to,
+    subject: template.subject,
+    template: template.template,
+    context,
+  });
 };
+
+/*
+// Template registration (if using a template engine like handlebars)
+// Example for handlebars:
+import path from 'path';
+import fs from 'fs';
+
+const templates = {
+  auctionStarted: fs.readFileSync(path.resolve(__dirname, '../templates/emails/auctionStarted.hbs'), 'utf-8'),
+  // ...other templates
+};
+*/
