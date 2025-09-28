@@ -14,7 +14,6 @@ export async function listAllBidsPrisma({
   maxAmount,
   startDate,
   endDate,
-
 }) {
   const pageNum = Math.max(1, parseInt(page));
   const take = Math.min(Math.max(1, parseInt(limit)), 100);
@@ -28,6 +27,8 @@ export async function listAllBidsPrisma({
     const normalizedStatus = status.toLowerCase();
 
     if (normalizedStatus === 'active') {
+      // Show only bids that are not deleted
+      where.isDeleted = false;
       where.auction = {
         status: 'active',
         endDate: { gt: new Date() },
@@ -42,19 +43,16 @@ export async function listAllBidsPrisma({
         {
           auction: {
             status: { in: ['ended', 'sold'] },
-            NOT: { winnerId: where.bidderId } // The bidder didn't win
-          }
-        }
+            NOT: { winnerId: where.bidderId }, // The bidder didn't win
+          },
+        },
       ];
     } else if (normalizedStatus === 'outbid') {
       // This requires additional logic to determine if a bid was outbid
       // You might need to add a field to track this
       where.isOutbid = true;
     } else if (normalizedStatus === 'cancelled') {
-      where.auction = {
-        status: 'cancelled',
-        isDeleted: true,
-      };
+      where.isDeleted = true;
     } else if (normalizedStatus === 'all') {
       // no filter
     } else {
@@ -86,7 +84,7 @@ export async function listAllBidsPrisma({
   sortOrder = sortOrder || 'desc';
   const orderBy = { [sortField]: sortOrder };
 
-  const [total, bids] = await Promise.all([
+  const [count, bids] = await Promise.all([
     prisma.bid.count({ where }),
     prisma.bid.findMany({
       where,
@@ -98,8 +96,8 @@ export async function listAllBidsPrisma({
           select: {
             id: true,
             username: true,
-            email: true
-          }
+            email: true,
+          },
         },
         auction: {
           select: {
@@ -109,18 +107,17 @@ export async function listAllBidsPrisma({
             endDate: true,
             status: true,
             winnerId: true,
-          }
-        }
+          },
+        },
       },
     }),
   ]);
 
   return {
     bids,
-    total,
-    page: pageNum,
-    limit: take,
-    totalPages: Math.ceil(total / limit),
+    count,
+    pageNum,
+    take,
   };
 }
 
@@ -170,10 +167,7 @@ export async function listBidsPrisma({
     } else if (normalizedStatus === 'outbid') {
       where.isOutbid = true;
     } else if (normalizedStatus === 'cancelled') {
-      where.auction = {
-        status: 'cancelled',
-        isDeleted: true,
-      };
+      where.isDeleted = true;
     } else if (normalizedStatus === 'all') {
       // no filter
     } else {
@@ -195,7 +189,7 @@ export async function listBidsPrisma({
   const orderBy = { [field]: order === 'asc' ? 'asc' : 'desc' };
 
   // Execute queries
-  const [bids] = await Promise.all([
+  const [count, bids] = await Promise.all([
     prisma.bid.count({ where }),
     prisma.bid.findMany({
       where,
@@ -253,19 +247,19 @@ export async function listBidsByAuctionPrisma({
   // Handle status filter
   if (status) {
     const normalizedStatus = status.toLowerCase();
-    
+
     if (normalizedStatus === 'cancelled') {
-      where.auction = {
-        status: 'cancelled',
-        isDeleted: true,
-      };
+      // Show all bids that are cancelled (isDeleted=true), regardless of auction status
+      where.isDeleted = true;
     } else if (normalizedStatus === 'all') {
       // no additional filters needed
     } else {
       // For other statuses, ensure we don't show deleted bids
       where.isDeleted = false;
-      
+
       if (normalizedStatus === 'active') {
+        // Show only bids that are not deleted
+        where.isDeleted = false;
         where.auction = {
           status: 'active',
           endDate: { gt: new Date() },

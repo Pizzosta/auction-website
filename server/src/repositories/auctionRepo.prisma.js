@@ -28,32 +28,20 @@ export async function listAuctionsPrisma({
     const normalizedStatus = status.toLowerCase();
 
     if (normalizedStatus === 'active') {
-      where.AND = [
-        { status: 'active' },
-        { endDate: { gt: new Date() } },
-      ];
+      where.AND = [{ status: 'active' }, { endDate: { gt: new Date() } }];
     } else if (normalizedStatus === 'upcoming') {
-      where.AND = [
-        { status: 'upcoming' },
-        { startDate: { gt: new Date() } },
-      ];
+      where.AND = [{ status: 'upcoming' }, { startDate: { gt: new Date() } }];
     } else if (normalizedStatus === 'ended') {
       where.OR = [
         { status: 'ended' },
         {
-          AND: [
-            { status: 'active' },
-            { endDate: { lte: new Date() } },
-          ],
+          AND: [{ status: 'active' }, { endDate: { lte: new Date() } }],
         },
       ];
     } else if (normalizedStatus === 'sold') {
       where.status = 'sold';
     } else if (normalizedStatus === 'cancelled') {
-      where.AND = [
-        { status: 'cancelled' },
-        { isDeleted: true },
-      ];
+      where.AND = [{ status: 'cancelled' }, { isDeleted: true }];
     } else if (normalizedStatus === 'all') {
       // no filter (include everything)
     } else {
@@ -89,8 +77,14 @@ export async function listAuctionsPrisma({
   let [field, order] = String(sort).split(':');
   if (!field) field = 'createdAt';
   const allowedSortFields = new Set([
-    'title', 'description', 'startingPrice', 'currentPrice',
-    'startDate', 'endDate', 'createdAt', 'bidCount'
+    'title',
+    'description',
+    'startingPrice',
+    'currentPrice',
+    'startDate',
+    'endDate',
+    'createdAt',
+    'bidCount',
   ]);
   if (!allowedSortFields.has(field)) field = 'createdAt';
   const orderBy = { [field]: order === 'asc' ? 'asc' : 'desc' };

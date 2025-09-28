@@ -61,3 +61,5 @@ create auction ended relisting
 Bidder Notification:
 Notify the bidder when their bid is cancelled (if not self-initiated, like by an admin)
 Include the reason for cancellation in the notification
+
+curl -v http://localhost:5001/api/auctions 2>&1 | grep X-RateLimit
