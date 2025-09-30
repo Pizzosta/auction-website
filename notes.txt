@@ -8,8 +8,6 @@ add rate limiting sendEmail
 
 map DB duplicate field errors into more meaningful messages in the errorhandler
 
-fix undefined in logger (terminal) & also log.warn 
-
 implement rotate dkim keys
 
 centralize all rateLimiter
@@ -22,8 +20,6 @@ pass state data first and replace with api fetched data
 enable 2-factor authentication (remove it from template password reset )
 
 disallow (Allow other headers) in validator
-
-Create a central configuration module that handles environment variables. This avoids scattered process.env calls and ensures defaults or errors are handled consistently.
 
 Create global async error wrapper (catchAsync) so you don’t need try/catch blocks inside every controller
 
@@ -45,8 +41,6 @@ Lighter (less data transfer)
 Focused on what the client needs
 Easier to work with in the frontend
 
-Redis scan or keys which is better?
-
 config files serialize .. uinform   
 
 the 3 loggers combine into one api/http/request(Logger). globalErrorHandler or AppError we have to app.use one at the server.js
@@ -63,3 +57,5 @@ Notify the bidder when their bid is cancelled (if not self-initiated, like by an
 Include the reason for cancellation in the notification
 
 curl -v http://localhost:5001/api/auctions 2>&1 | grep X-RateLimit
+
+pass all the envs through parseDuration

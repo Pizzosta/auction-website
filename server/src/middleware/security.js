@@ -37,6 +37,12 @@ const presets = {
     message: 'Too many forgot-password requests, please try again later.',
   },
 
+  verificationEmail: {
+    windowMs: env.rateLimit.verificationEmail.windowMs || env.rateLimit.windowMs || 10 * 60_000,
+    max: env.rateLimit.verificationEmail.max || env.rateLimit.max || 10,
+    message: 'Too many verification-email requests, please try again later.',
+  },
+
   bid: {
     windowMs: env.rateLimit.bid.windowMs || env.rateLimit.windowMs || 60_000,
     max: env.rateLimit.bid.max || env.rateLimit.max || 10,
@@ -272,6 +278,11 @@ const createRateLimiter = (options = {}) => {
 export const forgotLimiter = createRateLimiter({
   ...presets.forgotPassword,
   keyPrefix: 'forgot-password:',
+});
+
+export const verificationEmailLimiter = createRateLimiter({
+  ...presets.verificationEmail,
+  keyPrefix: 'verification-email:',
 });
 
 export const loginLimiter = createRateLimiter({

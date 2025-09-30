@@ -11,36 +11,38 @@ import logger from '../utils/logger.js';
  * @param {Error} err - The error object from nodemailer
  * @returns {boolean} True if the error is temporary
  */
-const isTemporaryEmailError = (err) => {
+const isTemporaryEmailError = err => {
   if (!err) return false;
-  const msg = (err.message || "").toLowerCase();
-  const code = err.code ? err.code.toString().toLowerCase() : "";
+  const msg = (err.message || '').toLowerCase();
+  const code = err.code ? err.code.toString().toLowerCase() : '';
 
   // Network / timeout related
   const networkIssues = [
-    "timeout",
-    "timed out",
-    "connection reset",
-    "econnreset",
-    "econnrefused",
-    "etimedout",
-    "enotfound",
-    "esockettimedout",
+    'timeout',
+    'timed out',
+    'connection reset',
+    'econnreset',
+    'econnrefused',
+    'etimedout',
+    'enotfound',
+    'esockettimedout',
   ];
 
   // SMTP 4xx temporary failures
   const smtpTemporary = [
-    "4.0.0", // Generic temporary failure
-    "4.1.0", // Temporary address issue
-    "4.2.0", // Mailbox full / temporarily unavailable
-    "4.4.1", // Connection timed out
-    "4.5.3", // Too many connections
-    "try again later",
-    "server busy",
+    '4.0.0', // Generic temporary failure
+    '4.1.0', // Temporary address issue
+    '4.2.0', // Mailbox full / temporarily unavailable
+    '4.4.1', // Connection timed out
+    '4.5.3', // Too many connections
+    'try again later',
+    'server busy',
   ];
 
-  return networkIssues.some(k => msg.includes(k) || code.includes(k)) ||
-    smtpTemporary.some(k => msg.includes(k) || code.includes(k));
+  return (
+    networkIssues.some(k => msg.includes(k) || code.includes(k)) ||
+    smtpTemporary.some(k => msg.includes(k) || code.includes(k))
+  );
 };
 
 const __filename = fileURLToPath(import.meta.url);
@@ -69,7 +71,11 @@ export const sendEmail = async ({ to, subject, template, context = {}, retryCoun
   try {
     // In development, log the email being sent
     if (process.env.NODE_ENV === 'development') {
-      logger.info(`Sending email (attempt ${retryCount + 1}/${maxRetries + 1}):`, { to, subject, template });
+      logger.info(`Sending email (attempt ${retryCount + 1}/${maxRetries + 1}):`, {
+        to,
+        subject,
+        template,
+      });
     }
 
     // Use context from config and merge with provided context
@@ -149,6 +155,10 @@ const emailTemplates = {
   outBid: {
     subject: 'You Have Been Outbid!',
     template: 'outBid',
+  },
+  verificationEmail: {
+    subject: 'Verify Your Email Address',
+    template: 'verificationEmail',
   },
 };
 

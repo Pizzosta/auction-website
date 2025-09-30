@@ -6,7 +6,7 @@ import { addToQueue } from '../services/emailQueue.js';
 import logger from '../utils/logger.js';
 import { env, validateEnv } from '../config/env.js';
 import { generateAccessToken, generateRefreshToken } from '../services/tokenService.js';
-import { normalizeToE164 } from '../utils/format.js';
+import { normalizeToE164, parseDuration } from '../utils/format.js';
 import jwt from 'jsonwebtoken';
 
 // Validate required environment variables
@@ -243,6 +243,13 @@ export const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
 
+    if (!email) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Email is required',
+      });
+    }
+
     // Find user by email
     const user = await prisma.user.findFirst({
       where: { email: email?.trim().toLowerCase() },
@@ -259,26 +266,17 @@ export const forgotPassword = async (req, res) => {
 
     // Generate reset token and save hashed version to database
     const resetToken = crypto.randomBytes(32).toString('hex');
-    const hashed = crypto.createHash('sha256').update(resetToken).digest('hex');
+    const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
 
-    // compute expire (default 10 minutes if not configured)
-    const parseExpiry = val => {
-      if (!val) return 10 * 60 * 1000;
-      if (typeof val === 'number') return val;
-      const m = String(val).match(/^(\d+)(ms|s|m|h|d)?$/);
-      if (!m) return 10 * 60 * 1000;
-      const num = parseInt(m[1]);
-      const unit = m[2] || 'ms';
-      const mult = { ms: 1, s: 1000, m: 60000, h: 3600000, d: 86400000 }[unit];
-      return num * mult;
-    };
-    const expireMs = parseExpiry(env.resetTokenExpire || '10m');
+    // compute expire (default to 10 minutes if not configured)
+    const expireMs = parseDuration(env.resetTokenExpire, 10 * 60 * 1000);
     const expireAt = new Date(Date.now() + expireMs);
 
+    // Update user with hashed token and expiry
     await prisma.user.update({
       where: { id: user.id },
       data: {
-        resetPasswordToken: hashed,
+        resetPasswordToken: hashedToken,
         resetPasswordExpire: expireAt,
       },
     });
@@ -288,14 +286,14 @@ export const forgotPassword = async (req, res) => {
 
     // Send email
     try {
-      const rawExpire = env.resetTokenExpire || '10m';
+      const rawExpire = env.resetTokenExpire || 10 * 60 * 1000;
       const expireInMinutes = String(rawExpire).endsWith('m')
         ? `${String(rawExpire).replace('m', '')} minutes`
         : String(rawExpire);
 
       await addToQueue('resetPassword', user.email, {
         name: user.firstname,
-        resetUrl: resetUrl,
+        passwordResetLink: resetUrl,
         expiresIn: expireInMinutes,
       });
 
@@ -314,11 +312,9 @@ export const forgotPassword = async (req, res) => {
         data: { resetPasswordToken: null, resetPasswordExpire: null },
       });
 
-      return res.status(500).json({
-        status: 'error',
-        message: 'Email could not be sent',
-      });
+      // Don't fail the request if email fails
     }
+
   } catch (error) {
     logger.error('Forgot password error:', {
       error: error.message,
@@ -327,7 +323,7 @@ export const forgotPassword = async (req, res) => {
     });
     return res.status(500).json({
       status: 'error',
-      message: 'Server error',
+      message: 'Internal server error',
     });
   }
 };
@@ -337,8 +333,15 @@ export const resetPassword = async (req, res) => {
     const { token } = req.params;
     const { password, confirmPassword } = req.body;
 
+    if (!token) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Verification token is required',
+      });
+    }
+
     // Check if token is valid
-    if (!token || typeof token !== 'string' || token.length !== 64) {
+    if (typeof token !== 'string' || token.length !== 64) {
       logger.warn('Reset token validation failed', {
         reason: 'Invalid token type',
         tokenType: typeof token,
@@ -355,15 +358,11 @@ export const resetPassword = async (req, res) => {
       });
     }
 
-    // Decode URL-encoded characters in the token
-    const decodedToken = decodeURIComponent(token);
-
     // Log token details for debugging
     logger.info('Reset token received', {
       originalToken: token,
-      decodedToken,
-      tokenLength: decodedToken.length,
-      isHex: /^[0-9a-fA-F]+$/.test(decodedToken),
+      tokenLength: token.length,
+      isHex: /^[0-9a-fA-F]+$/.test(token),
     });
 
     // Check if passwords match
@@ -394,12 +393,12 @@ export const resetPassword = async (req, res) => {
     }
 
     // Get hashed token using the decoded token
-    const resetPasswordToken = crypto.createHash('sha256').update(decodedToken).digest('hex');
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
 
-    // Find user by reset token and check expiration
+    // Find user with valid reset token and not expired
     const user = await prisma.user.findFirst({
       where: {
-        resetPasswordToken,
+        resetPasswordToken: hashedToken,
         resetPasswordExpire: { gt: new Date() },
       },
       select: { id: true, firstname: true, email: true, role: true, passwordHash: true },
@@ -474,6 +473,193 @@ export const resetPassword = async (req, res) => {
     res.status(500).json({
       status: 'error',
       message: 'Server error',
+    });
+  }
+};
+
+/**
+ * Request email verification (send verification link)
+ * Usage: POST /api/auth/request-verification
+ * Body: { email }
+ */
+export const requestVerification = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Email is required',
+      });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { email: email?.trim().toLowerCase() },
+      select: { id: true, firstname: true, email: true },
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'User not found',
+      });
+    }
+    if (user.isVerified) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Email is already verified',
+      });
+    }
+    if (user.isDeleted) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'User is deleted',
+      });
+    }
+
+    // Generate token and hash
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+    // compute expire (default to 24 hours if not configured)
+    const expireMs = parseDuration(env.verificationTokenExpire, 24 * 60 * 60 * 1000);
+    const expiry = new Date(Date.now() + expireMs);
+
+    // Update user with hashed token and expiry
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        emailVerificationToken: tokenHash,
+        emailVerificationExpire: expiry,
+      },
+    });
+
+    // Create verification link
+    const verificationUrl = `${env.clientUrl}/verify-email/${rawToken}`;
+
+    // Send email
+    try {
+      const rawExpire = env.verificationTokenExpire || 24 * 60 * 60 * 1000;
+      const expireInHours = String(rawExpire).endsWith('h')
+        ? `${String(rawExpire).replace('h', '')} hours`
+        : String(rawExpire);
+
+      await addToQueue('verificationEmail', user.email, {
+        name: user.firstname,
+        verificationLink: verificationUrl,
+        expiresIn: expireInHours,
+      });
+
+      return res.status(200).json({
+        status: 'success',
+        message: 'Verification email sent',
+      });
+    } catch (emailError) {
+      logger.error('Error sending verification email:', {
+        error: emailError.message,
+        stack: emailError.stack,
+        userId: user.id,
+        userEmail: user.email,
+      });
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { emailVerificationToken: null, emailVerificationExpire: null },
+      });
+
+      // Don't fail the request if email fails
+    }
+
+  } catch (error) {
+    logger.error('Error requesting verification:', {
+      error: error.message,
+      stack: error.stack,
+      userEmail: req.body?.email,
+    });
+    return res.status(500).json({
+      status: 'error',
+      message: 'Internal server error',
+    });
+  }
+};
+
+/**
+ * Verify email (user clicks link)
+ * Usage: GET /api/auth/verify-email/:token
+ */
+export const verifyEmail = async (req, res) => {
+  try {
+    const { token } = req.params;
+    if (!token) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Verification token is required',
+      });
+    }
+
+    // Check if token is valid
+    if (typeof token !== 'string' || token.length !== 64) {
+      logger.warn('Reset token validation failed', {
+        reason: 'Invalid token type',
+        tokenType: typeof token,
+        tokenLength: typeof token === 'string' ? token.length : 'N/A',
+        ip: req.ip,
+        route: req.originalUrl,
+        timestamp: new Date().toISOString(),
+      });
+
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid reset token format',
+        details: `Expected 64-character hex string, got ${typeof token === 'string' ? token.length : 'N/A'} characters`,
+      });
+    }
+
+    // Log token details for debugging
+    logger.info('Reset token received', {
+      originalToken: token,
+      tokenLength: token.length,
+      isHex: /^[0-9a-fA-F]+$/.test(token),
+    });
+
+    // Get hashed token using the decoded token
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+
+    // Find user with matching hashed token and not expired
+    const user = await prisma.user.findFirst({
+      where: {
+        emailVerificationToken: tokenHash,
+        emailVerificationExpire: { gt: new Date() },
+        isVerified: false,
+      },
+    });
+    
+    if (!user) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid or expired verification token',
+      });
+    }
+    // Update user: set verified, clear token fields
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        isVerified: true,
+        emailVerificationToken: null,
+        emailVerificationExpire: null,
+      },
+    });
+    return res.status(200).json({
+      status: 'success',
+      message: 'Email verified successfully',
+    });
+  } catch (error) {
+    logger.error('Error verifying email:', {
+      error: error.message,
+      stack: error.stack,
+    });
+    return res.status(500).json({
+      status: 'error',
+      message: 'Internal server error',
     });
   }
 };

@@ -14,7 +14,7 @@ export const userQuerySchema = Joi.object({
     .optional(),
   search: Joi.string().optional(),
   role: Joi.string().valid('user', 'admin').optional(),
-  status: Joi.string().valid('active', 'deleted', 'all').default('active').lowercase() ,
+  status: Joi.string().valid('active', 'deleted', 'all').default('active').lowercase(),
 });
 
 // Auction query schema validation
@@ -27,7 +27,10 @@ export const auctionQuerySchema = Joi.object({
     )
     .default('createdAt:desc')
     .optional(),
-  status: Joi.string().valid('upcoming', 'active', 'ended', 'sold', 'cancelled', 'all').lowercase().optional(),
+  status: Joi.string()
+    .valid('upcoming', 'active', 'ended', 'sold', 'cancelled', 'all')
+    .lowercase()
+    .optional(),
   category: Joi.string().optional(),
   search: Joi.string().optional(),
   endingSoon: Joi.boolean()
@@ -56,7 +59,10 @@ export const bidQuerySchema = Joi.object({
     .pattern(/^(amount|createdAt):(asc|desc)$/)
     .default('createdAt:desc')
     .optional(),
-  status: Joi.string().valid('active', 'won', 'lost', 'outbid', 'cancelled', 'all').lowercase().optional(),
+  status: Joi.string()
+    .valid('active', 'won', 'lost', 'outbid', 'cancelled', 'all')
+    .lowercase()
+    .optional(),
   auctionId: Joi.string().uuid({ version: 'uuidv4' }).optional(),
   bidderId: Joi.string().uuid({ version: 'uuidv4' }).optional(),
   minAmount: Joi.number().min(0).optional(),
@@ -101,8 +107,15 @@ export const bidIdSchema = Joi.object({
   }),
 });
 
-// Auth schema validation
+// Auth schemas
 export const authSchema = {
+  verifyEmail: Joi.object({
+    email: Joi.string().email().required().lowercase().messages({
+      'string.email': 'Please enter a valid email address',
+      'any.required': 'Email is required',
+    }),
+  }),
+
   register: Joi.object({
     firstname: Joi.string().trim().min(3).max(20).required().messages({
       'string.empty': 'First name is required',

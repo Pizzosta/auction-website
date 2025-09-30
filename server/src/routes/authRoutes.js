@@ -1,7 +1,14 @@
 import express from 'express';
-import { register, login, forgotPassword, resetPassword } from '../controllers/authController.js';
+import {
+  register,
+  login,
+  forgotPassword,
+  resetPassword,
+  verifyEmail,
+  requestVerification,
+} from '../controllers/authController.js';
 import { refreshToken, logout, logoutAllDevices } from '../controllers/tokenController.js';
-import { forgotLimiter, loginLimiter } from '../middleware/security.js';
+import { forgotLimiter, loginLimiter, verificationEmailLimiter } from '../middleware/security.js';
 import { validate } from '../middleware/validationMiddleware.js';
 import { authSchema, tokenSchema } from '../utils/validators.js';
 import { verifyRefreshToken, protect } from '../middleware/authMiddleware.js';
@@ -77,5 +84,25 @@ router.post('/refresh-token', verifyRefreshToken, refreshToken);
  */
 router.post('/logout', verifyRefreshToken, logout);
 router.post('/logout-all', protect, logoutAllDevices);
+
+/**
+ * @route POST /api/auth/request-verification
+ * @group Auth - authentication
+ * @description Request a new email verification link.
+ * @param {string} email.body.required - User's email address
+ * @returns {object} 200 - OK
+ * @returns {Error} default - Unexpected error
+ */
+router.post('/request-verification', protect, verificationEmailLimiter, validate(authSchema.verifyEmail, 'body'), requestVerification);
+
+/**
+ * @route GET /api/auth/verify-email/:token
+ * @group Auth - authentication
+ * @description Verify user's email address with token.
+ * @param {string} token.path.required - Verification token
+ * @returns {object} 200 - OK
+ * @returns {Error} default - Unexpected error
+ */
+router.get('/verify-email/:token', validate(tokenSchema, 'params', { key: 'token' }), verifyEmail);
 
 export default router;

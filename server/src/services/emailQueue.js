@@ -21,10 +21,15 @@ const emailQueue = new Queue('emailQueue', {
 emailQueue.process(async job => {
   const { type, to, context = {} } = job.data;
 
-  logger.info(`Processing email job: ${job.id} - ${type} to ${to}`);
+  // Extract email from context if to is an object with an email property
+  const recipientEmail = typeof to === 'object' && to !== null && 'email' in to 
+    ? to.email 
+    : to;
+
+  logger.info(`Processing email job: ${job.id} - ${type} to ${recipientEmail}`);
 
   try {
-    const result = await sendTemplateEmail(type, to, context);
+    const result = await sendTemplateEmail(type, recipientEmail, { ...context, ...(typeof to === 'object' ? to : {}) });
     logger.info(`Email sent successfully: ${job.id}`);
     return result;
   } catch (error) {

@@ -50,3 +50,28 @@ export const formatTimeRemaining = (endDate) => {
     return `${diffMinutes} minute${diffMinutes !== 1 ? 's' : ''}`;
   }
 };
+
+// helper function to parse duration
+export const parseDuration = (val, defaultMs = 10 * 60 * 1000) => {
+  if (!val) return defaultMs;
+
+  if (typeof val === 'number' && !isNaN(val)) {
+    return val; // already in ms
+  }
+
+  const m = String(val).trim().match(/^(\d+)(ms|s|m|h|d)?$/i);
+  if (!m) return defaultMs;
+
+  const num = parseInt(m[1], 10);
+  const unit = (m[2] || 'ms').toLowerCase();
+
+  const multipliers = {
+    ms: 1,
+    s: 1000,
+    m: 60 * 1000,
+    h: 60 * 60 * 1000,
+    d: 24 * 60 * 60 * 1000,
+  };
+
+  return num * (multipliers[unit] || 1);
+}

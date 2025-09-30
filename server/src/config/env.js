@@ -36,6 +36,7 @@ const DEFAULT_REQUIRED_VARS = [
   'REDIS_PORT',
   'DEFAULT_RATE_LIMIT_WINDOW_MS',
   'DEFAULT_RATE_LIMIT_MAX',
+  'VERIFICATION_TOKEN_EXPIRE',
 ];
 
 export function validateEnv(requiredVars = DEFAULT_REQUIRED_VARS) {
@@ -61,6 +62,7 @@ export const env = {
   accessTokenExpiry: process.env.ACCESS_TOKEN_EXPIRY,
   refreshTokenExpiry: process.env.REFRESH_TOKEN_EXPIRY,
   resetTokenExpire: process.env.RESET_TOKEN_EXPIRE,
+  verificationTokenExpire: process.env.VERIFICATION_TOKEN_EXPIRE,
   webhookSecret: process.env.WEBHOOK_SECRET,
   cookieSecret: process.env.COOKIE_SECRET,
 
@@ -127,6 +129,17 @@ export const env = {
       max: process.env.FORGOTPASSWORD_RATE_LIMIT_MAX
         ? parseInt(process.env.FORGOTPASSWORD_RATE_LIMIT_MAX, 10)
         : 5,
+    },
+    verificationEmail: {
+      windowMs: process.env.VERIFICATION_EMAIL_RATE_LIMIT_WINDOW_MS
+        ? (() => {
+            const value = String(process.env.VERIFICATION_EMAIL_RATE_LIMIT_WINDOW_MS).replace(/_/g, '');
+            return new Function(`return ${value}`)();
+          })()
+        : 10 * 60 * 1000, // Default to 10 minutes
+      max: process.env.VERIFICATION_EMAIL_RATE_LIMIT_MAX
+        ? parseInt(process.env.VERIFICATION_EMAIL_RATE_LIMIT_MAX, 10)
+        : 10,
     },
     bid: {
       windowMs: process.env.BID_RATE_LIMIT_WINDOW_MS
