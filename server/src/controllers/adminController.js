@@ -54,81 +54,85 @@ export async function getPrometheusMetrics(req, res) {
   try {
     const client = await getRedisClient();
 
-    // Collect auction lock timeout counters
-    const timeoutKeys = await scanKeys(client, 'metrics:auction:*:lock_timeouts', 200);
-    const timeoutVals = timeoutKeys.length
-      ? await Promise.all(timeoutKeys.map(k => client.get(k)))
-      : [];
+    // Collect keys
+    const [timeoutKeys, waitSumKeys, waitCntKeys, bucketKeys] = await Promise.all([
+      scanKeys(client, 'metrics:auction:*:lock_timeouts', 200),
+      scanKeys(client, 'metrics:auction:*:lock_wait_sum', 200),
+      scanKeys(client, 'metrics:auction:*:lock_wait_count', 200),
+      scanKeys(client, 'metrics:auction:*:lock_wait_bucket:*', 500),
+    ]);
 
-    // Collect lock wait metrics (sum and count)
-    const waitSumKeys = await scanKeys(client, 'metrics:auction:*:lock_wait_sum', 200);
-    const waitCntKeys = await scanKeys(client, 'metrics:auction:*:lock_wait_count', 200);
-    const waitSumVals = waitSumKeys.length
-      ? await Promise.all(waitSumKeys.map(k => client.get(k)))
-      : [];
-    const waitCntVals = waitCntKeys.length
-      ? await Promise.all(waitCntKeys.map(k => client.get(k)))
-      : [];
+    // Collect values
+    const [timeoutVals, waitSumVals, waitCntVals, bucketVals] = await Promise.all([
+      timeoutKeys.length ? Promise.all(timeoutKeys.map(k => client.get(k))) : [],
+      waitSumKeys.length ? Promise.all(waitSumKeys.map(k => client.get(k))) : [],
+      waitCntKeys.length ? Promise.all(waitCntKeys.map(k => client.get(k))) : [],
+      bucketKeys.length ? Promise.all(bucketKeys.map(k => client.get(k))) : [],
+    ]);
 
-    // Collect histogram buckets
-    const bucketKeys = await scanKeys(client, 'metrics:auction:*:lock_wait_bucket:*', 500);
-    const bucketVals = bucketKeys.length
-      ? await Promise.all(bucketKeys.map(k => client.get(k)))
-      : [];
-
-    // Global 429 totals
-    const rl429Total = Number.parseInt(
-      (await client.get('metrics:rate_limit_429_total')) || '0',
-      10,
-    );
-    const lock429Total = Number.parseInt(
-      (await client.get('metrics:bid_lock_timeout_429_total')) || '0',
-      10,
-    );
+    // Global counters
+    const [rl429Total, lock429Total] = await Promise.all([
+      client.get('metrics:rate_limit_429_total').then(v => parseInt(v || '0', 10)),
+      client.get('metrics:bid_lock_timeout_429_total').then(v => parseInt(v || '0', 10)),
+    ]);
 
     const lines = [];
 
-    // Lock timeouts
+    // Auction lock timeout counters
     lines.push('# HELP auction_lock_timeouts_total Number of lock timeout 429s per auction');
     lines.push('# TYPE auction_lock_timeouts_total counter');
     timeoutKeys.forEach((k, i) => {
       const m = k.match(/^metrics:auction:(.+):lock_timeouts$/);
-      const auctionId = m ? m[1] : 'unknown';
+      if (!m) return;
+      const auctionId = m[1];
       lines.push(
-        `auction_lock_timeouts_total{auction_id="${auctionId}"} ${Number.parseInt(timeoutVals[i] || '0', 10)}`,
+        `auction_lock_timeouts_total{auction_id="${auctionId}"} ${parseInt(timeoutVals[i] || '0', 10)}`
       );
     });
 
-    // Histogram: buckets
+    // Histogram: lock wait ms
     lines.push('# HELP auction_lock_wait_ms Lock wait time distribution per auction');
     lines.push('# TYPE auction_lock_wait_ms histogram');
+
+    // Group histogram data by auction_id
+    const grouped = {};
     bucketKeys.forEach((k, i) => {
       const m = k.match(/^metrics:auction:(.+):lock_wait_bucket:(.+)$/);
       if (!m) return;
       const auctionId = m[1];
       const le = m[2] === 'inf' ? '+Inf' : m[2];
-      lines.push(
-        `auction_lock_wait_ms_bucket{auction_id="${auctionId}",le="${le}"} ${Number.parseInt(bucketVals[i] || '0', 10)}`,
-      );
+      grouped[auctionId] = grouped[auctionId] || { buckets: {}, sum: 0, count: 0 };
+      grouped[auctionId].buckets[le] = parseInt(bucketVals[i] || '0', 10);
     });
 
-    // Histogram: sum
     waitSumKeys.forEach((k, i) => {
       const m = k.match(/^metrics:auction:(.+):lock_wait_sum$/);
-      const auctionId = m ? m[1] : 'unknown';
-      lines.push(
-        `auction_lock_wait_ms_sum{auction_id="${auctionId}"} ${Number.parseInt(waitSumVals[i] || '0', 10)}`,
-      );
+      if (!m) return;
+      const auctionId = m[1];
+      grouped[auctionId] = grouped[auctionId] || { buckets: {}, sum: 0, count: 0 };
+      grouped[auctionId].sum = parseInt(waitSumVals[i] || '0', 10);
     });
 
-    // Histogram: count
     waitCntKeys.forEach((k, i) => {
       const m = k.match(/^metrics:auction:(.+):lock_wait_count$/);
-      const auctionId = m ? m[1] : 'unknown';
-      lines.push(
-        `auction_lock_wait_ms_count{auction_id="${auctionId}"} ${Number.parseInt(waitCntVals[i] || '0', 10)}`,
-      );
+      if (!m) return;
+      const auctionId = m[1];
+      grouped[auctionId] = grouped[auctionId] || { buckets: {}, sum: 0, count: 0 };
+      grouped[auctionId].count = parseInt(waitCntVals[i] || '0', 10);
     });
+
+    // Emit per-auction histogram lines
+    for (const [auctionId, data] of Object.entries(grouped)) {
+      const bucketBounds = ['10', '50', '100', '200', '500', '1000', '+Inf'];
+      for (const le of bucketBounds) {
+        const val = data.buckets[le] || 0;
+        lines.push(
+          `auction_lock_wait_ms_bucket{auction_id="${auctionId}",le="${le}"} ${val}`
+        );
+      }
+      lines.push(`auction_lock_wait_ms_sum{auction_id="${auctionId}"} ${data.sum}`);
+      lines.push(`auction_lock_wait_ms_count{auction_id="${auctionId}"} ${data.count}`);
+    }
 
     // Global counters
     lines.push('# HELP bid_lock_timeout_429_total Total 429s due to bid lock timeouts');
