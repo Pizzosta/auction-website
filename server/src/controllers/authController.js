@@ -500,7 +500,7 @@ export const requestVerification = async (req, res) => {
 
     const user = await prisma.user.findUnique({
       where: { email: email?.trim().toLowerCase() },
-      select: { id: true, firstname: true, email: true },
+      select: { id: true, firstname: true, email: true, isVerified: true, isDeleted: true },
     });
 
     if (!user) {
@@ -637,7 +637,7 @@ export const verifyEmail = async (req, res) => {
         isVerified: false,
       },
     });
-    
+
     if (!user) {
       return res.status(400).json({
         status: 'error',
