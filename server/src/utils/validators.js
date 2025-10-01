@@ -15,6 +15,8 @@ export const userQuerySchema = Joi.object({
   search: Joi.string().optional(),
   role: Joi.string().valid('user', 'admin').optional(),
   status: Joi.string().valid('active', 'deleted', 'all').default('active').lowercase(),
+  lastActiveAfter: Joi.date().iso().optional(),
+  lastActiveBefore: Joi.date().iso().optional(),
 });
 
 // Auction query schema validation
@@ -69,6 +71,38 @@ export const bidQuerySchema = Joi.object({
   maxAmount: Joi.number().min(0).optional(),
   startDate: Joi.date().iso().optional(),
   endDate: Joi.date().iso().optional(),
+});
+
+// Stats query schema validation
+export const statsQuerySchema = Joi.object({
+  timeFrame: Joi.string()
+    .valid('day', 'week', 'month', 'year', 'all')
+    .default('month')
+    .optional(),
+});
+
+// User stats query schema validation
+export const userStatsQuerySchema = Joi.object({
+  timeFrame: Joi.string()
+    .valid('day', 'week', 'month', 'year', 'all')
+    .default('month')
+    .optional(),
+});
+
+// Auction stats query schema validation
+export const auctionStatsQuerySchema = Joi.object({
+  timeFrame: Joi.string()
+    .valid('day', 'week', 'month', 'year', 'all')
+    .default('month')
+    .optional(),
+});
+
+// Bid stats query schema validation
+export const bidStatsQuerySchema = Joi.object({
+  timeFrame: Joi.string()
+    .valid('day', 'week', 'month', 'year', 'all')
+    .default('month')
+    .optional(),
 });
 
 // ID schema validation
