@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "User" ALTER COLUMN "last_active_at" SET DEFAULT CURRENT_TIMESTAMP;

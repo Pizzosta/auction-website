@@ -2,14 +2,16 @@ import prisma from '../config/prisma.js';
 
 // Maps REST query params to Prisma where/orderBy objects and returns {users, count}
 export async function listUsersPrisma({
-  role,
-  isVerified,
-  rating,
-  search,
   page = 1,
   limit = 10,
   sort = 'createdAt:desc',
   status,
+  search = '',
+  role = '',
+  isVerified,
+  rating,
+  lastActiveAfter,
+  lastActiveBefore,
 }) {
   const pageNum = Math.max(1, parseInt(page));
   const take = Math.min(Math.max(1, parseInt(limit)), 100);
@@ -22,7 +24,7 @@ export async function listUsersPrisma({
   if (status) {
     const normalizedStatus = status.toLowerCase();
     if (normalizedStatus === 'active') {
-      where.isDeleted = { not: true };
+    where.isDeleted = { not: true };
     } else if (normalizedStatus === 'deleted') {
       where.isDeleted = true;
     } else if (normalizedStatus === 'all') {
@@ -36,6 +38,19 @@ export async function listUsersPrisma({
   if (role) where.role = role;
   if (typeof isVerified !== 'undefined') where.isVerified = isVerified === 'true' || isVerified === true;
   if (typeof rating !== 'undefined') where.rating = Number(rating);
+  
+  // Handle lastActiveAt filters
+  if (lastActiveAfter || lastActiveBefore) {
+    where.lastActiveAt = {};
+    
+    if (lastActiveAfter) {
+      where.lastActiveAt.gte = new Date(lastActiveAfter);
+    }
+    
+    if (lastActiveBefore) {
+      where.lastActiveAt.lte = new Date(lastActiveBefore);
+    }
+  }
 
   if (search) {
     const s = String(search);
@@ -63,6 +78,7 @@ export async function listUsersPrisma({
     firstname: true,
     middlename: true,
     lastname: true,
+    lastActiveAt: true,
     username: true,
     email: true,
     phone: true,

@@ -117,6 +117,7 @@ export const register = async (req, res) => {
         email: normalizedEmail,
         passwordHash,
         role: 'user',
+        lastActiveAt: new Date(),
       },
     });
 
@@ -168,7 +169,7 @@ export const register = async (req, res) => {
     });
   } catch (error) {
     logger.error('Login error:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: 'Internal server error' });
   }
 };
 
@@ -202,7 +203,11 @@ export const login = async (req, res) => {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
-    // Optional: update last login if you add this column in Prisma schema
+    // Update lastActiveAt timestamp
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { lastActiveAt: new Date() }
+    });
 
     // Generate tokens
     const accessToken = generateAccessToken(user.id, user.email, user.role);
@@ -235,7 +240,7 @@ export const login = async (req, res) => {
     });
   } catch (error) {
     logger.error('Login error:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: 'Internal server error' });
   }
 };
 
@@ -472,7 +477,7 @@ export const resetPassword = async (req, res) => {
     });
     res.status(500).json({
       status: 'error',
-      message: 'Server error',
+      message: 'Internal server error',
     });
   }
 };

@@ -54,6 +54,7 @@ import auctionRoutes from './routes/auctionRoutes.js';
 import bidRoutes from './routes/bidRoutes.js';
 import userRoutes from './routes/userRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
+import statsRoutes from './routes/statsRoutes.js';
 import webhookRoutes from './routes/webhookRoutes.js';
 
 const app = express();
@@ -109,6 +110,7 @@ app.use('/api/auctions', auctionRoutes);
 app.use('/api/bids', bidRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/stats', statsRoutes);
 app.use('/api/v1/webhook', webhookRoutes);
 
 // Create HTTP server

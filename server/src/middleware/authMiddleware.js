@@ -43,7 +43,7 @@ export const protect = async (req, res, next) => {
         });
       }
 
-      // Get user from the token via Prisma
+      // Get user from the database
       const user = await prisma.user.findUnique({
         where: { id: decoded.userId },
         select: {
@@ -61,8 +61,19 @@ export const protect = async (req, res, next) => {
           bio: true,
           location: true,
           isVerified: true,
+          lastActiveAt: true
         },
       });
+      
+      // Update lastActiveAt timestamp for a user in the background
+      if (user) {
+        prisma.user.update({
+          where: { id: user.id },
+          data: { lastActiveAt: new Date() }
+        }).catch(error => {
+          logger.error('Failed to update lastActiveAt:', error);
+        });
+      }
       
       if (!user) {
         return res.status(401).json({ 

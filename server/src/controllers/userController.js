@@ -10,7 +10,7 @@ import logger from '../utils/logger.js';
 // @access  Private/Admin
 export const getAllUsers = async (req, res) => {
   try {
-    // Get pagination parameters (already validated by middleware)
+    // Get query parameters (already validated by middleware)
     const {
       role,
       isVerified,
@@ -20,6 +20,8 @@ export const getAllUsers = async (req, res) => {
       limit = 10,
       sort = 'createdAt:desc',
       status,
+      lastActiveAfter,
+      lastActiveBefore,
     } = req.query;
 
     // Only admins can see soft-deleted users
@@ -40,6 +42,8 @@ export const getAllUsers = async (req, res) => {
       limit,
       sort,
       status,
+      lastActiveAfter,
+      lastActiveBefore,
     });
     const totalPages = Math.ceil(count / take);
 
@@ -231,7 +235,6 @@ export const deleteUser = async (req, res) => {
 // @access  Private
 export const getMe = async (req, res) => {
   try {
-    const actorId = req.user?.id?.toString();
     const user = await prisma.user.findUnique({
       where: { id: req.user.id },
       select: {
@@ -239,6 +242,7 @@ export const getMe = async (req, res) => {
         firstname: true,
         middlename: true,
         lastname: true,
+        lastActiveAt: true,
         username: true,
         email: true,
         phone: true,
@@ -491,249 +495,6 @@ export const deleteProfilePicture = async (req, res) => {
   }
 };
 
-/*
-// @desc    Update a user
-// @route   PATCH /api/users/:id
-// @access  Private/Admin
-export const updateUser = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const updateData = req.body;
-
-    // Ensure the request body is not empty before proceeding
-    if (
-      !updateData ||
-      Object.values(updateData).every(v => v === '' || v === null || v === undefined)
-    ) {
-      return res.status(400).json({
-        status: 'fail',
-        message: 'No data provided for update.',
-      });
-    }
-
-    // Ensure request has a valid user object (from protect middleware)
-    if (!req.user || !req.user.id) {
-      return res.status(401).json({
-        status: 'error',
-        message: 'Authentication required',
-      });
-    }
-
-    // Find the user and include the password hash for verification
-    let user = await prisma.user.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        passwordHash: true,
-        role: true,
-        email: true,
-        phone: true,
-        username: true,
-        version: true, // Include version for optimistic concurrency
-      },
-    });
-
-    if (!user) {
-      return res.status(404).json({
-        status: 'error',
-        message: 'User not found',
-      });
-    }
-
-    // Check if the user is updating their own profile or is an admin
-    const actorId = req.user?.id?.toString();
-    if (user.id.toString() !== actorId && req.user.role !== 'admin') {
-      return res.status(403).json({
-        status: 'error',
-        message: 'Not authorized to update this user',
-      });
-    }
-
-    // Prevent role modification unless admin
-    if ('role' in updateData && updateData.role && req.user.role !== 'admin') {
-      return res.status(403).json({
-        status: 'error',
-        message: 'Not authorized to modify user role',
-      });
-    }
-
-    // Handle password update with enhanced validation
-    if (updateData.password) {
-      if (!updateData.currentPassword) {
-        return res.status(400).json({
-          status: 'error',
-          message: 'Current password is required to update password',
-        });
-      }
-
-      const isPasswordValid = user.passwordHash
-        ? await bcrypt.compare(updateData.currentPassword, user.passwordHash)
-        : false;
-      if (!isPasswordValid) {
-        return res.status(400).json({
-          status: 'error',
-          message: 'Current password is incorrect',
-        });
-      }
-
-      const isSamePassword = user.passwordHash
-        ? await bcrypt.compare(updateData.password, user.passwordHash)
-        : false;
-      if (isSamePassword) {
-        return res.status(400).json({
-          status: 'error',
-          message: 'New password must be different from current password',
-        });
-      }
-
-      delete updateData.currentPassword;
-    } else {
-      delete updateData.currentPassword;
-    }
-
-    // Check if the email is being updated and if it's already in use by another user
-    if (updateData.email && updateData.email !== user.email) {
-      const emailExists = await prisma.user.findFirst({
-        where: { email: updateData.email, NOT: { id: user.id } },
-        select: { id: true },
-        isDeleted: false,
-      });
-
-      if (emailExists) {
-        return res.status(400).json({
-          status: 'error',
-          message: 'Email already in use by another user.',
-        });
-      }
-    }
-
-    // Check if the phone is being updated and if it's already in use by another user
-    if (updateData.phone && updateData.phone !== user.phone) {
-      // Normalize the phone number
-      const normalizedPhone = normalizeToE164(updateData.phone);
-
-      if (!normalizedPhone) {
-        return res.status(400).json({
-          status: 'error',
-          message: 'Invalid phone number format',
-        });
-      }
-      const phoneExists = await prisma.user.findFirst({
-        where: { phone: normalizedPhone, NOT: { id: user.id } },
-        select: { id: true },
-        isDeleted: false,
-      });
-      if (phoneExists) {
-        return res.status(400).json({
-          status: 'error',
-          message: 'Phone already in use by another user.',
-        });
-      }
-    }
-
-    // Check if the username is being updated and if it's already in use by another user
-    if (updateData.username && updateData.username !== user.username) {
-      const usernameExists = await prisma.user.findFirst({
-        where: { username: updateData.username, NOT: { id: user.id } },
-        select: { id: true },
-        isDeleted: false,
-      });
-      if (usernameExists) {
-        return res.status(400).json({
-          status: 'error',
-          message: 'Username already in use by another user.',
-        });
-      }
-    }
-
-    // Add version increment
-    updateData.version = { increment: 1 };
-
-    // Prevent role modification unless admin
-    if ('role' in req.body && req.body.role && (!req.user || req.user.role !== 'admin')) {
-      return res.status(403).json({
-        status: 'error',
-        message: 'Not authorized to modify user role',
-      });
-    }
-
-    // Build update payload
-    const data = { ...updateData };
-    if (data.phone) data.phone = normalizeToE164(data.phone);
-    if (data.password) {
-      const salt = await bcrypt.genSalt(10);
-      data.passwordHash = await bcrypt.hash(data.password, salt);
-      delete data.password;
-    }
-    delete data.currentPassword;
-
-    await prisma.user.update({
-      where: {
-        id: user.id,
-        version: user.version
-      },
-      data
-    });
-
-    // Re-fetch the user to return a clean object without sensitive fields
-    const refreshed = await prisma.user.findUnique({
-      where: { id: user.id, version: user.version },
-      select: {
-        id: true,
-        createdAt: true,
-        updatedAt: true,
-        firstname: true,
-        middlename: true,
-        lastname: true,
-        username: true,
-        email: true,
-        phone: true,
-        role: true,
-        rating: true,
-        bio: true,
-        location: true,
-        isVerified: true,
-        isDeleted: true,
-        deletedAt: true,
-        profilePicture: true,
-        version: true,
-      },
-    });
-
-    res.json({
-      status: 'success',
-      message: 'User updated successfully',
-      data: {
-        user: {
-          ...refreshed,
-          profilePicture: refreshed.profilePicture || '',
-          version: refreshed.version,
-        },
-      },
-    });
-  } catch (error) {
-    logger.error('Update user error:', {
-      error: error.message,
-      stack: error.stack,
-      userId: req.params.id,
-      updateData: req.body,
-    });
-
-    if (error.code === 'P2025') {
-      return res.status(409).json({
-        status: 'error',
-        message: 'This user was modified by another user. Please refresh and try again.'
-      });
-    }
-
-    res.status(500).json({
-      status: 'error',
-      message: 'Server error',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
-  }
-};
-*/
 // @desc    Update a user
 // @route   PATCH /api/users/:id
 // @access  Private/Admin
@@ -747,7 +508,7 @@ export const updateUser = async (req, res) => {
         Object.values(updateData).every(v => v === '' || v === null || v === undefined)) {
       return res.status(400).json({
         status: 'fail',
-        message: 'No valid data provided for update.',
+        message: 'No data provided for update.',
       });
     }
 
@@ -841,6 +602,7 @@ export const updateUser = async (req, res) => {
           isDeleted: false 
         },
       });
+
       if (emailExists) {
         return res.status(400).json({
           status: 'error',
@@ -858,6 +620,7 @@ export const updateUser = async (req, res) => {
           isDeleted: false 
         },
       });
+
       if (usernameExists) {
         return res.status(400).json({
           status: 'error',
@@ -885,6 +648,7 @@ export const updateUser = async (req, res) => {
           isDeleted: false 
         },
       });
+
       if (phoneExists) {
         return res.status(400).json({
           status: 'error',
@@ -907,7 +671,7 @@ export const updateUser = async (req, res) => {
     if (Object.keys(updateData).length === 0) {
       return res.status(400).json({
         status: 'fail',
-        message: 'No valid data provided for update.',
+        message: 'No data provided for update.',
       });
     }
 
