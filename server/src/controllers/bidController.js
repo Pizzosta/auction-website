@@ -533,7 +533,9 @@ export const placeBid = async (req, res) => {
   // Acquire a distributed lock per auction to serialize concurrent bids
   const lockKey = `lock:auction:${auctionId}`;
   let lock;
+
   try {
+    // Acquire lock
     lock = await acquireLock(lockKey, 5000, { retries: 20, retryDelay: 25, jitter: 25 });
   } catch (error) {
     if (error.message === 'AUCTION_LOCK_TIMEOUT') {
@@ -568,21 +570,21 @@ export const placeBid = async (req, res) => {
   }
 
   try {
-    // Log lock acquisition metrics
+    // Log lock acquisition metrics per auction
     if (lock.waitMs) {
       // metrics for lock wait time
       const HISTOGRAM_BUCKETS = [10, 50, 100, 200, 500, 1000]; // ms thresholds
       const waitMs = Math.max(0, Math.floor(lock.waitMs));
       const TTL_SECONDS = 3600; // 1 hour
-      
+
       try {
         // Prometheus counters that you already export
         const sumKey = `metrics:auction:${auctionId}:lock_wait_sum`;
         const cntKey = `metrics:auction:${auctionId}:lock_wait_count`;
-    
+
         const newSum = await executeRedisCommand('incrBy', sumKey, waitMs);
         const newCnt = await executeRedisCommand('incr', cntKey);
-    
+
         // Set expiry if this was the first write
         if (parseInt(newSum) === waitMs) {
           await executeRedisCommand('expire', sumKey, TTL_SECONDS);
@@ -590,7 +592,7 @@ export const placeBid = async (req, res) => {
         if (parseInt(newCnt) === 1) {
           await executeRedisCommand('expire', cntKey, TTL_SECONDS);
         }
-    
+
         // Increment appropriate buckets - histogram (cumulative style)
         for (const b of HISTOGRAM_BUCKETS) {
           if (waitMs <= b) {
@@ -601,7 +603,7 @@ export const placeBid = async (req, res) => {
             }
           }
         }
-    
+
         // Always increment +Inf bucket
         const infKey = `metrics:auction:${auctionId}:lock_wait_bucket:inf`;
         const infVal = await executeRedisCommand('incr', infKey);
@@ -805,12 +807,6 @@ export const placeBid = async (req, res) => {
     }
 
     res.status(201).json(result);
-    /*
-    } finally {
-      // Always release the lock
-      await lock.release();
-    }
-    */
   } catch (error) {
     if (error.message === 'AUCTION_NOT_FOUND') {
       return res.status(404).json({ success: false, message: 'Auction not found' });
@@ -868,6 +864,13 @@ export const placeBid = async (req, res) => {
     }
     logger.error('Place bid error:', { error: error.message, stack: error.stack });
     res.status(500).json({ message: 'Server error' });
+  } finally {
+    // Always release the lock
+    if (lock) {
+      await lock.release().catch(err => {
+        logger.error('Lock release failed', { auctionId, error: err.message });
+      });
+    }
   }
 };
 
