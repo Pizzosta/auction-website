@@ -77,8 +77,6 @@ export const getSystemStats = async (req, res) => {
         const { timeFrame = 'month' } = req.query;
         const now = new Date();
         const today = new Date(now.setHours(0, 0, 0, 0));
-        //const startOfWeek = new Date(today);
-        //startOfWeek.setDate(today.getDate() - today.getDay());
 
         let startDate = new Date(0); // Default to beginning of time
 
@@ -336,7 +334,7 @@ export const getAuctionStats = async (req, res) => {
                     createdAt: { gte: startDate }
                 },
                 _count: {
-                    category: true
+                    _all: true
                 },
                 orderBy: {
                     _count: {
