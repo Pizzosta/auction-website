@@ -571,13 +571,49 @@ export const placeBid = async (req, res) => {
     // Log lock acquisition metrics
     if (lock.waitMs) {
       // metrics for lock wait time
-      const sumKey = `metrics:auction:${auctionId}:lock_wait_sum`;
-      const cntKey = `metrics:auction:${auctionId}:lock_wait_count`;
+      const HISTOGRAM_BUCKETS = [10, 50, 100, 200, 500, 1000]; // ms thresholds
+      const waitMs = Math.max(0, Math.floor(lock.waitMs));
+      const TTL_SECONDS = 3600; // 1 hour
+      
       try {
-        await executeRedisCommand('incrBy', sumKey, Math.max(0, Math.floor(lock.waitMs)));
-        await executeRedisCommand('incr', cntKey);
+        // Prometheus counters that you already export
+        const sumKey = `metrics:auction:${auctionId}:lock_wait_sum`;
+        const cntKey = `metrics:auction:${auctionId}:lock_wait_count`;
+    
+        const newSum = await executeRedisCommand('incrBy', sumKey, waitMs);
+        const newCnt = await executeRedisCommand('incr', cntKey);
+    
+        // Set expiry if this was the first write
+        if (parseInt(newSum) === waitMs) {
+          await executeRedisCommand('expire', sumKey, TTL_SECONDS);
+        }
+        if (parseInt(newCnt) === 1) {
+          await executeRedisCommand('expire', cntKey, TTL_SECONDS);
+        }
+    
+        // Increment appropriate buckets - histogram (cumulative style)
+        for (const b of HISTOGRAM_BUCKETS) {
+          if (waitMs <= b) {
+            const bucketKey = `metrics:auction:${auctionId}:lock_wait_bucket:${b}`;
+            const bucketVal = await executeRedisCommand('incr', bucketKey);
+            if (parseInt(bucketVal) === 1) {
+              await executeRedisCommand('expire', bucketKey, TTL_SECONDS);
+            }
+          }
+        }
+    
+        // Always increment +Inf bucket
+        const infKey = `metrics:auction:${auctionId}:lock_wait_bucket:inf`;
+        const infVal = await executeRedisCommand('incr', infKey);
+        if (parseInt(infVal) === 1) {
+          await executeRedisCommand('expire', infKey, TTL_SECONDS);
+        }
       } catch (e) {
-        logger.warn('Failed to record lock wait metrics', { auctionId, error: e.message });
+        logger.warn('Failed to record lock-wait metrics', {
+          auctionId,
+          waitMs,
+          error: e.message,
+        });
       }
     }
 

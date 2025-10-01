@@ -16,7 +16,8 @@ async function scanKeys(client, pattern, count = 100) {
 export async function getHotAuctions(req, res) {
   try {
     const client = await getRedisClient();
-    const limit = Math.max(1, Math.min(parseInt(req.query.limit || '10', 10), 100));
+    // safer limit parsing
+    const limit = Math.max(1, Math.min(Number.parseInt(req.query.limit, 10) || 10, 100));
 
     const pattern = 'metrics:auction:*:lock_timeouts';
     const keys = await scanKeys(client, pattern, 200);
@@ -29,7 +30,7 @@ export async function getHotAuctions(req, res) {
     const items = keys.map((k, idx) => {
       const match = k.match(/^metrics:auction:(.+):lock_timeouts$/);
       const auctionId = match ? match[1] : 'unknown';
-      const count = parseInt(values[idx] || '0', 10);
+      const count = Number.parseInt(values[idx] || '0', 10);
       return { auctionId, lockTimeouts: count };
     });
 
@@ -55,43 +56,81 @@ export async function getPrometheusMetrics(req, res) {
 
     // Collect auction lock timeout counters
     const timeoutKeys = await scanKeys(client, 'metrics:auction:*:lock_timeouts', 200);
-    const timeoutVals = timeoutKeys.length ? await Promise.all(timeoutKeys.map(k => client.get(k))) : [];
+    const timeoutVals = timeoutKeys.length
+      ? await Promise.all(timeoutKeys.map(k => client.get(k)))
+      : [];
 
-    // Collect lock wait metrics (sum and count) per auction
+    // Collect lock wait metrics (sum and count)
     const waitSumKeys = await scanKeys(client, 'metrics:auction:*:lock_wait_sum', 200);
     const waitCntKeys = await scanKeys(client, 'metrics:auction:*:lock_wait_count', 200);
-    const waitSumVals = waitSumKeys.length ? await Promise.all(waitSumKeys.map(k => client.get(k))) : [];
-    const waitCntVals = waitCntKeys.length ? await Promise.all(waitCntKeys.map(k => client.get(k))) : [];
+    const waitSumVals = waitSumKeys.length
+      ? await Promise.all(waitSumKeys.map(k => client.get(k)))
+      : [];
+    const waitCntVals = waitCntKeys.length
+      ? await Promise.all(waitCntKeys.map(k => client.get(k)))
+      : [];
+
+    // Collect histogram buckets
+    const bucketKeys = await scanKeys(client, 'metrics:auction:*:lock_wait_bucket:*', 500);
+    const bucketVals = bucketKeys.length
+      ? await Promise.all(bucketKeys.map(k => client.get(k)))
+      : [];
 
     // Global 429 totals
-    const rl429Total = parseInt((await client.get('metrics:rate_limit_429_total')) || '0', 10);
-    const lock429Total = parseInt((await client.get('metrics:bid_lock_timeout_429_total')) || '0', 10);
+    const rl429Total = Number.parseInt(
+      (await client.get('metrics:rate_limit_429_total')) || '0',
+      10,
+    );
+    const lock429Total = Number.parseInt(
+      (await client.get('metrics:bid_lock_timeout_429_total')) || '0',
+      10,
+    );
 
-    let lines = [];
+    const lines = [];
+
+    // Lock timeouts
     lines.push('# HELP auction_lock_timeouts_total Number of lock timeout 429s per auction');
     lines.push('# TYPE auction_lock_timeouts_total counter');
     timeoutKeys.forEach((k, i) => {
       const m = k.match(/^metrics:auction:(.+):lock_timeouts$/);
       const auctionId = m ? m[1] : 'unknown';
-      lines.push(`auction_lock_timeouts_total{auction_id="${auctionId}"} ${parseInt(timeoutVals[i] || '0', 10)}`);
+      lines.push(
+        `auction_lock_timeouts_total{auction_id="${auctionId}"} ${Number.parseInt(timeoutVals[i] || '0', 10)}`,
+      );
     });
 
-    lines.push('# HELP auction_lock_wait_ms_sum Cumulative lock wait time (ms) per auction');
-    lines.push('# TYPE auction_lock_wait_ms_sum counter');
+    // Histogram: buckets
+    lines.push('# HELP auction_lock_wait_ms Lock wait time distribution per auction');
+    lines.push('# TYPE auction_lock_wait_ms histogram');
+    bucketKeys.forEach((k, i) => {
+      const m = k.match(/^metrics:auction:(.+):lock_wait_bucket:(.+)$/);
+      if (!m) return;
+      const auctionId = m[1];
+      const le = m[2] === 'inf' ? '+Inf' : m[2];
+      lines.push(
+        `auction_lock_wait_ms_bucket{auction_id="${auctionId}",le="${le}"} ${Number.parseInt(bucketVals[i] || '0', 10)}`,
+      );
+    });
+
+    // Histogram: sum
     waitSumKeys.forEach((k, i) => {
       const m = k.match(/^metrics:auction:(.+):lock_wait_sum$/);
       const auctionId = m ? m[1] : 'unknown';
-      lines.push(`auction_lock_wait_ms_sum{auction_id="${auctionId}"} ${parseInt(waitSumVals[i] || '0', 10)}`);
+      lines.push(
+        `auction_lock_wait_ms_sum{auction_id="${auctionId}"} ${Number.parseInt(waitSumVals[i] || '0', 10)}`,
+      );
     });
 
-    lines.push('# HELP auction_lock_wait_ms_count Count of lock acquisitions per auction');
-    lines.push('# TYPE auction_lock_wait_ms_count counter');
+    // Histogram: count
     waitCntKeys.forEach((k, i) => {
       const m = k.match(/^metrics:auction:(.+):lock_wait_count$/);
       const auctionId = m ? m[1] : 'unknown';
-      lines.push(`auction_lock_wait_ms_count{auction_id="${auctionId}"} ${parseInt(waitCntVals[i] || '0', 10)}`);
+      lines.push(
+        `auction_lock_wait_ms_count{auction_id="${auctionId}"} ${Number.parseInt(waitCntVals[i] || '0', 10)}`,
+      );
     });
 
+    // Global counters
     lines.push('# HELP bid_lock_timeout_429_total Total 429s due to bid lock timeouts');
     lines.push('# TYPE bid_lock_timeout_429_total counter');
     lines.push(`bid_lock_timeout_429_total ${lock429Total}`);
@@ -99,6 +138,8 @@ export async function getPrometheusMetrics(req, res) {
     lines.push('# HELP rate_limit_429_total Total 429s due to rate limiting');
     lines.push('# TYPE rate_limit_429_total counter');
     lines.push(`rate_limit_429_total ${rl429Total}`);
+
+    lines.push('# EOF'); // Prometheus EOF marker
 
     res.setHeader('Content-Type', 'text/plain; version=0.0.4');
     res.status(200).send(lines.join('\n') + '\n');
