@@ -5,6 +5,58 @@ import { getCloudinary } from '../config/cloudinary.js';
 import { normalizeToE164 } from '../utils/format.js';
 import logger from '../utils/logger.js';
 
+// @desc    Get a single user by ID
+// @param   {string} id - User ID
+// @returns {Promise<Object|null>} - User object or null if not found
+export const getUserById = async (id) => {
+  try {
+    if (!id) {
+      logger.warn('No user ID provided to getUserById');
+      return null;
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        firstname: true,
+        lastname: true,
+        username: true,
+        email: true,
+        phone: true,
+        role: true,
+        isVerified: true,
+        isDeleted: true,
+        profilePicture: true,
+        rating: true,
+        lastActiveAt: true,
+        createdAt: true,
+        updatedAt: true,
+        version: true
+      },
+    });
+
+    if (!user) {
+      logger.warn('User not found', { userId: id });
+      return null;
+    }
+
+    if (user.isDeleted) {
+      logger.warn('Attempted to access deleted user', { userId: id });
+      return { ...user, isActive: false };
+    }
+
+    return user;
+  } catch (error) {
+    logger.error('Error in getUserById', {
+      error: error.message,
+      stack: error.stack,
+      userId: id
+    });
+    throw error;
+  }
+};
+
 // @desc    Get all users (admin only)
 // @route   GET /api/users
 // @access  Private/Admin
