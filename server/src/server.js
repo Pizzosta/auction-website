@@ -1,7 +1,6 @@
 import express from 'express';
 import apiDocsRouter from './swagger.js';
 import http from 'http';
-import { Server as SocketIO } from 'socket.io';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import logger from './utils/logger.js';
@@ -56,6 +55,7 @@ import userRoutes from './routes/userRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import statsRoutes from './routes/statsRoutes.js';
 import webhookRoutes from './routes/webhookRoutes.js';
+import { initSocketIO } from './middleware/socketMiddleware.js';
 
 const app = express();
 
@@ -116,37 +116,9 @@ app.use('/api/v1/webhook', webhookRoutes);
 // Create HTTP server
 const server = http.createServer(app);
 
-// Initialize Socket.IO
-const io = new SocketIO(server, {
-  cors: {
-    origin: env.clientUrl || 'http://localhost:5173',
-    methods: ['GET', 'POST'],
-    credentials: true
-  }
-});
-
-// Socket.IO middleware
-const wrap = middleware => (socket, next) => middleware(socket.request, {}, next);
-
-io.use(wrap(express.json()));
-io.use(wrap(express.urlencoded({ extended: true })));
-
-// Socket.IO connection handler
-io.on('connection', socket => {
-  logger.info('New client connected');
-
-  // Join auction room
-  socket.on('joinAuction', auctionId => {
-    if (auctionId) {
-    socket.join(auctionId);
-      logger.info(`Client joined auction room: ${auctionId}`);
-    }
-  });
-
-  socket.on('disconnect', () => {
-    logger.info('Client disconnected');
-  });
-});
+// Initialize Socket.IO with the server
+//const { initSocketIO } = require('./middleware/socketMiddleware');
+const io = initSocketIO(server);
 
 // Make io available in app locals
 app.set('io', io);
