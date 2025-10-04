@@ -1,5 +1,4 @@
 Remove the auction extension
-switch to soft delete
 
 email.js db.js redis.js should be uniform inside the server.js
 check it image accepts PNG,JPG,JPEG,HEIC, & WEBP - add heic to the formats
@@ -45,8 +44,6 @@ config files serialize .. uinform
 
 the 3 loggers combine into one api/http/request(Logger). globalErrorHandler or AppError we have to app.use one at the server.js
 
-Redis is not logging so admin routes dont work
-
 format all the currencies
 make the emails template uniform. it should called the firstname instead of username
 
@@ -59,3 +56,5 @@ Include the reason for cancellation in the notification
 curl -v http://localhost:5001/api/auctions 2>&1 | grep X-RateLimit
 
 pass all the envs through parseDuration
+
+implement message parsing for any specific socket events in socketmiddleware
