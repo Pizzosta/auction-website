@@ -5,14 +5,22 @@ import { getCloudinary } from '../config/cloudinary.js';
 import { normalizeToE164 } from '../utils/format.js';
 import logger from '../utils/logger.js';
 
-// @desc    Get a single user by ID
+// @desc    Get a single user by ID (admin only)
+// @route   GET /api/users/:id
+// @access  Private/Admin
 // @param   {string} id - User ID
 // @returns {Promise<Object|null>} - User object or null if not found
-export const getUserById = async (id) => {
+export const getUserById = async (req, res) => {
   try {
-    if (!id) {
-      logger.warn('No user ID provided to getUserById');
-      return null;
+    const id = req.params?.id;
+    if (!id || typeof id !== 'string' || id.trim() === '') {
+      logger.warn('Invalid user ID provided to getUserById', {
+        userId: id,
+      });
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid user ID',
+      });
     }
 
     const user = await prisma.user.findUnique({
@@ -32,28 +40,47 @@ export const getUserById = async (id) => {
         lastActiveAt: true,
         createdAt: true,
         updatedAt: true,
-        version: true
+        version: true,
       },
     });
 
     if (!user) {
       logger.warn('User not found', { userId: id });
-      return null;
+      return res.status(404).json({
+        status: 'error',
+        message: 'User not found',
+      });
     }
 
     if (user.isDeleted) {
       logger.warn('Attempted to access deleted user', { userId: id });
-      return { ...user, isActive: false };
+      return res.status(410).json({
+        status: 'error',
+        message: 'User is deleted',
+        data: { ...user, isActive: false },
+      });
     }
 
-    return user;
+    logger.info('User found', {
+      userId: user.id,
+      email: user.email,
+      username: user.username,
+    });
+    return res.status(200).json({
+      status: 'success',
+      data: user,
+    });
   } catch (error) {
     logger.error('Error in getUserById', {
       error: error.message,
       stack: error.stack,
-      userId: id
+      userId: req.params?.id,
     });
-    throw error;
+    return res.status(500).json({
+      status: 'error',
+      message: 'Server error',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
   }
 };
 
@@ -116,7 +143,7 @@ export const getAllUsers = async (req, res) => {
     logger.error('Get all users error:', {
       error: error.message,
       stack: error.stack,
-      query: req.query,
+      query: JSON.stringify(req.query),
     });
 
     res.status(500).json({
@@ -151,7 +178,7 @@ export const deleteUser = async (req, res) => {
         isDeleted: true,
         version: true,
         email: true,
-        username: true
+        username: true,
       },
     });
 
@@ -180,9 +207,7 @@ export const deleteUser = async (req, res) => {
         });
       }
 
-      const isMatch = user.passwordHash
-        ? await bcrypt.compare(password, user.passwordHash)
-        : false;
+      const isMatch = user.passwordHash ? await bcrypt.compare(password, user.passwordHash) : false;
       if (!isMatch) {
         return res.status(400).json({
           status: 'error',
@@ -208,23 +233,23 @@ export const deleteUser = async (req, res) => {
     }
 
     if (permanent) {
-        // Cascade delete related data, then delete the user with version check
-        await prisma.$transaction([
-          prisma.auction.deleteMany({ where: { sellerId: user.id } }),
-          prisma.bid.deleteMany({ where: { bidderId: user.id } }),
-          prisma.user.delete({
-            where: {
-              id: user.id,
-              version: user.version // Optimistic concurrency control
-            }
-          }),
-        ]);
+      // Cascade delete related data, then delete the user with version check
+      await prisma.$transaction([
+        prisma.auction.deleteMany({ where: { sellerId: user.id } }),
+        prisma.bid.deleteMany({ where: { bidderId: user.id } }),
+        prisma.user.delete({
+          where: {
+            id: user.id,
+            version: user.version, // Optimistic concurrency control
+          },
+        }),
+      ]);
     } else {
       // Soft delete with version check
       const deletedUser = await prisma.user.update({
-        where: { 
+        where: {
           id: user.id,
-          version: user.version // Optimistic concurrency control
+          version: user.version, // Optimistic concurrency control
         },
         data: {
           isDeleted: true,
@@ -235,8 +260,8 @@ export const deleteUser = async (req, res) => {
           email: `deleted-${Date.now()}-${user.id}@deleted.user`,
           username: `deleted-${Date.now()}-${user.id}`,
           passwordHash: null,
-          refreshToken: null
-        }
+          refreshToken: null,
+        },
       });
 
       if (!deletedUser) {
@@ -249,7 +274,7 @@ export const deleteUser = async (req, res) => {
       userId: user.id,
       deletedBy: actorId,
       permanent,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
 
     res.status(200).json({
@@ -263,14 +288,14 @@ export const deleteUser = async (req, res) => {
     logger.error('Delete user error:', {
       error: error.message,
       stack: error.stack,
-      userId: req.params.id,
-      permanent: req.query.permanent,
+      userId: typeof req.params.id === 'string' ? req.params.id : req.params.id?.id || '[unknown]',
+      permanent: req.query?.permanent,
     });
 
     if (error.code === 'P2025') {
       return res.status(409).json({
         status: 'error',
-        message: 'This user was modified by another user. Please refresh and try again.'
+        message: 'This user was modified by another user. Please refresh and try again.',
       });
     }
 
@@ -321,7 +346,7 @@ export const getMe = async (req, res) => {
     // Format the response
     const userData = {
       ...user,
-      fullname: `${user.firstname} ${user.lastname}`.trim(),
+      fullname: `${user.firstname} ${user.middlename} ${user.lastname}`.trim(),
     };
 
     res.status(200).json({
@@ -332,7 +357,7 @@ export const getMe = async (req, res) => {
     logger.error('Get me error:', {
       error: error.message,
       stack: error.stack,
-      userId: req.user?.id,
+      userId: typeof req.user?.id === 'string' ? req.user.id : req.user?.id?.id || '[unknown]',
     });
     res.status(500).json({
       status: 'error',
@@ -357,7 +382,16 @@ export const restoreUser = async (req, res) => {
 
     const user = await prisma.user.findUnique({
       where: { id: req.params.id },
-      select: { id: true, isDeleted: true, firstname: true, middlename: true, lastname: true, email: true, username: true, role: true },
+      select: {
+        id: true,
+        isDeleted: true,
+        firstname: true,
+        middlename: true,
+        lastname: true,
+        email: true,
+        username: true,
+        role: true,
+      },
     });
 
     if (!user) {
@@ -398,7 +432,7 @@ export const restoreUser = async (req, res) => {
     logger.error('Restore user error:', {
       error: error.message,
       stack: error.stack,
-      userId: req.params.id,
+      userId: typeof req.params.id === 'string' ? req.params.id : req.params.id?.id || '[unknown]',
     });
     res.status(500).json({
       status: 'error',
@@ -426,8 +460,8 @@ export const uploadProfilePicture = async (req, res) => {
       where: { id: actorId },
       select: {
         id: true,
-        profilePicture: true
-      }
+        profilePicture: true,
+      },
     });
 
     if (!user) {
@@ -456,7 +490,7 @@ export const uploadProfilePicture = async (req, res) => {
     const profilePicture = {
       url: uploadedFile.url,
       publicId: uploadedFile.publicId,
-      uploadedAt: new Date().toISOString()
+      uploadedAt: new Date().toISOString(),
     };
 
     // Update user with new profile picture
@@ -474,7 +508,7 @@ export const uploadProfilePicture = async (req, res) => {
     logger.error('Error uploading profile picture:', {
       error: error.message,
       stack: error.stack,
-      userId: req.user?.id,
+      userId: typeof req.user?.id === 'string' ? req.user.id : req.user?.id?.id || '[unknown]',
     });
     res.status(500).json({
       success: false,
@@ -492,7 +526,7 @@ export const deleteProfilePicture = async (req, res) => {
     const actorId = req.user?.id?.toString();
     const user = await prisma.user.findUnique({
       where: { id: actorId },
-      select: { id: true, profilePicture: true }
+      select: { id: true, profilePicture: true },
     });
 
     if (!user) {
@@ -537,7 +571,7 @@ export const deleteProfilePicture = async (req, res) => {
     logger.error('Error removing profile picture:', {
       error: error.message,
       stack: error.stack,
-      userId: req.user?.id,
+      userId: typeof req.user?.id === 'string' ? req.user.id : req.user?.id?.id || '[unknown]',
     });
     res.status(500).json({
       success: false,
@@ -556,8 +590,11 @@ export const updateUser = async (req, res) => {
     const updateData = { ...req.body };
 
     // Ensure the request body is not empty before proceeding
-    if (!updateData || Object.keys(updateData).length === 0 || 
-        Object.values(updateData).every(v => v === '' || v === null || v === undefined)) {
+    if (
+      !updateData ||
+      Object.keys(updateData).length === 0 ||
+      Object.values(updateData).every(v => v === '' || v === null || v === undefined)
+    ) {
       return res.status(400).json({
         status: 'fail',
         message: 'No data provided for update.',
@@ -648,10 +685,10 @@ export const updateUser = async (req, res) => {
     // Check if the email is being updated and if it's already in use by another user
     if (updateData.email && updateData.email !== user.email) {
       const emailExists = await prisma.user.findFirst({
-        where: { 
-          email: updateData.email, 
+        where: {
+          email: updateData.email,
           NOT: { id: user.id },
-          isDeleted: false 
+          isDeleted: false,
         },
       });
 
@@ -666,10 +703,10 @@ export const updateUser = async (req, res) => {
     // Check if the username is being updated and if it's already in use by another user
     if (updateData.username && updateData.username !== user.username) {
       const usernameExists = await prisma.user.findFirst({
-        where: { 
-          username: updateData.username, 
+        where: {
+          username: updateData.username,
           NOT: { id: user.id },
-          isDeleted: false 
+          isDeleted: false,
         },
       });
 
@@ -683,9 +720,9 @@ export const updateUser = async (req, res) => {
 
     // Check if the phone is being updated and if it's already in use by another user
     if (updateData.phone && updateData.phone !== user.phone) {
-      // Normalize the phone number 
+      // Normalize the phone number
       const normalizedPhone = normalizeToE164(updateData.phone);
-      
+
       if (!normalizedPhone) {
         return res.status(400).json({
           status: 'error',
@@ -694,10 +731,10 @@ export const updateUser = async (req, res) => {
       }
       // Check if normalized phone already exists
       const phoneExists = await prisma.user.findFirst({
-        where: { 
-          phone: normalizedPhone, 
+        where: {
+          phone: normalizedPhone,
           NOT: { id: user.id },
-          isDeleted: false 
+          isDeleted: false,
         },
       });
 
@@ -732,9 +769,9 @@ export const updateUser = async (req, res) => {
 
     // Update user with version check
     const updatedUser = await prisma.user.update({
-      where: { 
+      where: {
         id: user.id,
-        version: user.version
+        version: user.version,
       },
       data: updateData,
       select: {
@@ -753,8 +790,8 @@ export const updateUser = async (req, res) => {
         location: true,
         createdAt: true,
         updatedAt: true,
-        version: true
-      }
+        version: true,
+      },
     });
 
     return res.status(200).json({
@@ -764,29 +801,55 @@ export const updateUser = async (req, res) => {
         user: updatedUser,
       },
     });
-
   } catch (error) {
     logger.error('Update user error:', {
       error: error.message,
       stack: error.stack,
-      userId: req.params.id,
-      actorId: req.user?.id,
+      userId: typeof req.params.id === 'string' ? req.params.id : req.params.id?.id || '[unknown]',
+      actorId: typeof req.user?.id === 'string' ? req.user.id : req.user?.id?.id || '[unknown]',
     });
 
     if (error.code === 'P2025') {
       return res.status(409).json({
         status: 'error',
-        message: 'This user was modified by another user. Please refresh and try again.'
+        message: 'This user was modified by another user. Please refresh and try again.',
       });
     }
 
     return res.status(500).json({
       status: 'error',
       message: 'Error updating user',
-      ...(process.env.NODE_ENV === 'development' && { 
+      ...(process.env.NODE_ENV === 'development' && {
         error: error.message,
-        code: error.code 
+        code: error.code,
       }),
     });
   }
+};
+
+// Internal helper for user lookup by ID (returns user object or null)
+export const findUserById = async id => {
+  if (!id || typeof id !== 'string' || id.trim() === '') return null;
+  const user = await prisma.user.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      firstname: true,
+      lastname: true,
+      username: true,
+      email: true,
+      phone: true,
+      role: true,
+      isVerified: true,
+      isDeleted: true,
+      profilePicture: true,
+      rating: true,
+      lastActiveAt: true,
+      createdAt: true,
+      updatedAt: true,
+      version: true,
+    },
+  });
+  logger.debug('findUserById raw result', { id, user });
+  return user;
 };
