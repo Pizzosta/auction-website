@@ -10,6 +10,7 @@ import {
   getAllUsers,
   uploadProfilePicture,
   deleteProfilePicture,
+  getUserById,
 } from '../controllers/userController.js';
 import { uploadProfileImageMiddleware } from '../middleware/uploadMiddleware.js';
 
@@ -113,5 +114,15 @@ router.delete(
   validate(userSchema.deleteProfilePicture, 'body'),
   deleteProfilePicture
 );
+
+/**
+ * @route GET /api/users/{id}
+ * @group Users - user management
+ * @description Get user details by user ID. Requires admin privileges.
+ * @param {string} id.path.required
+ * @returns {object} 200 - User details
+ * @returns {Error}  default - Unexpected error
+ */
+router.get('/:id', protect, admin, validate(idSchema, 'params', { key: 'id' }), getUserById);
 
 export default router;
