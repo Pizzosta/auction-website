@@ -1,6 +1,7 @@
 import { Server as SocketIO } from 'socket.io';
 import logger from '../utils/logger.js';
 import { env } from '../config/env.js';
+import prisma from '../config/prisma.js';
 import jwt from 'jsonwebtoken';
 import { getUserById } from '../controllers/userController.js';
 
@@ -8,13 +9,16 @@ import { getUserById } from '../controllers/userController.js';
 const authenticateSocket = async (socket, next) => {
   try {
     // Get token from handshake or query params
-    const token = socket.handshake.auth?.token ||
+    const token =
+      socket.handshake.auth?.token ||
       socket.handshake.query?.token ||
       (socket.handshake.headers.authorization || '').split(' ')[1];
 
     if (!token) {
       // No token → allow guest
-      logger.info('No authentication token provided - treating socket as Guest', { socketId: socket.id });
+      logger.info('No authentication token provided - treating socket as Guest', {
+        socketId: socket.id,
+      });
       socket.user = null;
       return next();
     }
@@ -50,7 +54,7 @@ const authenticateSocket = async (socket, next) => {
       email: user.email,
       username: user.username,
       role: user.role,
-      isVerified: user.isVerified
+      isVerified: user.isVerified,
     };
 
     logger.info('User authenticated successfully - treating as User', {
@@ -58,7 +62,7 @@ const authenticateSocket = async (socket, next) => {
       userId: user.id,
       email: user.email,
       username: user.username,
-      isVerified: user.isVerified
+      isVerified: user.isVerified,
     });
 
     next();
@@ -66,7 +70,7 @@ const authenticateSocket = async (socket, next) => {
     logger.error('Socket authentication middleware error - treating as Guest', {
       error: error.message,
       socketId: socket.id,
-      stack: error.stack
+      stack: error.stack,
     });
 
     // In case of unexpected errors, still allow guest
@@ -102,16 +106,16 @@ const rateLimit = (windowMs = 60 * 1000, max = 100) => {
 };
 
 // Initialize Socket.IO with the HTTP server
-export const initSocketIO = (server) => {
+export const initSocketIO = server => {
   const io = new SocketIO(server, {
     cors: {
       origin: env.clientUrl || 'http://localhost:5173',
       methods: ['GET', 'POST'],
-      credentials: true
+      credentials: true,
     },
     pingTimeout: 30000, // 30 seconds
     pingInterval: 25000, // 25 seconds
-    transports: ['websocket', 'polling']
+    transports: ['websocket', 'polling'],
   });
 
   // Apply socket middleware
@@ -119,11 +123,11 @@ export const initSocketIO = (server) => {
   io.use(authenticateSocket);
 
   // Global maps for room tracking
-  const userRooms = new Map();     // userId -> Set of auctionIds
-  const auctionRooms = new Map();  // auctionId -> { bidders: Set<userId>, viewers: number }
+  const userRooms = new Map(); // userId -> Set of auctionIds
+  const auctionRooms = new Map(); // auctionId -> { bidders: Set<userId>, viewers: number }
 
   // Connection handler
-  io.on('connection', (socket) => {
+  io.on('connection', socket => {
     const userId = socket.user?.id || `guest-${socket.id}`;
     logger.info('New client connected', { socketId: socket.id, userId });
 
@@ -135,7 +139,10 @@ export const initSocketIO = (server) => {
     // Join personal room for authenticated users/ private messages
     if (socket.user?.id) {
       socket.join(`user:${socket.user.id}`);
-      logger.info(`User ${socket.user.id} joined personal room`, { userId: socket.user.id, socketId: socket.id });
+      logger.info(`User ${socket.user.id} joined personal room`, {
+        userId: socket.user.id,
+        socketId: socket.id,
+      });
     }
 
     // Handle joining an auction room with validation AND real-time room management
@@ -147,7 +154,7 @@ export const initSocketIO = (server) => {
 
         // Verify user has access to this auction
         const auction = await prisma.auction.findUnique({
-          where: { id: auctionId, isDeleted: false }
+          where: { id: auctionId, isDeleted: false },
         });
 
         if (!auction) {
@@ -182,7 +189,7 @@ export const initSocketIO = (server) => {
           auctionId,
           bidders: room.bidders.size,
           viewers: room.viewers,
-          total: room.bidders.size + room.viewers
+          total: room.bidders.size + room.viewers,
         });
 
         // Broadcast updated viewer count
@@ -190,7 +197,7 @@ export const initSocketIO = (server) => {
           auctionId,
           count: room.bidders.size + room.viewers,
           bidders: room.bidders.size,
-          viewers: room.viewers
+          viewers: room.viewers,
         });
 
         if (typeof callback === 'function') {
@@ -201,20 +208,20 @@ export const initSocketIO = (server) => {
           error: error.message,
           socketId: socket.id,
           userId,
-          auctionId
+          auctionId,
         });
 
         if (typeof callback === 'function') {
           callback({
             status: 'error',
-            message: error.message || 'Failed to join auction'
+            message: error.message || 'Failed to join auction',
           });
         }
       }
     });
 
     // Handle leaving auction rooms
-    socket.on('leaveAuction', (auctionId) => {
+    socket.on('leaveAuction', auctionId => {
       if (!auctionId) return;
 
       socket.leave(auctionId);
@@ -234,15 +241,15 @@ export const initSocketIO = (server) => {
           socketId: socket.id,
           auctionId,
           bidders: room.bidders.size,
-          viewers: room.viewers
+          viewers: room.viewers,
         });
 
         // Update viewer count for remaining participants
-        io.to(auctionId).emit("viewerCount", {
+        io.to(auctionId).emit('viewerCount', {
           auctionId,
           count: room.bidders.size + room.viewers,
           bidders: room.bidders.size,
-          viewers: room.viewers
+          viewers: room.viewers,
         });
 
         // Clean up empty rooms
@@ -253,11 +260,11 @@ export const initSocketIO = (server) => {
     });
 
     // Handle disconnection cleanup
-    socket.on('disconnect', (reason) => {
+    socket.on('disconnect', reason => {
       logger.info('Client disconnected', {
         socketId: socket.id,
         userId,
-        reason
+        reason,
       });
 
       // Clean up user from all auction rooms
@@ -270,11 +277,11 @@ export const initSocketIO = (server) => {
             room.bidders.delete(socket.user.id);
 
             // Update viewer count for remaining participants
-            io.to(auctionId).emit("viewerCount", {
+            io.to(auctionId).emit('viewerCount', {
               auctionId,
               count: room.bidders.size + room.viewers,
               bidders: room.bidders.size,
-              viewers: room.viewers
+              viewers: room.viewers,
             });
 
             // Clean up empty rooms
@@ -293,11 +300,11 @@ export const initSocketIO = (server) => {
         auctionRooms.forEach((room, auctionId) => {
           room.viewers = Math.max(0, room.viewers - 1);
 
-          io.to(auctionId).emit("viewerCount", {
+          io.to(auctionId).emit('viewerCount', {
             auctionId,
             count: room.bidders.size + room.viewers,
             bidders: room.bidders.size,
-            viewers: room.viewers
+            viewers: room.viewers,
           });
 
           if (room.bidders.size === 0 && room.viewers === 0) {
@@ -308,20 +315,20 @@ export const initSocketIO = (server) => {
     });
 
     // Error handling
-    socket.on('error', (error) => {
+    socket.on('error', error => {
       logger.error('Socket error', {
         socketId: socket.id,
         error: error.message,
-        stack: error.stack
+        stack: error.stack,
       });
     });
   });
 
   // Handle global errors
-  io.on('error', (error) => {
+  io.on('error', error => {
     logger.error('Socket.IO server error', {
       error: error.message,
-      stack: error.stack
+      stack: error.stack,
     });
   });
 
