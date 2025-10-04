@@ -191,6 +191,156 @@ const updateOutbidBids = async (req, auctionId, newBidAmount, newBidId, currentB
   }
 };
 
+/**
+ * Core bid placement logic for REST and Socket.IO
+ * Accepts: { auctionId, amount, actorId, io, socket }
+ * Returns: bid result or throws error
+ */
+export const placeBidCore = async ({ auctionId, amount, actorId, io, socket }) => {
+  const MAX_RETRIES = 3;
+  let retries = 0;
+  let result;
+  // Input validation
+  if (!auctionId || !amount) {
+    throw new Error('Missing required fields');
+  }
+  // Acquire a distributed lock per auction to serialize concurrent bids
+  const lockKey = `lock:auction:${auctionId}`;
+  let lock;
+  try {
+    lock = await acquireLock(lockKey, 5000, { retries: 20, retryDelay: 25, jitter: 25 });
+  } catch (error) {
+    if (error.message === 'AUCTION_LOCK_TIMEOUT') {
+      throw new Error('Bid lock acquisition failed (contention)');
+    }
+    throw error;
+  }
+  try {
+    while (retries < MAX_RETRIES) {
+      try {
+        result = await prisma.$transaction(
+          async tx => {
+            const auction = await tx.auction.findUnique({
+              where: { id: auctionId },
+              select: {
+                id: true,
+                status: true,
+                currentPrice: true,
+                bidIncrement: true,
+                endDate: true,
+                sellerId: true,
+                version: true,
+              },
+            });
+            if (!auction) throw new Error('AUCTION_NOT_FOUND');
+            const minAllowedBid = Number(auction.currentPrice) + Number(auction.bidIncrement);
+            if (Number(amount) < minAllowedBid) {
+              const err = new Error('BID_TOO_LOW');
+              err.details = { minAllowedBid, bidIncrement: Number(auction.bidIncrement) };
+              throw err;
+            }
+            if (auction.status !== 'active') throw new Error('NOT_ACTIVE');
+            const now = new Date();
+            if (new Date(auction.endDate) < now) {
+              await tx.auction.update({
+                where: { id: auctionId, version: auction.version },
+                data: { status: 'ended', version: { increment: 1 } },
+              });
+              throw new Error('ALREADY_ENDED');
+            }
+            if (auction.sellerId.toString() === actorId) throw new Error('BID_ON_OWN_AUCTION');
+            const bid = await tx.bid.create({
+              data: {
+                amount: new Prisma.Decimal(amount),
+                auctionId: auction.id,
+                bidderId: actorId,
+                version: 1,
+              },
+              select: {
+                id: true,
+                amount: true,
+                createdAt: true,
+                bidder: { select: { id: true, username: true } },
+              },
+            });
+            const bidCount = await tx.bid.count({
+              where: { auctionId: auction.id, isDeleted: false },
+            });
+            const updateData = {
+              currentPrice: new Prisma.Decimal(amount),
+              version: { increment: 1 },
+            };
+            if (bidCount === 1) {
+              const currentEndDate = new Date(auction.endDate);
+              const now = new Date();
+              const tenMinutesFromNow = new Date(now.getTime() + 10 * 60 * 1000);
+              const timeUntilEnd = currentEndDate.getTime() - now.getTime();
+              const tenMinutesInMs = 10 * 60 * 1000;
+              if (timeUntilEnd <= tenMinutesInMs) {
+                updateData.endDate = tenMinutesFromNow;
+                logger.info('Extended auction end time due to first bid', {
+                  auctionId: auction.id,
+                  originalEndDate: auction.endDate,
+                  newEndDate: tenMinutesFromNow,
+                  timeUntilOriginalEnd: Math.round(timeUntilEnd / 1000 / 60) + ' minutes',
+                });
+              }
+            }
+            await tx.auction.update({
+              where: { id: auction.id, version: auction.version },
+              data: updateData,
+            });
+            return { ...bid, auctionId, amount };
+          },
+          { maxWait: 5000, timeout: 10000, isolationLevel: 'Serializable' }
+        );
+        break;
+      } catch (error) {
+        if (
+          error.code === 'P2025' ||
+          error.message.includes('version') ||
+          error.message.includes('concurrent') ||
+          error.message.includes('optimistic')
+        ) {
+          retries++;
+          if (retries === MAX_RETRIES)
+            throw new Error(
+              'Failed to place bid due to concurrent modifications. Please try again.'
+            );
+          await new Promise(resolve => setTimeout(resolve, 100 * Math.pow(2, retries)));
+          continue;
+        }
+        throw error;
+      }
+    }
+    if (result) {
+      // For socket, pass a minimal req object for updateOutbidBids
+      await updateOutbidBids(
+        { app: { get: k => io } },
+        result.auctionId,
+        result.amount,
+        result.id,
+        actorId
+      );
+      // Emit socket event for real-time updates
+      if (io) {
+        io.to(`auction_${auctionId}`).emit('newBid', {
+          auctionId,
+          amount,
+          bidder: { id: actorId },
+          createdAt: result.createdAt,
+        });
+      }
+    }
+    return result;
+  } finally {
+    if (lock)
+      await lock
+        .release()
+        .catch(err => logger.error('Lock release failed', { auctionId, error: err.message }));
+  }
+};
+
 // @desc    Delete a bid (with support for soft and permanent delete)
 // @route   DELETE /api/bids/:bidId
 // @access  Private (Admin for permanent delete)
@@ -519,335 +669,22 @@ export const restoreBid = async (req, res) => {
 // @route   POST /api/bids
 // @access  Private
 export const placeBid = async (req, res) => {
-  const MAX_RETRIES = 3;
-  let retries = 0;
-  let result;
-  const { auctionId, amount } = req.body;
-  const actorId = req.user?.id?.toString();
-
-  // Input validation
-  if (!auctionId || !amount) {
-    return res.status(400).json({ success: false, message: 'Missing required fields' });
-  }
-
-  // Acquire a distributed lock per auction to serialize concurrent bids
-  const lockKey = `lock:auction:${auctionId}`;
-  let lock;
-
   try {
-    // Acquire lock
-    lock = await acquireLock(lockKey, 5000, { retries: 20, retryDelay: 25, jitter: 25 });
-  } catch (error) {
-    if (error.message === 'AUCTION_LOCK_TIMEOUT') {
-      // Metrics: count lock timeouts per auction to identify hot auctions
-      const key = `metrics:auction:${auctionId}:lock_timeouts`;
-      try {
-        const waitTime = error.details?.waitTimeMs || 0;
-        await executeRedisCommand('incrBy', key, Math.floor(waitTime));
-        const newVal = await executeRedisCommand('get', key);
-        if (newVal === '1') {
-          await executeRedisCommand('expire', key, 3600);
-        }
-        await executeRedisCommand('incr', 'metrics:bid_lock_timeout_429_total');
-      } catch (e) {
-        logger.warn('Failed to increment lock timeout metric', { auctionId, error: e.message });
-      }
-      logger.warn('Bid lock acquisition failed (contention)', {
-        auctionId,
-        waitMs: error.details?.waitTimeMs,
-        retries: error.details?.retries,
-      });
-      const userMessage =
-        error.details?.message ||
-        'This auction is experiencing high bid activity. Please wait a moment and try again.';
-      return res.status(429).json({
-        success: false,
-        message: userMessage,
-        retryAfter: Math.ceil(error.details?.ttlMs / 1000) || 5,
-      });
-    }
-    throw error; // Re-throw if it's a different error
-  }
-
-  try {
-    // Log lock acquisition metrics per auction
-    if (lock.waitMs) {
-      // metrics for lock wait time
-      const HISTOGRAM_BUCKETS = [10, 50, 100, 200, 500, 1000]; // ms thresholds
-      const waitMs = Math.max(0, Math.floor(lock.waitMs));
-      const TTL_SECONDS = 3600; // 1 hour
-
-      try {
-        // Prometheus counters that you already export
-        const sumKey = `metrics:auction:${auctionId}:lock_wait_sum`;
-        const cntKey = `metrics:auction:${auctionId}:lock_wait_count`;
-
-        const newSum = await executeRedisCommand('incrBy', sumKey, waitMs);
-        const newCnt = await executeRedisCommand('incr', cntKey);
-
-        // Set expiry if this was the first write
-        if (parseInt(newSum) === waitMs) {
-          await executeRedisCommand('expire', sumKey, TTL_SECONDS);
-        }
-        if (parseInt(newCnt) === 1) {
-          await executeRedisCommand('expire', cntKey, TTL_SECONDS);
-        }
-
-        // Increment appropriate buckets - histogram (cumulative style)
-        for (const b of HISTOGRAM_BUCKETS) {
-          if (waitMs <= b) {
-            const bucketKey = `metrics:auction:${auctionId}:lock_wait_bucket:${b}`;
-            const bucketVal = await executeRedisCommand('incr', bucketKey);
-            if (parseInt(bucketVal) === 1) {
-              await executeRedisCommand('expire', bucketKey, TTL_SECONDS);
-            }
-          }
-        }
-
-        // Always increment +Inf bucket
-        const infKey = `metrics:auction:${auctionId}:lock_wait_bucket:inf`;
-        const infVal = await executeRedisCommand('incr', infKey);
-        if (parseInt(infVal) === 1) {
-          await executeRedisCommand('expire', infKey, TTL_SECONDS);
-        }
-      } catch (e) {
-        logger.warn('Failed to record lock-wait metrics', {
-          auctionId,
-          waitMs,
-          error: e.message,
-        });
-      }
-    }
-
-    if (lock.waitMs && lock.waitMs > 200) {
-      logger.warn('High lock acquisition latency', { auctionId, waitMs: lock.waitMs });
-    }
-
-    while (retries < MAX_RETRIES) {
-      try {
-        // Run in a transaction with retry logic
-        result = await prisma.$transaction(
-          async tx => {
-            // 1. Get current auction state with version
-            const auction = await tx.auction.findUnique({
-              where: { id: auctionId },
-              select: {
-                id: true,
-                status: true,
-                currentPrice: true,
-                bidIncrement: true,
-                endDate: true,
-                sellerId: true,
-                version: true,
-              },
-            });
-
-            if (!auction) {
-              throw new Error('AUCTION_NOT_FOUND');
-            }
-
-            // 2. Validate bid
-            const minAllowedBid = Number(auction.currentPrice) + Number(auction.bidIncrement);
-            if (Number(amount) < minAllowedBid) {
-              const err = new Error('BID_TOO_LOW');
-              err.details = { minAllowedBid, bidIncrement: Number(auction.bidIncrement) };
-              throw err;
-            }
-
-            if (auction.status !== 'active') {
-              throw new Error('NOT_ACTIVE');
-            }
-
-            const now = new Date();
-            if (new Date(auction.endDate) < now) {
-              await tx.auction.update({
-                where: { id: auctionId, version: auction.version },
-                data: { status: 'ended', version: { increment: 1 } },
-              });
-              throw new Error('ALREADY_ENDED');
-            }
-
-            if (auction.sellerId.toString() === actorId) {
-              throw new Error('BID_ON_OWN_AUCTION');
-            }
-
-            // 3. Create new bid with version
-            const bid = await tx.bid.create({
-              data: {
-                amount: new Prisma.Decimal(amount),
-                auctionId: auction.id,
-                bidderId: actorId,
-                version: 1,
-              },
-              select: {
-                id: true,
-                amount: true,
-                createdAt: true,
-                bidder: { select: { id: true, username: true } },
-              },
-            });
-
-            // 4. Check if this is the first bid
-            const bidCount = await tx.bid.count({
-              where: {
-                auctionId: auction.id,
-                isDeleted: false,
-              },
-            });
-
-            // 5. Update auction with version check
-            const updateData = {
-              currentPrice: new Prisma.Decimal(amount),
-              version: { increment: 1 },
-            };
-
-            // Extend auction end time if it's the first bid AND auction is ending soon (sniping protection)
-            if (bidCount === 1) {
-              const currentEndDate = new Date(auction.endDate);
-              const now = new Date();
-              const tenMinutesFromNow = new Date(now.getTime() + 10 * 60 * 1000); // 10 minutes from now
-              const timeUntilEnd = currentEndDate.getTime() - now.getTime();
-              const tenMinutesInMs = 10 * 60 * 1000;
-
-              // Only extend if the auction is ending within the next 10 minutes
-              if (timeUntilEnd <= tenMinutesInMs) {
-                updateData.endDate = tenMinutesFromNow;
-                logger.info('Extended auction end time due to first bid', {
-                  auctionId: auction.id,
-                  originalEndDate: auction.endDate,
-                  newEndDate: tenMinutesFromNow,
-                  timeUntilOriginalEnd: Math.round(timeUntilEnd / 1000 / 60) + ' minutes',
-                });
-              } else {
-                logger.info(
-                  'First bid placed but auction has plenty of time left, no extension needed',
-                  {
-                    auctionId: auction.id,
-                    timeUntilEnd: Math.round(timeUntilEnd / 1000 / 60 / 60) + ' hours',
-                  }
-                );
-              }
-            }
-
-            await tx.auction.update({
-              where: {
-                id: auction.id,
-                version: auction.version, // Ensure no concurrent updates
-              },
-              data: updateData,
-            });
-
-            // Return bid data for outbid processing (without calling updateOutbidBids here)
-            return { ...bid, auctionId, amount };
-          },
-          {
-            maxWait: 5000,
-            timeout: 10000,
-            isolationLevel: 'Serializable',
-          }
-        );
-
-        // If we get here, the transaction succeeded
-        break;
-      } catch (error) {
-        // Log the error for debugging
-        logger.warn('Bid placement retry attempt', {
-          attempt: retries + 1,
-          errorCode: error.code,
-          errorMessage: error.message,
-          auctionId: auctionId,
-        });
-
-        // If it's a version conflict, retry
-        if (
-          error.code === 'P2025' ||
-          error.message.includes('version') ||
-          error.message.includes('concurrent') ||
-          error.message.includes('optimistic')
-        ) {
-          retries++;
-          if (retries === MAX_RETRIES) {
-            logger.error('Bid placement failed after max retries', {
-              totalRetries: retries,
-              auctionId: auctionId,
-              errorCode: error.code,
-              errorMessage: error.message,
-            });
-            throw new Error(
-              'Failed to place bid due to concurrent modifications. Please try again.'
-            );
-          }
-          // Add exponential backoff
-          await new Promise(resolve => setTimeout(resolve, 100 * Math.pow(2, retries)));
-          continue;
-        }
-        throw error; // Re-throw other errors
-      }
-    }
-
-    // Only process outbid notifications AFTER successful transaction
-    if (result) {
-      await updateOutbidBids(req, result.auctionId, result.amount, result.id, actorId);
-    }
-
-    // Get io instance from app settings
+    const { auctionId, amount } = req.body;
+    const actorId = req.user?.id?.toString();
     const io = req?.app?.get('io');
-
-    // Emit socket event for real-time updates
-    if (io) {
-      io.to(`auction_${auctionId}`).emit('newBid', {
-        auctionId,
-        amount,
-        bidder: {
-          id: req.user?.id?.toString(),
-          username: req.user.username,
-        },
-        createdAt: result.createdAt,
-      });
-    }
-
+    const result = await placeBidCore({ auctionId, amount, actorId, io });
     res.status(201).json(result);
   } catch (error) {
     if (error.message === 'AUCTION_NOT_FOUND') {
       return res.status(404).json({ success: false, message: 'Auction not found' });
     }
-    if (error.message === 'AUCTION_LOCK_TIMEOUT') {
-      // Metrics: count lock timeouts per auction to identify hot auctions
-      const auctionId = req.body?.auctionId;
-      const key = `metrics:auction:${auctionId}:lock_timeouts`;
-      try {
-        const waitTime = error.details?.waitTimeMs || 0;
-        await executeRedisCommand('incrBy', key, Math.floor(waitTime));
-        // Keep rolling window (e.g., 1 hour) on first increment
-        const newVal = await executeRedisCommand('get', key);
-        if (newVal === '1') {
-          await executeRedisCommand('expire', key, 3600);
-        }
-        await executeRedisCommand('incr', 'metrics:bid_lock_timeout_429_total');
-      } catch (e) {
-        // Non-fatal if metrics fail
-        logger.warn('Failed to increment lock timeout metric', { auctionId, error: e.message });
-      }
-      logger.warn('Bid lock timeout (contention)', {
-        auctionId,
-        waitMs: error.details?.waitTimeMs,
-        retries: error.details?.retries,
-      });
-      const userMessage =
-        error.details?.message ||
-        'Too many concurrent bids on this auction. Please wait a moment and try again.';
-      return res.status(429).json({
-        success: false,
-        message: userMessage,
-        retryAfter: Math.ceil(error.details?.ttlMs / 1000) || 5,
-      });
+    if (error.message === 'Bid lock acquisition failed (contention)') {
+      return res.status(429).json({ success: false, message: 'Too many concurrent bids. Please try again.' });
     }
     if (error.message === 'BID_TOO_LOW') {
       const { minAllowedBid, bidIncrement } = error.details || {};
-      return res.status(400).json({
-        success: false,
-        message: `Bid must be at least ${bidIncrement} higher than current price (${minAllowedBid})`,
-      });
+      return res.status(400).json({ success: false, message: `Bid must be at least ${bidIncrement} higher than current price (${minAllowedBid})` });
     }
     if (error.message === 'NOT_ACTIVE') {
       return res.status(400).json({ message: 'This auction is not active' });
@@ -855,22 +692,11 @@ export const placeBid = async (req, res) => {
     if (error.message === 'ALREADY_ENDED') {
       return res.status(400).json({ message: 'This auction has already ended' });
     }
-    if (error.message === 'BID_NOT_HIGHER') {
-      const { currentPrice } = error.details || {};
-      return res.status(400).json({ message: `Bid amount must be higher than $${currentPrice}` });
-    }
     if (error.message === 'BID_ON_OWN_AUCTION') {
       return res.status(400).json({ message: 'You cannot bid on your own auction' });
     }
     logger.error('Place bid error:', { error: error.message, stack: error.stack });
     res.status(500).json({ message: 'Server error' });
-  } finally {
-    // Always release the lock
-    if (lock) {
-      await lock.release().catch(err => {
-        logger.error('Lock release failed', { auctionId, error: err.message });
-      });
-    }
   }
 };
 
