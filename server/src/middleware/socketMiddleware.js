@@ -3,7 +3,8 @@ import logger from '../utils/logger.js';
 import { env } from '../config/env.js';
 import prisma from '../config/prisma.js';
 import jwt from 'jsonwebtoken';
-import { getUserById } from '../controllers/userController.js';
+import { findUserById } from '../controllers/userController.js';
+import { placeBidCore } from '../controllers/bidController.js';
 
 // Authentication middleware for Socket.IO
 const authenticateSocket = async (socket, next) => {
@@ -15,7 +16,6 @@ const authenticateSocket = async (socket, next) => {
       (socket.handshake.headers.authorization || '').split(' ')[1];
 
     if (!token) {
-      // No token → allow guest
       logger.info('No authentication token provided - treating socket as Guest', {
         socketId: socket.id,
       });
@@ -37,7 +37,7 @@ const authenticateSocket = async (socket, next) => {
     }
 
     // Get user from database
-    const user = await getUserById(decoded.id);
+    const user = await findUserById(decoded.userId);
 
     if (!user || user.isDeleted) {
       logger.warn('User not found or deactivated - treating socket as Guest', {
@@ -72,8 +72,6 @@ const authenticateSocket = async (socket, next) => {
       socketId: socket.id,
       stack: error.stack,
     });
-
-    // In case of unexpected errors, still allow guest
     socket.user = null;
     return next();
   }
@@ -217,6 +215,31 @@ export const initSocketIO = server => {
             message: error.message || 'Failed to join auction',
           });
         }
+      }
+    });
+
+    // Handle placing a bid
+    socket.on('placeBid', async (data, callback) => {
+      try {
+        if (!socket.user || !socket.user.id) {
+          throw new Error('Authentication required to place a bid');
+        }
+        const { auctionId, amount } = data;
+        const actorId = socket.user.id;
+        const io = socket.server;
+        const result = await placeBidCore({ auctionId, amount, actorId, io, socket });
+        if (typeof callback === 'function') {
+          callback({ status: 'success', bid: result });
+        }
+      } catch (error) {
+        if (typeof callback === 'function') {
+          callback({ status: 'error', message: error.message });
+        }
+        logger.error('Socket placeBid error', {
+          socketId: socket.id,
+          userId: socket.user?.id,
+          error: error.message,
+        });
       }
     });
 
