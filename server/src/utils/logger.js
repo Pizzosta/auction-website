@@ -15,7 +15,7 @@ if (!fs.existsSync(logDir)) {
 }
 
 // Custom format to inject requestId
-const requestIdFormat = winston.format((info) => {
+const requestIdFormat = winston.format(info => {
   const context = getRequestContext();
   if (context.requestId) {
     info.requestId = context.requestId;
@@ -29,7 +29,7 @@ const logFormat = winston.format.combine(
   winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
   winston.format.errors({ stack: true }),
   winston.format.splat(),
-  winston.format.json(),
+  winston.format.json()
 );
 
 // Create logger instance
@@ -64,25 +64,44 @@ if (process.env.NODE_ENV !== 'production') {
         winston.format.colorize(),
         winston.format.simple(),
         winston.format.printf(({ level, message, requestId, ...meta }) => {
-          return `${requestId} ${level}: ${message} ${Object.keys(meta).length ? JSON.stringify(meta, null, 2) : ''}`;
+          // Safe stringify to avoid circular structure errors
+          let safeMeta = '';
+          if (Object.keys(meta).length) {
+            const seen = new WeakSet();
+            try {
+              safeMeta = JSON.stringify(
+                meta,
+                (key, value) => {
+                  if (typeof value === 'object' && value !== null) {
+                    if (seen.has(value)) return '[Circular]';
+                    seen.add(value);
+                  }
+                  return value;
+                },
+                2
+              );
+            } catch (err) {
+              safeMeta = '[Unserializable meta]';
+            }
+          }
+          return `${requestId || ''} ${level}: ${message} ${safeMeta}`;
         })
       ),
       level: 'debug',
-    }),
+    })
   );
 }
 
 // Create a Morgan token for requestId
-morgan.token('requestId', (req) => req.requestId || 'no-id');
+morgan.token('requestId', req => req.requestId || 'no-id');
 
 // Define Morgan format string
-const morganFormat =
-  ':requestId :method :url :status :res[content-length] - :response-time ms';
+const morganFormat = ':requestId :method :url :status :res[content-length] - :response-time ms';
 
 // Create a Morgan middleware that logs via Winston
 export const httpLogger = morgan(morganFormat, {
   stream: {
-    write: (message) => {
+    write: message => {
       logger.http(message.trim());
     },
   },
