@@ -531,3 +531,19 @@ export const userSchema = {
     'object.base': 'No additional data should be sent with this request',
   }),
 };
+
+// Watchlist schema validation
+export const watchlistSchema = {
+  add: Joi.object({
+    auctionId: Joi.string().uuid({ version: 'uuidv4' }).required().messages({
+      'string.uuid': 'Invalid Auction ID format',
+      'any.required': 'Auction ID is required',
+    }),
+  }),
+  remove: Joi.object({
+    auctionId: Joi.string().uuid({ version: 'uuidv4' }).required().messages({
+      'string.uuid': 'Invalid Auction ID format',
+      'any.required': 'Auction ID is required',
+    }),
+  }),
+};

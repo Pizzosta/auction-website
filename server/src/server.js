@@ -44,7 +44,9 @@ try {
   await getRedisClient();
   logger.info('Redis client ready before middleware registration');
 } catch (e) {
-  logger.warn('Redis client failed to initialize early; rate limiting may fallback temporarily', { message: e?.message });
+  logger.warn('Redis client failed to initialize early; rate limiting may fallback temporarily', {
+    message: e?.message,
+  });
 }
 
 // Import routes
@@ -55,6 +57,7 @@ import userRoutes from './routes/userRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import statsRoutes from './routes/statsRoutes.js';
 import webhookRoutes from './routes/webhookRoutes.js';
+import watchlistRoutes from './routes/watchlistRoutes.js';
 import { initSocketIO } from './middleware/socketMiddleware.js';
 
 const app = express();
@@ -112,12 +115,12 @@ app.use('/api/users', userRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/v1/webhook', webhookRoutes);
+app.use('/api/watchlist', watchlistRoutes);
 
 // Create HTTP server
 const server = http.createServer(app);
 
 // Initialize Socket.IO with the server
-//const { initSocketIO } = require('./middleware/socketMiddleware');
 const io = initSocketIO(server);
 
 // Make io available in app locals
