@@ -75,34 +75,22 @@ export const bidQuerySchema = Joi.object({
 
 // Stats query schema validation
 export const statsQuerySchema = Joi.object({
-  timeFrame: Joi.string()
-    .valid('day', 'week', 'month', 'year', 'all')
-    .default('month')
-    .optional(),
+  timeFrame: Joi.string().valid('day', 'week', 'month', 'year', 'all').default('month').optional(),
 });
 
 // User stats query schema validation
 export const userStatsQuerySchema = Joi.object({
-  timeFrame: Joi.string()
-    .valid('day', 'week', 'month', 'year', 'all')
-    .default('month')
-    .optional(),
+  timeFrame: Joi.string().valid('day', 'week', 'month', 'year', 'all').default('month').optional(),
 });
 
 // Auction stats query schema validation
 export const auctionStatsQuerySchema = Joi.object({
-  timeFrame: Joi.string()
-    .valid('day', 'week', 'month', 'year', 'all')
-    .default('month')
-    .optional(),
+  timeFrame: Joi.string().valid('day', 'week', 'month', 'year', 'all').default('month').optional(),
 });
 
 // Bid stats query schema validation
 export const bidStatsQuerySchema = Joi.object({
-  timeFrame: Joi.string()
-    .valid('day', 'week', 'month', 'year', 'all')
-    .default('month')
-    .optional(),
+  timeFrame: Joi.string().valid('day', 'week', 'month', 'year', 'all').default('month').optional(),
 });
 
 // ID schema validation

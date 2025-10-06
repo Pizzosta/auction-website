@@ -6,7 +6,7 @@ const SERVER_URL = 'http://localhost:5001';
 
 // If you need authentication, provide your JWT token here
 const TOKEN =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJjNDcyMmFjYi02ODRiLTQ1YzEtYjVjZi0zYTk4OTQzN2ViZTgiLCJlbWFpbCI6InBhc3N3b3JkMTFAbWFpbC5jb20iLCJyb2xlIjoidXNlciIsInR5cGUiOiJhY2Nlc3MiLCJpYXQiOjE3NTk2MDc5OTQsImV4cCI6MTc1OTYwODg5NH0.hQBIutFeiA9gcpLxtrvPvmrkWeqnihJKbVjrtG3kJFg';
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJjNDcyMmFjYi02ODRiLTQ1YzEtYjVjZi0zYTk4OTQzN2ViZTgiLCJlbWFpbCI6InBhc3N3b3JkMTFAbWFpbC5jb20iLCJyb2xlIjoidXNlciIsInR5cGUiOiJhY2Nlc3MiLCJpYXQiOjE3NTk3NjQ1MzgsImV4cCI6MTc1OTc2NTQzOH0.vBfEp2D8eusrCqAf5Ig_MLSKOUBRA7S-bFP8_JhV00U"
 const socket = io(SERVER_URL, {
   auth: { token: TOKEN },
   transports: ['websocket'],
@@ -16,15 +16,32 @@ const socket = io(SERVER_URL, {
 socket.on('connect', () => {
   console.log('Connected as socket id:', socket.id);
 
-  // Join an auction room (optional, for real-time updates)
+  // Listen for personal room join confirmation (custom event)
+  socket.on(`user:${socket.id}`, () => {
+    console.log(`User ${socket.id} joined personal room`);
+  });
+
+  // Listen for viewerCount updates globally
+  socket.on('viewerCount', data => {
+    console.log('viewerCount:', data);
+  });
+
+  // Join an auction room
   const auctionId = '7a33f217-6483-4e98-a755-8e5e6cf7f2bc';
   socket.emit('joinAuction', auctionId, response => {
     console.log('Join auction response:', response);
+    console.log(`User ${socket.id} joined auction ${auctionId}`);
 
     // Place a bid after joining
-    socket.emit('placeBid', { auctionId, amount: 29 }, bidResponse => {
-      console.log('Bid response:', bidResponse);
+    socket.emit('placeBid', { auctionId, amount: 30 }, bidResponse => {
+      console.log('placeBid response:', bidResponse);
     });
+
+    // Leave auction after bid (for demonstration)
+    setTimeout(() => {
+      socket.emit('leaveAuction', auctionId);
+      console.log(`leaveAuction emitted for auction ${auctionId}`);
+    }, 2000);
   });
 });
 
@@ -33,7 +50,6 @@ socket.on('newBid', data => {
   console.log('New bid received:', data);
 });
 
-// Listen for outbid notifications
 socket.on('bid:outbid', data => {
   console.log('You have been outbid:', data);
 });
