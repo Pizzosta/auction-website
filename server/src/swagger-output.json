@@ -1082,19 +1082,11 @@
             "type": "string"
           },
           {
-            "name": "permanent",
-            "in": "query",
-            "type": "string"
-          },
-          {
             "name": "body",
             "in": "body",
             "schema": {
               "type": "object",
               "properties": {
-                "permanent": {
-                  "example": "any"
-                },
                 "password": {
                   "example": "any"
                 }

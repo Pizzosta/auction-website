@@ -8,39 +8,40 @@ datasource db {
 }
 
 model User {
-  id                      String      @id @default(uuid())
-  createdAt               DateTime    @default(now())
-  updatedAt               DateTime    @updatedAt
-  version                 Int         @default(1) // For optimistic concurrency control
+  id                      String            @id @default(uuid())
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+  version                 Int               @default(1) // For optimistic concurrency control
   firstname               String
-  middlename              String?     @default("")
+  middlename              String?           @default("")
   lastname                String
-  username                String      @unique
-  email                   String      @unique
-  phone                   String      @unique
+  username                String            @unique
+  email                   String            @unique
+  phone                   String            @unique
   passwordHash            String
-  role                    String      @default("user")
-  rating                  Float       @default(0)
-  bio                     String?     @default("")
-  location                String?     @default("")
-  isVerified              Boolean     @default(false)
-  lastActiveAt            DateTime?   @default(now())
-  isDeleted               Boolean     @default(false)
+  role                    String            @default("user")
+  rating                  Float             @default(0)
+  bio                     String?           @default("")
+  location                String?           @default("")
+  isVerified              Boolean           @default(false)
+  lastActiveAt            DateTime?         @default(now())
+  isDeleted               Boolean           @default(false)
   deletedAt               DateTime?
   deletedById             String?
   resetPasswordToken      String?
   resetPasswordExpire     DateTime?
   emailVerificationToken  String?
   emailVerificationExpire DateTime?
-  profilePicture          Json?       @default("{}")
-  deletedAuctions         Auction[]   @relation("AuctionDeletedBy")
-  auctions                Auction[]   @relation("SellerAuctions")
-  wonAuctions             Auction[]   @relation("WinnerAuctions")
-  watchlist               Watchlist[]
-  bids                    Bid[]       @relation("BidBidder")
-  deletedBids             Bid[]       @relation("BidDeletedBy")
-  deletedBy               User?       @relation("UserDeletedBy", fields: [deletedById], references: [id])
-  deletedUsers            User[]      @relation("UserDeletedBy")
+  profilePicture          Json?             @default("{}")
+  deletedAuctions         Auction[]         @relation("AuctionDeletedBy")
+  auctions                Auction[]         @relation("SellerAuctions")
+  wonAuctions             Auction[]         @relation("WinnerAuctions")
+  bids                    Bid[]             @relation("BidBidder")
+  deletedBids             Bid[]             @relation("BidDeletedBy")
+  deletedBy               User?             @relation("UserDeletedBy", fields: [deletedById], references: [id])
+  deletedUsers            User[]            @relation("UserDeletedBy")
+  Watchlist               Watchlist[]
+  FeaturedAuction         FeaturedAuction[]
 }
 
 model Auction {
@@ -64,15 +65,15 @@ model Auction {
   isDeleted     Boolean       @default(false)
   images        Json?
 
-  watchlist Watchlist[]
-
   deletedBy User? @relation("AuctionDeletedBy", fields: [deletedById], references: [id])
   seller    User  @relation("SellerAuctions", fields: [sellerId], references: [id])
   winner    User? @relation("WinnerAuctions", fields: [winnerId], references: [id])
 
-  highestBidId String? @unique
-  highestBid   Bid?    @relation("AuctionHighestBid", fields: [highestBidId], references: [id])
-  bids         Bid[]   @relation("AuctionBids")
+  highestBidId    String?          @unique
+  highestBid      Bid?             @relation("AuctionHighestBid", fields: [highestBidId], references: [id])
+  bids            Bid[]            @relation("AuctionBids")
+  Watchlist       Watchlist[]
+  FeaturedAuction FeaturedAuction?
 
   @@index([status])
   @@index([endDate])
@@ -113,6 +114,21 @@ model Watchlist {
   auction Auction @relation(fields: [auctionId], references: [id])
 
   @@unique([userId, auctionId])
+}
+
+model FeaturedAuction {
+  id          String    @id @default(uuid())
+  auctionId   String    @unique
+  createdAt   DateTime  @default(now())
+  addedById   String
+  deletedAt   DateTime?
+  deletedById String?
+  isDeleted   Boolean   @default(false)
+
+  auction Auction @relation(fields: [auctionId], references: [id])
+  addedBy User    @relation(fields: [addedById], references: [id])
+
+  @@index([addedById])
 }
 
 enum AuctionStatus {

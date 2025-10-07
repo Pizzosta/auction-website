@@ -547,3 +547,26 @@ export const watchlistSchema = {
     }),
   }),
 };
+
+// Featured auction delete query schema (for ?permanent=true)
+export const featuredAuctionDeleteQuerySchema = Joi.object({
+  permanent: Joi.boolean().default(false).messages({
+    'boolean.base': 'permanent must be a boolean',
+  }),
+});
+
+// FeaturedAuction schema validation
+export const featuredAuctionSchema = {
+  add: Joi.object({
+    auctionId: Joi.string().uuid({ version: 'uuidv4' }).required().messages({
+      'string.uuid': 'Invalid Auction ID format',
+      'any.required': 'Auction ID is required',
+    }),
+  }),
+  remove: Joi.object({
+    auctionId: Joi.string().uuid({ version: 'uuidv4' }).required().messages({
+      'string.uuid': 'Invalid Auction ID format',
+      'any.required': 'Auction ID is required',
+    }),
+  }),
+};

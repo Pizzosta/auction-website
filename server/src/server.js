@@ -58,6 +58,7 @@ import adminRoutes from './routes/adminRoutes.js';
 import statsRoutes from './routes/statsRoutes.js';
 import webhookRoutes from './routes/webhookRoutes.js';
 import watchlistRoutes from './routes/watchlistRoutes.js';
+import featuredAuctionRoutes from './routes/featuredAuctionRoutes.js';
 import { initSocketIO } from './middleware/socketMiddleware.js';
 
 const app = express();
@@ -116,6 +117,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/v1/webhook', webhookRoutes);
 app.use('/api/watchlist', watchlistRoutes);
+app.use('/api/featured-auctions', featuredAuctionRoutes);
 
 // Create HTTP server
 const server = http.createServer(app);
