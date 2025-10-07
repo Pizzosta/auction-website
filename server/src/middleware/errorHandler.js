@@ -1,57 +1,50 @@
+import { Prisma } from '@prisma/client';
 import logger from '../utils/logger.js';
 
 /**
  * Custom error class for handling operational errors
  */
 class AppError extends Error {
-  constructor(message, statusCode) {
+  constructor(code, message, statusCode, details = null) {
     super(message);
+    this.code = code;
     this.statusCode = statusCode;
     this.status = `${statusCode}`.startsWith('4') ? 'fail' : 'error';
+    this.details = details;
     this.isOperational = true;
     Error.captureStackTrace(this, this.constructor);
   }
 }
 
 /**
- * Error handlers for specific error types
+ * Prisma-specific error handlers
  */
-const handleCastErrorDB = err => {
-  const message = `Invalid ${err.path}: ${err.value}`;
-  return new AppError(message, 400);
-};
-
-const handleDuplicateFieldsDB = err => {
-  // Extract the duplicate field key and value
-  const fieldName = Object.keys(err.keyPattern || {})[0] || 'field';
-  const fieldValue = err.keyValue ? err.keyValue[fieldName] : 'unknown';
-
-  let message;
-  switch (fieldName) {
-    case 'email':
-      message = 'An account with this email already exists.';
-      break;
-    case 'username':
-      message = 'This username is already taken.';
-      break;
-    case 'phone':
-      message = 'This phone number is already registered.';
-      break;
-    default:
-      message = `Duplicate value for ${fieldName}: "${fieldValue}". Please use another value!`;
+const handlePrismaError = err => {
+  if (err instanceof Prisma.PrismaClientKnownRequestError) {
+    switch (err.code) {
+      case 'P2002': {
+        // Unique constraint failed
+        const target = err.meta?.target?.join(', ') || 'field';
+        return new AppError(`Duplicate value for ${target}. Please use another value.`, 400);
+      }
+      case 'P2025':
+        return new AppError('Record not found', 404);
+      case 'P2003':
+        return new AppError('Foreign key constraint failed', 400);
+      default:
+        return new AppError(`Database error: ${err.message}`, 400);
+    }
   }
-
-  return new AppError(message, 400);
+  if (err instanceof Prisma.PrismaClientValidationError) {
+    return new AppError(`Invalid input: ${err.message}`, 400);
+  }
+  return err;
 };
 
-const handleValidationErrorDB = err => {
-  const errors = Object.values(err.errors).map(el => el.message);
-  const message = `Invalid input data. ${errors.join('. ')}`;
-  return new AppError(message, 400);
-};
-
+/**
+ * JWT error handlers
+ */
 const handleJWTError = () => new AppError('Invalid token. Please log in again!', 401);
-
 const handleJWTExpiredError = () =>
   new AppError('Your token has expired! Please log in again.', 401);
 
@@ -64,13 +57,11 @@ const globalErrorHandler = (err, req, res, _next) => {
 
   // Normalize the error object
   let error = { ...err };
-  error.message = err.message;
-  error.stack = err.stack;
 
-  // Handle specific error types
-  if (error.name === 'CastError') error = handleCastErrorDB(error);
-  if (error.code === 11000) error = handleDuplicateFieldsDB(error);
-  if (error.name === 'ValidationError') error = handleValidationErrorDB(error);
+  // Prisma errors
+  error = handlePrismaError(error);
+
+  // JWT errors
   if (error.name === 'JsonWebTokenError') error = handleJWTError();
   if (error.name === 'TokenExpiredError') error = handleJWTExpiredError();
 
@@ -86,27 +77,28 @@ const globalErrorHandler = (err, req, res, _next) => {
     path: req.originalUrl,
     method: req.method,
     ip: req.ip,
+    user: req.user?.id || 'guest',
     isOperational: error.isOperational,
     // Only include stack for non-operational errors in production
     ...(!error.isOperational && { stack: error.stack }),
     // Include original error object for debugging in development
-    ...(
-      process.env.NODE_ENV === 'development'
-      && {
-        stack: error.stack,
-        originalError: {
-          name: err.name,
-          message: err.message,
-          code: err.code,
-          full: err
-        }
-      })
+    ...(process.env.NODE_ENV === 'development' && {
+      stack: error.stack,
+      originalError: {
+        name: err.name,
+        message: err.message,
+        code: err.code,
+        full: err,
+      },
+    }),
   });
 
   // Send response to client
   res.status(error.statusCode || 500).json({
+    code: error.code || 'INTERNAL_SERVER_ERROR',
     status: error.status,
-    message: error.message || 'Something went wrong!',
+    message: error.message || 'Internal Server Error',
+    ...(error.details && { details: error.details }),
     ...(process.env.NODE_ENV === 'development' && { stack: error.stack }),
   });
 };
