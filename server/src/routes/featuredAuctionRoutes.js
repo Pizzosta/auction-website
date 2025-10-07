@@ -5,6 +5,7 @@ import {
   addFeaturedAuction,
   removeFeaturedAuction,
   getFeaturedAuctions,
+  restoreFeaturedAuction,
 } from '../controllers/featuredAuctionController.js';
 import { validate } from '../middleware/validationMiddleware.js';
 
@@ -47,5 +48,21 @@ router.delete(
  * @returns {Error}  default - Unexpected error
  */
 router.get('/', getFeaturedAuctions);
+
+/**
+ * @route POST /api/featured-auctions/restore
+ * @group FeaturedAuctions - featured auction management
+ * @description Restore a previously removed featured auction. Requires admin privileges.
+ * @param {RestoreFeaturedAuction.model} body.body.required
+ * @returns {object} 200 - Featured auction restored
+ * @returns {Error}  default - Unexpected error
+ */
+router.post(
+  '/restore',
+  protect,
+  admin,
+  validate(featuredAuctionSchema.restore, 'body'),
+  restoreFeaturedAuction
+);
 
 export default router;

@@ -10,7 +10,19 @@ export const addFeaturedAuction = async (req, res, next) => {
     const { auctionId } = req.body;
     const exists = await prisma.featuredAuction.findUnique({ where: { auctionId } });
     if (exists) {
-      return res.status(409).json({ error: 'Auction already featured' });
+      if (exists.isDeleted) {
+        return res
+          .status(409)
+          .json({ status: 'error', message: 'Auction already featured. It is soft deleted' });
+      }
+      return res.status(409).json({ status: 'error', message: 'Auction already featured' });
+    }
+    // Only allow upcoming or active auctions to be featured
+    const auction = await prisma.auction.findUnique({ where: { id: auctionId } });
+    if (!auction || !['upcoming', 'active'].includes(auction.status)) {
+      return res
+        .status(400)
+        .json({ status: 'error', message: 'Only upcoming or active auctions can be featured' });
     }
     const featured = await prisma.featuredAuction.create({
       data: {
@@ -29,7 +41,7 @@ export const addFeaturedAuction = async (req, res, next) => {
 export const removeFeaturedAuction = async (req, res, next) => {
   try {
     if (req.user.role !== 'admin') {
-      return res.status(403).json({ status: 'error', error: 'Forbidden: Admins only' });
+      return res.status(403).json({ status: 'error', message: 'Forbidden: Admins only' });
     }
     const { auctionId } = req.body;
     if (!auctionId) {
@@ -48,10 +60,10 @@ export const removeFeaturedAuction = async (req, res, next) => {
       where: { auctionId },
     });
     if (!featured) {
-      return res.status(404).json({ status: 'error', error: 'Featured auction not found' });
+      return res.status(404).json({ status: 'error', message: 'Featured auction not found' });
     }
     if (featured.isDeleted) {
-      return res.status(404).json({ status: 'error', error: 'Featured auction already deleted' });
+      return res.status(404).json({ status: 'error', message: 'Featured auction already deleted' });
     }
     if (permanent) {
       await prisma.featuredAuction.delete({ where: { auctionId } });
@@ -101,6 +113,50 @@ export const getFeaturedAuctions = async (req, res, next) => {
     return res.status(200).json({ status: 'success', data: featured });
   } catch (err) {
     logger.error('Error fetching featured auctions', { error: err.message, stack: err.stack });
+    next(err);
+  }
+};
+
+// Restore a soft deleted featured auction (admin only)
+export const restoreFeaturedAuction = async (req, res, next) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ status: 'error', message: 'Forbidden: Admins only' });
+    }
+    const { auctionId } = req.body;
+    if (!auctionId) {
+      return res.status(400).json({ status: 'error', message: 'Auction ID required' });
+    }
+    // Only allow upcoming or active auctions to be restored
+    const auction = await prisma.auction.findUnique({ where: { id: auctionId } });
+    if (!auction || !['upcoming', 'active'].includes(auction.status)) {
+      return res
+        .status(400)
+        .json({ status: 'error', message: 'Only upcoming or active auctions can be restored' });
+    }
+    // Featured auction must exist and be soft-deleted
+    const featured = await prisma.featuredAuction.findUnique({ where: { auctionId } });
+    if (!featured || !featured.isDeleted) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'No soft deleted featured auction found for this auction',
+      });
+    }
+    // Restore by setting isDeleted to false and clearing deletedAt and deletedById
+    await prisma.featuredAuction.update({
+      where: { auctionId },
+      data: {
+        isDeleted: false,
+        deletedAt: null,
+        deletedById: null,
+      },
+    });
+    logger.info('Restored featured auction', { auctionId, restoredBy: req.user.id });
+    return res
+      .status(200)
+      .json({ status: 'success', message: 'Featured auction restored', details: { auctionId } });
+  } catch (err) {
+    logger.error('Error restoring featured auction', { error: err.message, stack: err.stack });
     next(err);
   }
 };

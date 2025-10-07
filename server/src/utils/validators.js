@@ -569,4 +569,10 @@ export const featuredAuctionSchema = {
       'any.required': 'Auction ID is required',
     }),
   }),
+  restore: Joi.object({
+    auctionId: Joi.string().uuid({ version: 'uuidv4' }).required().messages({
+      'string.uuid': 'Invalid Auction ID format',
+      'any.required': 'Auction ID is required',
+    }),
+  }),
 };
