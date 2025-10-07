@@ -160,14 +160,15 @@ export const getAllUsers = async (req, res) => {
 export const deleteUser = async (req, res) => {
   try {
     const { password } = req.body || {};
+
+    const getPermanentValue = value => {
+      if (value == null) return false;
+      if (typeof value === 'string') return value.toLowerCase() === 'true';
+      return !!value;
+    };
     // Accept permanent from query string (?permanent=true) and fallback to body for backward compatibility
     const permanent =
-      (typeof req.query?.permanent === 'string'
-        ? req.query.permanent.toLowerCase() === 'true'
-        : !!req.query?.permanent) ||
-      (typeof req.body?.permanent === 'string'
-        ? req.body.permanent.toLowerCase() === 'true'
-        : !!req.body?.permanent);
+      getPermanentValue(req.query?.permanent) || getPermanentValue(req.body?.permanent);
 
     const user = await prisma.user.findUnique({
       where: { id: req.params.id },
