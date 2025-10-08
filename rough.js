@@ -191,9 +191,8 @@ const getRoomStats = () => ({
   systemStats: { ...socketStats }
 });
 
-// Export global state for monitoring
+// Export for monitoring
 export const getSocketStats = getRoomStats;
-export { userRooms, auctionRooms, auctionTimers };
 
 // Function to schedule auction ending notifications
 const scheduleAuctionEndingNotification = (io, auctionId, endTime, auctionRooms) => {
