@@ -1,5 +1,6 @@
 import prisma from '../config/prisma.js';
 import logger from '../utils/logger.js';
+import { getSocketStats, userRooms, auctionRooms, auctionTimers } from '../middleware/socketMiddleware.js';
 
 /**
  * @swagger
@@ -83,7 +84,7 @@ export const getSystemStats = async (req, res) => {
         // Calculate start date based on timeFrame
         switch (timeFrame) {
             case 'day':
-            startDate = new Date(now.setDate(now.getDate() - 1));
+                startDate = new Date(now.setDate(now.getDate() - 1));
                 break;
             case 'week':
                 startDate = new Date(now.setDate(now.getDate() - 7));
@@ -741,6 +742,81 @@ export const getUserStats = async (req, res) => {
         res.status(500).json({
             status: 'error',
             message: 'Failed to fetch user statistics'
+        });
+    }
+};
+
+
+export const getSocketStatsController = (req, res) => {
+    try {
+        // Basic stats from getSocketStats
+        const stats = getSocketStats();
+
+        res.json({
+            status: 'success',
+            data: {
+                ...stats,
+                timestamp: new Date().toISOString(),
+                uptime: process.uptime()
+            }
+        });
+    } catch (error) {
+        logger.error('Error retrieving socket stats', {
+            error: error.message,
+            userId: req.user.id
+        });
+
+        res.status(500).json({
+            status: 'error',
+            message: 'Failed to retrieve socket statistics'
+        });
+    }
+};
+
+
+export const getSocketRoomsController = (req, res) => {
+    try {
+        const detailedRoomInfo = 
+            // Additional detailed information
+            {
+                userRooms: Array.from(userRooms.entries()).map(([userId, rooms]) => ({
+                    userId,
+                    roomCount: rooms.size,
+                    rooms: Array.from(rooms)
+                })),
+                auctionRooms: Array.from(auctionRooms.entries()).map(([auctionId, room]) => ({
+                    auctionId,
+                    bidders: Array.from(room.bidders),
+                    biddersCount: room.bidders.size,
+                    viewers: room.viewers,
+                    total: room.bidders.size + room.viewers
+                })),
+                auctionTimers: Array.from(auctionTimers.entries()).map(([auctionId, timer]) => ({
+                    auctionId,
+                    hasTimer: !!timer.timer,
+                    hasInterval: !!timer.interval,
+                    endTime: timer.endTime
+                }))
+            };
+
+        res.json({
+            status: 'success',
+            data: {
+                detailedRoomInfo,
+                timestamp: new Date().toISOString(),
+                uptime: process.uptime()
+            }
+        });
+    } catch (error) {
+        logger.error('Error retrieving socket rooms', {
+            error: error.message,
+            userId: req.user?.id,
+            stack: error.stack
+        });
+
+        res.status(500).json({
+            status: 'error',
+            message: 'Failed to retrieve room information'
         });
     }
 };
