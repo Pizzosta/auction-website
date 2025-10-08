@@ -64,3 +64,21 @@ Map API messages to user‑friendly UI messages
 check if soft delete auction. Add restore/reactivate auction
 
 make req.user.id is not return in the codes except logger
+
+// Schedule a payment reminder in socketMiddleware
+setTimeout(async () => {
+  const auction = await prisma.auction.findUnique({
+    where: { id: auctionId },
+    include: { payment: true }
+  });
+  
+  if (auction.payment?.status !== 'completed') {
+    // Send reminder to complete payment
+    socket.to(`user:${winnerId}`).emit('paymentReminder', {
+      auctionId,
+      title: auction.title,
+      amount: auction.currentPrice,
+      dueDate: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24h from now
+    });
+  }
+}, 1 * 60 * 60 * 1000); // 1 hour after auction ends

@@ -260,6 +260,106 @@ const scheduleAuctionEndingNotification = (io, auctionId, endTime, auctionRooms)
   });
 };
 
+// Handle auction won notification
+const handleAuctionWon = async (io, auctionId, auctionDetails) => {
+  if (!auctionDetails?.highestBidderId) {
+    logger.info('No winner for auction', { auctionId });
+    return;
+  }
+  
+  try {
+    const winnerId = auctionDetails.highestBidderId;
+    
+    // Notify the winner
+    const winnerSocket = Array.from(io.sockets.sockets.values())
+      .find(socket => socket.user?.id === winnerId);
+    
+    if (winnerSocket) {
+      winnerSocket.emit('auctionWon', {
+        auctionId,
+        title: auctionDetails.title,
+        finalPrice: auctionDetails.currentPrice,
+        wonAt: new Date().toISOString(),
+        auction: auctionDetails
+      });
+      
+      logger.info('Auction won notification sent', {
+        auctionId,
+        winnerId,
+        socketId: winnerSocket.id
+      });
+    } else {
+      logger.info('Auction winner not connected', { 
+        auctionId, 
+        winnerId 
+      });
+    }
+    
+    // Notify all watchers
+    await notifyAuctionWatchers(io, auctionId, auctionDetails, winnerId);
+    
+  } catch (error) {
+    logger.error('Error handling auction won', {
+      error: error.message,
+      auctionId,
+      stack: error.stack
+    });
+  }
+};
+
+// Notify all users who were watching this auction
+const notifyAuctionWatchers = async (io, auctionId, auctionDetails, winnerId) => {
+  try {
+    // Get all users who have this auction in their watchlist
+    const watchers = await prisma.watchlist.findMany({
+      where: { 
+        auctionId,
+        userId: { not: winnerId } // Don't notify the winner again
+      },
+      select: { 
+        userId: true,
+        user: {
+          select: {
+            id: true,
+            email: true,
+            username: true
+          }
+        }
+      }
+    });
+
+    // Emit to all connected watchers
+    watchers.forEach(({ userId, user }) => {
+      const watcherSocket = Array.from(io.sockets.sockets.values())
+        .find(socket => socket.user?.id === userId);
+      
+      if (watcherSocket) {
+        watcherSocket.emit('auctionYouWatchedEnded', {
+          auctionId,
+          title: auctionDetails.title,
+          finalPrice: auctionDetails.currentPrice,
+          winnerId,
+          isWinner: false,
+          endedAt: new Date().toISOString()
+        });
+      }
+    });
+
+    logger.info('Notified auction watchers', {
+      auctionId,
+      watcherCount: watchers.length,
+      winnerId
+    });
+    
+  } catch (error) {
+    logger.error('Error notifying auction watchers', {
+      error: error.message,
+      auctionId,
+      stack: error.stack
+    });
+  }
+};
+
 // Helper function for final countdown notifications
 const startAuctionCountdown = (io, auctionId, endTime, auctionRooms) => {
   safeMapOperation('startAuctionCountdown', () => {
@@ -272,10 +372,54 @@ const startAuctionCountdown = (io, auctionId, endTime, auctionRooms) => {
       const timeUntilEnd = new Date(endTime) - now;
       
       if (timeUntilEnd <= 0) {
-        // Auction ended
-        io.to(auctionId).emit('auctionEnded', {
-          auctionId,
-          timestamp: new Date().toISOString()
+        // Get final auction details
+        prisma.auction.findUnique({
+          where: { id: auctionId },
+          select: {
+            id: true,
+            title: true,
+            currentPrice: true,
+            highestBidderId: true,
+            endDate: true,
+            status: true,
+            sellerId: true
+          }
+        }).then(auction => {
+          if (!auction) {
+            logger.error('Auction not found when ending', { auctionId });
+            return;
+          }
+          
+          // Emit to all in the auction room
+          io.to(auctionId).emit('auctionEnded', {
+            auctionId,
+            winnerId: auction.highestBidderId,
+            finalPrice: auction.currentPrice,
+            endedAt: new Date().toISOString()
+          });
+          
+          // Handle winner notification
+          if (auction.highestBidderId) {
+            handleAuctionWon(io, auctionId, auction);
+          }
+          
+          // Update auction status in database
+          prisma.auction.update({
+            where: { id: auctionId },
+            data: { status: 'ended' }
+          }).catch(error => {
+            logger.error('Error updating auction status to ENDED', {
+              error: error.message,
+              auctionId
+            });
+          });
+          
+        }).catch(error => {
+          logger.error('Error fetching auction details on end', {
+            error: error.message,
+            auctionId,
+            stack: error.stack
+          });
         });
         
         // Clean up
@@ -484,6 +628,31 @@ export const initSocketIO = server => {
             message: error.message || 'Failed to join auction',
           });
         }
+      }
+    });
+
+    // Handle auction won acknowledgment
+    socket.on('acknowledgeAuctionWon', async ({ auctionId }) => {
+      try {
+        if (!socket.user?.id) {
+          throw new Error('Authentication required');
+        }
+        
+        logger.info('User acknowledged auction won', {
+          userId: socket.user.id,
+          auctionId
+        });
+        
+        // Here you could update a notification as 'read' in the database
+        // await markNotificationAsRead(socket.user.id, auctionId, 'auctionWon');
+        
+      } catch (error) {
+        logger.error('Error acknowledging auction won', {
+          error: error.message,
+          userId: socket.user?.id,
+          auctionId,
+          stack: error.stack
+        });
       }
     });
 
