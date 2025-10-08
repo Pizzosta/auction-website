@@ -10,6 +10,14 @@ import {
 } from '../repositories/bidRepo.prisma.js';
 import { addToQueue } from '../services/emailQueue.js';
 import { formatCurrency, formatDateTime } from '../utils/format.js';
+import { env, validateEnv } from '../config/env.js';
+
+// Validate required environment variables
+const missingVars = validateEnv();
+if (missingVars.length > 0) {
+  logger.error(`Missing required environment variables: ${missingVars.join(', ')}`);
+  process.exit(1);
+}
 
 const updateOutbidBids = async (req, auctionId, newBidAmount, newBidId, currentBidderId) => {
   try {
@@ -270,18 +278,23 @@ export const placeBidCore = async ({ auctionId, amount, actorId, io, socket }) =
               currentPrice: new Prisma.Decimal(amount),
               version: { increment: 1 },
             };
+
+            // Extend auction end time if it's the first bid AND auction is ending soon (sniping protection)
             if (bidCount === 1) {
               const currentEndDate = new Date(auction.endDate);
               const now = new Date();
-              const tenMinutesFromNow = new Date(now.getTime() + 10 * 60 * 1000);
               const timeUntilEnd = currentEndDate.getTime() - now.getTime();
-              const tenMinutesInMs = 10 * 60 * 1000;
-              if (timeUntilEnd <= tenMinutesInMs) {
-                updateData.endDate = tenMinutesFromNow;
+              const auctionExtensionMs = env.auctionExtensionMinutes;
+
+              // Only extend if the auction is ending within the extension window
+              if (timeUntilEnd <= auctionExtensionMs) {
+                const newEndDate = new Date(now.getTime() + auctionExtensionMs);
+                updateData.endDate = newEndDate;
+
                 logger.info('Extended auction end time due to first bid', {
                   auctionId: auction.id,
                   originalEndDate: auction.endDate,
-                  newEndDate: tenMinutesFromNow,
+                  newEndDate,
                   timeUntilOriginalEnd: Math.round(timeUntilEnd / 1000 / 60) + ' minutes',
                 });
               }

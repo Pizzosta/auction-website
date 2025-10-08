@@ -9,7 +9,7 @@ const initSocket = (server, app) => {
       methods: ["GET", "POST"],
       credentials: true,
     },
-    transports: ['websocket', 'polling'],
+    transports: ["websocket", "polling"],
     pingTimeout: 60000, // 60 seconds
     pingInterval: 25000, // 25 seconds
   });
@@ -24,9 +24,13 @@ const initSocket = (server, app) => {
       try {
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         socket.user = decoded; // Attach user info to socket
-        console.log(`User ${socket.user.id} authenticated for socket ${socket.id}`);
+        console.log(
+          `User ${socket.user.id} authenticated for socket ${socket.id}`
+        );
       } catch (err) {
-        console.warn(`Socket ${socket.id}: Invalid token, treating as Guest. Error: ${err.message}`);
+        console.warn(
+          `Socket ${socket.id}: Invalid token, treating as Guest. Error: ${err.message}`
+        );
         socket.user = null;
       }
     } else {
@@ -73,12 +77,14 @@ const initSocket = (server, app) => {
         room.viewers++;
       }
 
-      console.log(`User ${userId} joined auction ${auctionId} (${room.bidders.size} bidders, ${room.viewers} viewers)`);
+      console.log(
+        `User ${userId} joined auction ${auctionId} (${room.bidders.size} bidders, ${room.viewers} viewers)`
+      );
 
       // Update viewer count for all in the room
       io.to(auctionId).emit("viewerCount", {
         auctionId,
-        count: room.bidders.size + room.viewers
+        count: room.bidders.size + room.viewers,
       });
     });
 
@@ -86,7 +92,7 @@ const initSocket = (server, app) => {
     socket.on("placeBid", async ({ auctionId, bidAmount, userId }) => {
       if (!socket.user || socket.user.id !== userId) {
         return socket.emit("bidError", {
-          message: "Authentication required to place a bid"
+          message: "Authentication required to place a bid",
         });
       }
 
@@ -110,12 +116,16 @@ const initSocket = (server, app) => {
             currentHighestBidder: userId,
           },
           newBid: bidData,
-          previousHighestBid: auctionRooms.get(auctionId)?.currentHighestBid || 0,
+          previousHighestBid:
+            auctionRooms.get(auctionId)?.currentHighestBid || 0,
         });
 
         // Notify the previous highest bidder if they've been outbid
         const room = auctionRooms.get(auctionId);
-        if (room?.currentHighestBidder && room.currentHighestBidder !== userId) {
+        if (
+          room?.currentHighestBidder &&
+          room.currentHighestBidder !== userId
+        ) {
           io.to(`user:${room.currentHighestBidder}`).emit("outbid", {
             auctionId,
             auctionTitle: `Auction ${auctionId}`, // You would fetch this from DB in reality
@@ -129,7 +139,6 @@ const initSocket = (server, app) => {
         // Update room state
         room.currentHighestBid = bidAmount;
         room.currentHighestBidder = userId;
-
       } catch (error) {
         console.error("Error processing bid:", error);
         socket.emit("bidError", { message: "Failed to process bid" });
@@ -137,21 +146,24 @@ const initSocket = (server, app) => {
     });
 
     // Handle auction ending
-    socket.on("auctionEnding", ({ auctionId, timeRemaining, currentHighestBidder }) => {
-      const room = auctionRooms.get(auctionId);
-      if (!room) return;
+    socket.on(
+      "auctionEnding",
+      ({ auctionId, timeRemaining, currentHighestBidder }) => {
+        const room = auctionRooms.get(auctionId);
+        if (!room) return;
 
-      // Notify all bidders
-      room.bidders.forEach(bidderId => {
-        io.to(`user:${bidderId}`).emit("auctionEnding", {
-          auctionId,
-          auctionTitle: `Auction ${auctionId}`,
-          timeRemaining,
-          isLeading: bidderId === currentHighestBidder,
-          currentHighestBid: room.currentHighestBid,
+        // Notify all bidders
+        room.bidders.forEach((bidderId) => {
+          io.to(`user:${bidderId}`).emit("auctionEnding", {
+            auctionId,
+            auctionTitle: `Auction ${auctionId}`,
+            timeRemaining,
+            isLeading: bidderId === currentHighestBidder,
+            currentHighestBid: room.currentHighestBid,
+          });
         });
-      });
-    });
+      }
+    );
 
     // Handle auction won
     socket.on("auctionWon", ({ auctionId, winnerId, winningBid }) => {
@@ -188,7 +200,7 @@ const initSocket = (server, app) => {
         // Update viewer count
         io.to(auctionId).emit("viewerCount", {
           auctionId,
-          count: room.bidders.size + room.viewers
+          count: room.bidders.size + room.viewers,
         });
       }
     });
@@ -201,7 +213,7 @@ const initSocket = (server, app) => {
       if (socket.user?.id) {
         const userRoomSet = userRooms.get(socket.user.id);
         if (userRoomSet) {
-          userRoomSet.forEach(auctionId => {
+          userRoomSet.forEach((auctionId) => {
             const room = auctionRooms.get(auctionId);
             if (room) {
               room.bidders.delete(socket.user.id);
@@ -213,7 +225,7 @@ const initSocket = (server, app) => {
                 // Update viewer count
                 io.to(auctionId).emit("viewerCount", {
                   auctionId,
-                  count: room.bidders.size + room.viewers
+                  count: room.bidders.size + room.viewers,
                 });
               }
             }
@@ -234,16 +246,13 @@ const initSocket = (server, app) => {
 
 module.exports = initSocket;
 
-
-
-
 // Add these new event handlers inside the io.on('connection') block, after the existing event handlers
 
 // Handle auction ending (admin-triggered)
-socket.on('auctionEnding', async ({ auctionId, timeRemaining }) => {
+socket.on("auctionEnding", async ({ auctionId, timeRemaining }) => {
   try {
     if (!auctionId) {
-      throw new Error('Auction ID is required');
+      throw new Error("Auction ID is required");
     }
 
     // Verify the auction exists and get its details
@@ -254,8 +263,8 @@ socket.on('auctionEnding', async ({ auctionId, timeRemaining }) => {
           select: {
             id: true,
             email: true,
-            username: true
-          }
+            username: true,
+          },
         },
         currentBid: {
           select: {
@@ -264,69 +273,71 @@ socket.on('auctionEnding', async ({ auctionId, timeRemaining }) => {
               select: {
                 id: true,
                 email: true,
-                username: true
-              }
-            }
-          }
-        }
-      }
+                username: true,
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!auction) {
-      throw new Error('Auction not found');
+      throw new Error("Auction not found");
     }
 
     // Only allow admin or the seller to trigger auction ending
-    if (socket.user?.role !== 'admin' && socket.user?.id !== auction.sellerId) {
-      throw new Error('Unauthorized to end this auction');
+    if (socket.user?.role !== "admin" && socket.user?.id !== auction.sellerId) {
+      throw new Error("Unauthorized to end this auction");
     }
 
     logger.info(`Auction ${auctionId} is ending soon`, {
       timeRemaining,
-      triggeredBy: socket.user?.id
+      triggeredBy: socket.user?.id,
     });
 
     // Notify all participants in the auction room
-    io.to(auctionId).emit('auctionEnding', {
+    io.to(auctionId).emit("auctionEnding", {
       auctionId,
       title: auction.title,
       timeRemaining,
       endsAt: auction.endTime,
       currentBid: auction.currentBid?.amount || auction.startingPrice,
-      currentBidder: auction.currentBid?.bidder || null
+      currentBidder: auction.currentBid?.bidder || null,
     });
 
     // Notify the current highest bidder in their private room
     if (auction.currentBid?.bidder?.id) {
-      io.to(`user:${auction.currentBid.bidder.id}`).emit('auctionEndingForYou', {
-        auctionId,
-        title: auction.title,
-        timeRemaining,
-        currentBid: auction.currentBid.amount,
-        isLeading: true
-      });
+      io.to(`user:${auction.currentBid.bidder.id}`).emit(
+        "auctionEndingForYou",
+        {
+          auctionId,
+          title: auction.title,
+          timeRemaining,
+          currentBid: auction.currentBid.amount,
+          isLeading: true,
+        }
+      );
     }
-
   } catch (error) {
-    logger.error('Error handling auction ending', {
+    logger.error("Error handling auction ending", {
       error: error.message,
       auctionId,
-      userId: socket.user?.id
+      userId: socket.user?.id,
     });
-    
+
     // Only send error back to the sender
-    socket.emit('auctionError', {
+    socket.emit("auctionError", {
       auctionId,
-      message: error.message || 'Failed to process auction ending'
+      message: error.message || "Failed to process auction ending",
     });
   }
 });
 
 // Handle auction won (triggered when auction actually ends)
-socket.on('auctionWon', async ({ auctionId }) => {
+socket.on("auctionWon", async ({ auctionId }) => {
   try {
     if (!auctionId) {
-      throw new Error('Auction ID is required');
+      throw new Error("Auction ID is required");
     }
 
     // Get the final auction state
@@ -337,8 +348,8 @@ socket.on('auctionWon', async ({ auctionId }) => {
           select: {
             id: true,
             email: true,
-            username: true
-          }
+            username: true,
+          },
         },
         currentBid: {
           select: {
@@ -348,66 +359,72 @@ socket.on('auctionWon', async ({ auctionId }) => {
               select: {
                 id: true,
                 email: true,
-                username: true
-              }
-            }
-          }
-        }
-      }
+                username: true,
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!auction) {
-      throw new Error('Auction not found');
+      throw new Error("Auction not found");
     }
 
     // Only allow admin or the seller to trigger this
-    if (socket.user?.role !== 'admin' && socket.user?.id !== auction.sellerId) {
-      throw new Error('Unauthorized to finalize this auction');
+    if (socket.user?.role !== "admin" && socket.user?.id !== auction.sellerId) {
+      throw new Error("Unauthorized to finalize this auction");
     }
 
     // Update auction status in the database
     await prisma.auction.update({
       where: { id: auctionId },
-      data: { status: 'COMPLETED' }
+      data: { status: "COMPLETED" },
     });
 
-    logger.info(`Auction ${auctionId} won by ${auction.currentBid?.bidder?.id || 'no one'}`);
+    logger.info(
+      `Auction ${auctionId} won by ${
+        auction.currentBid?.bidder?.id || "no one"
+      }`
+    );
 
     // Notify all participants in the auction room
-    const winnerData = auction.currentBid ? {
-      winnerId: auction.currentBid.bidder.id,
-      winnerUsername: auction.currentBid.bidder.username,
-      winningBid: auction.currentBid.amount
-    } : null;
+    const winnerData = auction.currentBid
+      ? {
+          winnerId: auction.currentBid.bidder.id,
+          winnerUsername: auction.currentBid.bidder.username,
+          winningBid: auction.currentBid.amount,
+        }
+      : null;
 
-    io.to(auctionId).emit('auctionWon', {
+    io.to(auctionId).emit("auctionWon", {
       auctionId,
       title: auction.title,
       ...winnerData,
-      endedAt: new Date().toISOString()
+      endedAt: new Date().toISOString(),
     });
 
     // Notify the winner in their private room
     if (auction.currentBid?.bidder?.id) {
-      io.to(`user:${auction.currentBid.bidder.id}`).emit('youWonAuction', {
+      io.to(`user:${auction.currentBid.bidder.id}`).emit("youWonAuction", {
         auctionId,
         title: auction.title,
         winningBid: auction.currentBid.amount,
         seller: {
           id: auction.seller.id,
-          username: auction.seller.username
-        }
+          username: auction.seller.username,
+        },
       });
     }
 
     // Notify the seller in their private room
     if (auction.sellerId) {
-      io.to(`user:${auction.sellerId}`).emit('yourAuctionEnded', {
+      io.to(`user:${auction.sellerId}`).emit("yourAuctionEnded", {
         auctionId,
         title: auction.title,
         sold: !!auction.currentBid,
         winningBid: auction.currentBid?.amount,
-        winner: auction.currentBid?.bidder
+        winner: auction.currentBid?.bidder,
       });
     }
 
@@ -417,113 +434,17 @@ socket.on('auctionWon', async ({ auctionId }) => {
         auctionRooms.delete(auctionId);
       }
     }, 300000); // 5 minutes
-
   } catch (error) {
-    logger.error('Error handling auction won', {
+    logger.error("Error handling auction won", {
       error: error.message,
       auctionId,
-      userId: socket.user?.id
+      userId: socket.user?.id,
     });
-    
+
     // Only send error back to the sender
-    socket.emit('auctionError', {
+    socket.emit("auctionError", {
       auctionId,
-      message: error.message || 'Failed to process auction win'
+      message: error.message || "Failed to process auction win",
     });
   }
 });
-
-
-
-// In socketMiddleware.js, update the authenticateSocket middleware
-const authenticateSocket = async (socket, next) => {
-  try {
-    // Get token from handshake or query params
-    const token =
-      socket.handshake.auth?.token ||
-      socket.handshake.query?.token ||
-      (socket.handshake.headers.authorization || '').split(' ')[1];
-
-    logger.info('Socket handshake token:', { 
-      token: token ? 'Token received' : 'No token', 
-      socketId: socket.id 
-    });
-
-    if (!token) {
-      logger.info('No authentication token provided - treating socket as Guest', {
-        socketId: socket.id,
-      });
-      socket.user = null;
-      return next();
-    }
-
-    // Verify JWT
-    let decoded;
-    try {
-      decoded = jwt.verify(token, env.jwtSecret);
-      logger.info('JWT decoded:', { 
-        userId: decoded.userId, // Log the userId from the token
-        socketId: socket.id 
-      });
-    } catch (err) {
-      logger.warn('Invalid token - treating socket as Guest', {
-        socketId: socket.id,
-        error: err.message,
-      });
-      socket.user = null;
-      return next();
-    }
-
-    // Ensure userId is available in the token
-    if (!decoded.userId) {
-      logger.warn('No userId found in JWT token', {
-        socketId: socket.id,
-        decoded,
-      });
-      socket.user = null;
-      return next();
-    }
-
-    // Get user from database using the correct field (userId)
-    const user = await getUserById(decoded.userId);
-    logger.info('User lookup result:', { 
-      userId: decoded.userId, 
-      userFound: !!user, 
-      socketId: socket.id 
-    });
-
-    if (!user || user.isDeleted) {
-      logger.warn('User not found or deactivated - treating socket as Guest', {
-        socketId: socket.id,
-        userId: decoded.userId,
-      });
-      socket.user = null;
-      return next();
-    }
-
-    // Attach user to socket
-    socket.user = {
-      id: user.id,
-      email: user.email,
-      username: user.username,
-      role: user.role,
-      isVerified: user.isVerified,
-    };
-
-    logger.info('User authenticated successfully', {
-      socketId: socket.id,
-      userId: user.id,
-      email: user.email,
-    });
-
-    next();
-  } catch (error) {
-    logger.error('Socket authentication error', {
-      error: error.message,
-      stack: error.stack,
-      socketId: socket.id,
-    });
-    socket.user = null;
-    next();
-  }
-};

@@ -58,3 +58,9 @@ curl -v http://localhost:5001/api/auctions 2>&1 | grep X-RateLimit
 pass all the envs through parseDuration
 
 implement message parsing for any specific socket events in socketmiddleware
+
+Map API messages to user‑friendly UI messages
+
+check if soft delete auction. Add restore/reactivate auction
+
+make req.user.id is not return in the codes except logger

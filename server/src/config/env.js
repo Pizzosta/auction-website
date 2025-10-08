@@ -37,6 +37,7 @@ const DEFAULT_REQUIRED_VARS = [
   'DEFAULT_RATE_LIMIT_WINDOW_MS',
   'DEFAULT_RATE_LIMIT_MAX',
   'VERIFICATION_TOKEN_EXPIRE',
+  'AUCTION_EXTENSION_MINUTES',
 ];
 
 export function validateEnv(requiredVars = DEFAULT_REQUIRED_VARS) {
@@ -65,6 +66,7 @@ export const env = {
   verificationTokenExpire: process.env.VERIFICATION_TOKEN_EXPIRE,
   webhookSecret: process.env.WEBHOOK_SECRET,
   cookieSecret: process.env.COOKIE_SECRET,
+  auctionExtensionMinutes: process.env.AUCTION_EXTENSION_MINUTES,
 
   redis: {
     host: process.env.REDIS_HOST,
