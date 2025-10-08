@@ -144,7 +144,7 @@ const safeMapOperation = (operationName, operation) => {
 const cleanupStaleRooms = () => {
   const now = Date.now();
   const STALE_TIMEOUT = 24 * 60 * 60 * 1000; // 24 hours
-  
+
   logger.info('Running stale room cleanup', {
     timestamp: new Date().toISOString(),
     userRoomsCount: userRooms.size,
@@ -159,7 +159,7 @@ const cleanupStaleRooms = () => {
         logger.debug('Cleaned up empty user room', { userId });
       }
     }
-    
+
     // Clean up empty auction rooms
     for (const [auctionId, room] of auctionRooms.entries()) {
       if (room.bidders.size === 0 && room.viewers === 0) {
@@ -214,7 +214,7 @@ const scheduleAuctionEndingNotification = (io, auctionId, endTime, auctionRooms)
     // Only schedule if more than 15 minutes remaining
     if (timeUntilEnd > fifteenMinutes) {
       const timeUntilNotification = timeUntilEnd - fifteenMinutes;
-      
+
       const timer = setTimeout(async () => {
         try {
           // Get latest auction data
@@ -224,7 +224,11 @@ const scheduleAuctionEndingNotification = (io, auctionId, endTime, auctionRooms)
               id: true,
               title: true,
               currentPrice: true,
-              highestBidderId: true,
+              highestBid: {
+                select: {
+                  bidderId: true
+                }
+              },
               endDate: true
             }
           });
@@ -261,43 +265,43 @@ const scheduleAuctionEndingNotification = (io, auctionId, endTime, auctionRooms)
 };
 
 // Handle auction won notification
-const handleAuctionWon = async (io, auctionId, auctionDetails) => {
-  if (!auctionDetails?.highestBidderId) {
+const handleAuctionWon = async (io, auctionId, auction) => {
+  if (!auction?.highestBid?.bidderId) {
     logger.info('No winner for auction', { auctionId });
     return;
   }
-  
+
   try {
-    const winnerId = auctionDetails.highestBidderId;
-    
+    const winnerId = auction.highestBid.bidderId;
+
     // Notify the winner
     const winnerSocket = Array.from(io.sockets.sockets.values())
       .find(socket => socket.user?.id === winnerId);
-    
+
     if (winnerSocket) {
       winnerSocket.emit('auctionWon', {
         auctionId,
-        title: auctionDetails.title,
-        finalPrice: auctionDetails.currentPrice,
+        title: auction.title,
+        finalPrice: auction.currentPrice,
         wonAt: new Date().toISOString(),
-        auction: auctionDetails
+        auction
       });
-      
+
       logger.info('Auction won notification sent', {
         auctionId,
         winnerId,
         socketId: winnerSocket.id
       });
     } else {
-      logger.info('Auction winner not connected', { 
-        auctionId, 
-        winnerId 
+      logger.info('Auction winner not connected', {
+        auctionId,
+        winnerId
       });
     }
-    
+
     // Notify all watchers
     await notifyAuctionWatchers(io, auctionId, auctionDetails, winnerId);
-    
+
   } catch (error) {
     logger.error('Error handling auction won', {
       error: error.message,
@@ -312,11 +316,11 @@ const notifyAuctionWatchers = async (io, auctionId, auctionDetails, winnerId) =>
   try {
     // Get all users who have this auction in their watchlist
     const watchers = await prisma.watchlist.findMany({
-      where: { 
+      where: {
         auctionId,
         userId: { not: winnerId } // Don't notify the winner again
       },
-      select: { 
+      select: {
         userId: true,
         user: {
           select: {
@@ -332,12 +336,12 @@ const notifyAuctionWatchers = async (io, auctionId, auctionDetails, winnerId) =>
     watchers.forEach(({ userId, user }) => {
       const watcherSocket = Array.from(io.sockets.sockets.values())
         .find(socket => socket.user?.id === userId);
-      
+
       if (watcherSocket) {
         watcherSocket.emit('auctionYouWatchedEnded', {
           auctionId,
-          title: auctionDetails.title,
-          finalPrice: auctionDetails.currentPrice,
+          title: auction.title,
+          finalPrice: auction.currentPrice,
           winnerId,
           isWinner: false,
           endedAt: new Date().toISOString()
@@ -350,7 +354,7 @@ const notifyAuctionWatchers = async (io, auctionId, auctionDetails, winnerId) =>
       watcherCount: watchers.length,
       winnerId
     });
-    
+
   } catch (error) {
     logger.error('Error notifying auction watchers', {
       error: error.message,
@@ -370,7 +374,7 @@ const startAuctionCountdown = (io, auctionId, endTime, auctionRooms) => {
     const updateCountdown = () => {
       const now = new Date();
       const timeUntilEnd = new Date(endTime) - now;
-      
+
       if (timeUntilEnd <= 0) {
         // Get final auction details
         prisma.auction.findUnique({
@@ -379,7 +383,11 @@ const startAuctionCountdown = (io, auctionId, endTime, auctionRooms) => {
             id: true,
             title: true,
             currentPrice: true,
-            highestBidderId: true,
+            highestBid: {
+              select: {
+                bidderId: true
+              }
+            },
             endDate: true,
             status: true,
             sellerId: true
@@ -389,20 +397,20 @@ const startAuctionCountdown = (io, auctionId, endTime, auctionRooms) => {
             logger.error('Auction not found when ending', { auctionId });
             return;
           }
-          
+
           // Emit to all in the auction room
           io.to(auctionId).emit('auctionEnded', {
             auctionId,
-            winnerId: auction.highestBidderId,
+            winnerId: auction.highestBid?.bidderId,
             finalPrice: auction.currentPrice,
             endedAt: new Date().toISOString()
           });
-          
+
           // Handle winner notification
-          if (auction.highestBidderId) {
+          if (auction.highestBid?.bidderId) {
             handleAuctionWon(io, auctionId, auction);
           }
-          
+
           // Update auction status in database
           prisma.auction.update({
             where: { id: auctionId },
@@ -413,7 +421,7 @@ const startAuctionCountdown = (io, auctionId, endTime, auctionRooms) => {
               auctionId
             });
           });
-          
+
         }).catch(error => {
           logger.error('Error fetching auction details on end', {
             error: error.message,
@@ -421,14 +429,14 @@ const startAuctionCountdown = (io, auctionId, endTime, auctionRooms) => {
             stack: error.stack
           });
         });
-        
+
         // Clean up
         const timerData = auctionTimers.get(auctionId);
         if (timerData) {
           if (timerData.interval) clearInterval(timerData.interval);
           auctionTimers.delete(auctionId);
         }
-        
+
         // Clean up room after a delay
         setTimeout(() => {
           safeMapOperation('auctionEndCleanup', () => {
@@ -437,14 +445,14 @@ const startAuctionCountdown = (io, auctionId, endTime, auctionRooms) => {
             }
           });
         }, 60000); // 1 minute after end
-        
+
         return;
       }
 
       // Emit countdown updates at specific intervals
       const minutes = Math.floor(timeUntilEnd / (60 * 1000));
       const seconds = Math.floor((timeUntilEnd % (60 * 1000)) / 1000);
-      
+
       // Only emit at specific intervals to reduce traffic
       if (minutes > 0 && seconds === 0) {
         if (minutes <= 5 && minutes % 1 === 0) {
@@ -470,7 +478,7 @@ const startAuctionCountdown = (io, auctionId, endTime, auctionRooms) => {
     // Update immediately and then every second
     updateCountdown();
     const interval = setInterval(updateCountdown, 1000);
-    
+
     // Store interval for cleanup
     const timerData = auctionTimers.get(auctionId) || {};
     auctionTimers.set(auctionId, { ...timerData, interval });
@@ -512,13 +520,13 @@ export const initSocketIO = server => {
   // Connection handler
   io.on('connection', socket => {
     const userId = socket.user?.id || `guest-${socket.id}`;
-    
+
     // Update statistics
     socketStats.totalConnections++;
     socketStats.peakConnections = Math.max(socketStats.peakConnections, socketStats.totalConnections);
-    
-    logger.info('New client connected', { 
-      socketId: socket.id, 
+
+    logger.info('New client connected', {
+      socketId: socket.id,
       userId,
       totalConnections: socketStats.totalConnections,
       peakConnections: socketStats.peakConnections
@@ -556,14 +564,18 @@ export const initSocketIO = server => {
             endDate: true,
             title: true,
             currentPrice: true,
-            highestBidderId: true
+            highestBid: {
+              select: {
+                bidderId: true
+              }
+            },
           }
         });
 
         if (!auction) {
           throw new Error('Auction not found');
         }
-        
+
         // Schedule auction ending notifications if active
         if (auction.status === 'active') {
           scheduleAuctionEndingNotification(io, auctionId, auction.endDate, auctionRooms);
@@ -637,15 +649,15 @@ export const initSocketIO = server => {
         if (!socket.user?.id) {
           throw new Error('Authentication required');
         }
-        
+
         logger.info('User acknowledged auction won', {
           userId: socket.user.id,
           auctionId
         });
-        
+
         // Here you could update a notification as 'read' in the database
         // await markNotificationAsRead(socket.user.id, auctionId, 'auctionWon');
-        
+
       } catch (error) {
         logger.error('Error acknowledging auction won', {
           error: error.message,
@@ -665,10 +677,10 @@ export const initSocketIO = server => {
         const { auctionId, amount } = data;
         const actorId = socket.user.id;
         const result = await placeBidCore({ auctionId, amount, actorId, io, socket });
-        
+
         // Update statistics
         socketStats.bidsPlaced++;
-        
+
         if (typeof callback === 'function') {
           callback({ status: 'success', bid: result });
         }
@@ -729,7 +741,7 @@ export const initSocketIO = server => {
     // Handle disconnection cleanup
     socket.on('disconnect', reason => {
       socketStats.totalDisconnections++;
-      
+
       logger.info('Client disconnected', {
         socketId: socket.id,
         userId,
@@ -802,23 +814,23 @@ export const initSocketIO = server => {
     logger.info('Shutting down Socket.IO server...', {
       stats: getRoomStats()
     });
-    
+
     cleanupTimers();
-    
+
     // Clear the cleanup interval
     if (cleanupInterval) {
       clearInterval(cleanupInterval);
     }
-    
+
     // Notify all clients
-    io.emit('serverShutdown', { 
-      message: 'Server is shutting down', 
-      timestamp: new Date().toISOString() 
+    io.emit('serverShutdown', {
+      message: 'Server is shutting down',
+      timestamp: new Date().toISOString()
     });
-    
+
     // Close all connections
     io.sockets.sockets.forEach(socket => socket.disconnect(true));
-    
+
     // Close the server
     io.close(() => {
       logger.info('Socket.IO server closed', {
