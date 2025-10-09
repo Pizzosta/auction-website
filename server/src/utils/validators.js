@@ -93,9 +93,9 @@ export const bidStatsQuerySchema = Joi.object({
   timeFrame: Joi.string().valid('day', 'week', 'month', 'year', 'all').default('month').optional(),
 });
 
-// ID schema validation
-export const idSchema = Joi.object({
-  id: Joi.string().uuid({ version: 'uuidv4' }).required().messages({
+// ID schema validation (for any ID parameter)
+export const idSchema = (key = 'id') => Joi.object({
+  [key]: Joi.string().uuid({ version: 'uuidv4' }).required().messages({
     'string.uuid': 'Invalid UUID format',
     'string.length': 'ID must be 36 characters long',
     'any.required': 'ID is required',
@@ -573,6 +573,38 @@ export const featuredAuctionSchema = {
     auctionId: Joi.string().uuid({ version: 'uuidv4' }).required().messages({
       'string.uuid': 'Invalid Auction ID format',
       'any.required': 'Auction ID is required',
+    }),
+  }),
+};
+
+// Feedback schema validation
+export const feedbackSchema = {
+  create: Joi.object({
+    auctionId: Joi.string().uuid({ version: 'uuidv4' }).required().messages({
+      'string.uuid': 'Invalid Auction ID format',
+      'any.required': 'Auction ID is required',
+    }),
+    rating: Joi.number().min(1).max(5).required().messages({
+      'number.min': 'Rating must be at least 1',
+      'number.max': 'Rating cannot exceed 5',
+      'any.required': 'Rating is required',
+    }),
+    comment: Joi.string().trim().min(3).max(500).required().messages({
+      'string.empty': 'Comment is required',
+      'string.min': 'Comment must be at least 3 characters long',
+      'string.max': 'Comment cannot exceed 500 characters',
+    }),
+    type: Joi.string().valid('seller', 'buyer').required().messages({
+      'any.only': 'Type must be either seller or buyer',
+    }),
+    isAnonymous: Joi.boolean().default(false),
+  }),
+
+  respond: Joi.object({
+    response: Joi.string().trim().min(3).max(500).required().messages({
+      'string.empty': 'Response is required',
+      'string.min': 'Response must be at least 3 characters long',
+      'string.max': 'Response cannot exceed 500 characters',
     }),
   }),
 };

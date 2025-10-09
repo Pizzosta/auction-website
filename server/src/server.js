@@ -23,8 +23,6 @@ if (missingVars.length > 0) {
   process.exit(1);
 }
 
-// Prisma is used for DB access; no Mongoose connection needed
-
 // Then import and initialize Cloudinary
 import initializeCloudinary from './config/cloudinary.js';
 import { getRedisClient } from './config/redis.js';
@@ -60,6 +58,7 @@ import webhookRoutes from './routes/webhookRoutes.js';
 import watchlistRoutes from './routes/watchlistRoutes.js';
 import featuredAuctionRoutes from './routes/featuredAuctionRoutes.js';
 import { initSocketIO } from './middleware/socketMiddleware.js';
+import feedbackRoutes from './routes/feedbackRoutes.js';
 
 const app = express();
 
@@ -118,6 +117,7 @@ app.use('/api/stats', statsRoutes);
 app.use('/api/v1/webhook', webhookRoutes);
 app.use('/api/watchlist', watchlistRoutes);
 app.use('/api/featured-auctions', featuredAuctionRoutes);
+app.use('/api/feedback', feedbackRoutes);
 
 // Create HTTP server
 const server = http.createServer(app);
