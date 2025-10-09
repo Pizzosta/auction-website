@@ -96,36 +96,18 @@ export const bidStatsQuerySchema = Joi.object({
 // ID schema validation (for any ID parameter)
 export const idSchema = (key = 'id') => Joi.object({
   [key]: Joi.string().uuid({ version: 'uuidv4' }).required().messages({
-    'string.uuid': 'Invalid UUID format',
-    'string.length': 'ID must be 36 characters long',
-    'any.required': 'ID is required',
+    'string.uuid': `${key} must be a valid UUID`,
+    'string.length': `${key} must be 36 characters long`,
+    'any.required': `${key} is required`,
   }),
 });
 
 // Token schema validation
 export const tokenSchema = Joi.object({
   token: Joi.string().length(64).hex().required().messages({
-    'string.length': 'ID must be 64 characters long',
+    'string.length': 'Token must be 64 characters long',
     'string.hex': 'Invalid token format',
     'string.empty': 'Reset token is required',
-  }),
-});
-
-// Auction ID schema validation
-export const auctionIdSchema = Joi.object({
-  auctionId: Joi.string().uuid({ version: 'uuidv4' }).required().messages({
-    'string.uuid': 'Invalid UUID format',
-    'string.length': 'ID must be 36 characters long',
-    'any.required': 'Auction ID is required',
-  }),
-});
-
-// Bid ID schema validation
-export const bidIdSchema = Joi.object({
-  bidId: Joi.string().uuid({ version: 'uuidv4' }).required().messages({
-    'string.uuid': 'Invalid UUID format',
-    'string.length': 'ID must be 36 characters long',
-    'any.required': 'Bid ID is required',
   }),
 });
 
@@ -329,8 +311,8 @@ export const bidSchema = {
     amount: Joi.number().min(0.01).required(),
     auctionId: Joi.string().uuid({ version: 'uuidv4' }).required().messages({
       'string.uuid': 'Invalid UUID format',
-      'string.length': 'ID must be 36 characters long',
-      'any.required': 'ID is required',
+      'string.length': 'Auction ID must be 36 characters long',
+      'any.required': 'Auction ID is required',
     }),
   }),
   delete: Joi.object({

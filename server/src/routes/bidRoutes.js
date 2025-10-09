@@ -8,7 +8,7 @@ import {
   restoreBid,
 } from '../controllers/bidController.js';
 import { protect, admin } from '../middleware/authMiddleware.js';
-import { bidSchema, bidIdSchema, auctionIdSchema, bidQuerySchema } from '../utils/validators.js';
+import { bidSchema, idSchema, bidQuerySchema } from '../utils/validators.js';
 import { validate } from '../middleware/validationMiddleware.js';
 import { bidLimiter } from '../middleware/security.js';
 
@@ -34,7 +34,7 @@ router.post('/', protect, bidLimiter, validate(bidSchema.create, 'body'), placeB
  */
 router.get(
   '/auction/:auctionId',
-  validate(auctionIdSchema, 'params', { key: 'auctionId' }),
+  validate(idSchema('auctionId'), 'params'),
   validate(bidQuerySchema, 'query'),
   getBidsByAuction
 );
@@ -62,7 +62,7 @@ router.get('/me', protect, validate(bidQuerySchema, 'query'), getMyBids);
 router.delete(
   '/:bidId',
   protect,
-  validate(bidIdSchema, 'params', { key: 'bidId' }),
+  validate(idSchema('bidId'), 'params'),
   validate(bidSchema.delete, 'query'),
   deleteBid
 );
@@ -77,7 +77,7 @@ router.delete(
  * @returns {Error} 404 - Bid not found or not deleted
  * @returns {Error} default - Unexpected error
  */
-router.post('/:bidId/restore', protect, admin, validate(bidIdSchema, 'params', { key: 'bidId' }), restoreBid);
+router.post('/:bidId/restore', protect, admin, validate(idSchema('bidId'), 'params'), restoreBid);
 
 /**
  * @route GET /api/bids

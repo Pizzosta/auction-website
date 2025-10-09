@@ -481,12 +481,12 @@
         }
       }
     },
-    "/api/auctions/{id}": {
+    "/api/auctions/{auctionId}": {
       "get": {
         "description": "",
         "parameters": [
           {
-            "name": "id",
+            "name": "auctionId",
             "in": "path",
             "required": true,
             "type": "string"
@@ -511,7 +511,7 @@
         "description": "",
         "parameters": [
           {
-            "name": "id",
+            "name": "auctionId",
             "in": "path",
             "required": true,
             "type": "string"
@@ -580,7 +580,7 @@
         "description": "",
         "parameters": [
           {
-            "name": "id",
+            "name": "auctionId",
             "in": "path",
             "required": true,
             "type": "string"

@@ -201,6 +201,7 @@ export const getPublicAuctions = async (req, res, next) => {
 // @desc    Get single auction
 // @route   GET /api/auctions/:id
 // @access  Public
+/**
 export const getAuctionById = async (req, res) => {
   try {
     const auction = await prisma.auction.findUnique({
@@ -230,6 +231,45 @@ export const getAuctionById = async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 };
+*/
+export const getAuctionById = async (req, res) => {
+  try {
+    const { auctionId } = req.params;
+
+    const auction = await prisma.auction.findUnique({
+      where: { id: auctionId },
+      include: {
+        seller: { select: { username: true } },
+        winner: { select: { username: true } },
+      },
+    });
+
+    if (auction) {
+      res.json({
+        status: 'success',
+        data: {
+          ...auction,
+        },
+      });
+    } else {
+      res.status(404).json({
+        status: 'error',
+        message: 'Auction not found',
+      });
+    }
+  } catch (error) {
+    logger.error('Get auction by id error:', {
+      error: error.message,
+      stack: error.stack,
+      auctionId,
+    });
+    res.status(500).json({
+      status: 'error',
+      message: 'Server error',
+    });
+  }
+};
+
 
 // @desc    Update auction
 // @route   PUT /api/auctions/:id
@@ -237,7 +277,7 @@ export const getAuctionById = async (req, res) => {
 export const updateAuction = async (req, res) => {
   try {
     const { title, description, startingPrice, startDate, endDate, images, category } = req.body;
-    const auctionId = req.params.id;
+    const { auctionId } = req.params;
 
     // Find the auction
     const auction = await prisma.auction.findUnique({ where: { id: auctionId } });
@@ -345,8 +385,8 @@ export const updateAuction = async (req, res) => {
       message:
         error.name === 'ValidationError'
           ? Object.values(error.errors)
-              .map(val => val.message)
-              .join(', ')
+            .map(val => val.message)
+            .join(', ')
           : 'Server error while updating auction',
     });
   }
@@ -356,7 +396,7 @@ export const updateAuction = async (req, res) => {
 // @route   DELETE /api/auctions/:id
 // @access  Private/Owner or Admin
 export const deleteAuction = async (req, res) => {
-  const auctionId = req.params.id;
+  const { auctionId } = req.params;
   const actorId = req.user?.id?.toString();
   // Check both query params and body for the permanent flag
   //const permanent = req.query.permanent === 'false'; // || req.body.permanent === 'false'

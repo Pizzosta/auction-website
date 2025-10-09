@@ -55,20 +55,20 @@ router.post(
 );
 
 /**
- * @route GET /api/auctions/{id}
+ * @route GET /api/auctions/{auctionId}
  * @group Auctions - auction management
  * @description Get details of a specific auction by ID.
- * @param {string} id.path.required
+ * @param {string} auctionId.path.required
  * @returns {object} 200 - Auction details
  * @returns {Error}  default - Unexpected error
  */
-router.get('/:id', validate(idSchema, 'params', { key: 'id' }), getAuctionById);
+router.get('/:auctionId', validate(idSchema('auctionId'), 'params'), getAuctionById);
 
 /**
- * @route PUT /api/auctions/{id}
+ * @route PUT /api/auctions/{auctionId}
  * @group Auctions - auction management
  * @description Update an auction by ID. Requires authentication.
- * @param {string} id.path.required
+ * @param {string} auctionId.path.required
  * @param {UpdateAuction.model} body.body.required
  * @param {string} title.body.optional - Title of the auction
  * @param {string} description.body.optional - Description of the auction
@@ -80,21 +80,21 @@ router.get('/:id', validate(idSchema, 'params', { key: 'id' }), getAuctionById);
  * @returns {Error}  default - Unexpected error
  */
 router.patch(
-  '/:id',
+  '/:auctionId',
   protect,
-  validate(idSchema, 'params', { key: 'id' }),
+  validate(idSchema('auctionId'), 'params'),
   validate(auctionSchema.update, 'body'),
   updateAuction
 );
 
 /**
- * @route DELETE /api/auctions/{id}
+ * @route DELETE /api/auctions/{auctionId}
  * @group Auctions - auction management
  * @description Delete an auction by ID. Requires authentication.
- * @param {string} id.path.required
+ * @param {string} auctionId.path.required
  * @returns {object} 200 - Auction deleted
  * @returns {Error}  default - Unexpected error
  */
-router.delete('/:id', protect, validate(idSchema, 'params', { key: 'id' }), deleteAuction);
+router.delete('/:auctionId', protect, validate(idSchema('auctionId'), 'params'), deleteAuction);
 
 export default router;

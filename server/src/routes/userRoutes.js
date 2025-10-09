@@ -46,7 +46,7 @@ router.get('/me', protect, getMe);
 router.patch(
   '/:id',
   protect,
-  validate(idSchema, 'params', { key: 'id' }),
+  validate(idSchema('id'), 'params'),
   validate(userSchema.updateUser, 'body'),
   updateUser
 );
@@ -64,7 +64,7 @@ router.patch(
 router.delete(
   '/:id',
   protect,
-  validate(idSchema, 'params', { key: 'id' }),
+  validate(idSchema('id'), 'params'),
   validate(userDeleteQuerySchema, 'query'),
   validate(userSchema.deleteUser, 'body'),
   deleteUser
@@ -82,7 +82,7 @@ router.post(
   '/:id/restore',
   protect,
   admin,
-  validate(idSchema, 'params', { key: 'id' }),
+  validate(idSchema('id'), 'params'),
   restoreUser
 );
 
@@ -123,6 +123,6 @@ router.delete(
  * @returns {object} 200 - User details
  * @returns {Error}  default - Unexpected error
  */
-router.get('/:id', protect, admin, validate(idSchema, 'params', { key: 'id' }), getUserById);
+router.get('/:id', protect, admin, validate(idSchema('id'), 'params'), getUserById);
 
 export default router;
