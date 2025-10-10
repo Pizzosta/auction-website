@@ -1,7 +1,7 @@
 import express from 'express';
 import { protect } from '../middleware/authMiddleware.js';
 import { validate } from '../middleware/validationMiddleware.js';
-import { idSchema, feedbackSchema } from '../utils/validators.js';
+import { idSchema, feedbackSchema, feedbackQuerySchema } from '../utils/validators.js';
 import {
   createFeedback,
   getUserFeedback,
@@ -15,7 +15,7 @@ const router = express.Router();
 router.post('/', protect, validate(feedbackSchema.create, 'body'), createFeedback);
 
 // Get user feedback
-router.get('/user/:userId', protect, validate(idSchema('userId'), 'params'), getUserFeedback);
+router.get('/user/:userId', protect, validate(idSchema('userId'), 'params'), validate(feedbackQuerySchema, 'query'), getUserFeedback);
 
 // Get feedback summary
 router.get('/summary/:userId', protect, validate(idSchema('userId'), 'params'), getFeedbackSummary);

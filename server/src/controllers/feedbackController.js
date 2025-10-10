@@ -1,22 +1,16 @@
-import prisma from '../config/prisma.js';
 import logger from '../utils/logger.js';
+import {
+    listFeedbackPrisma,
+    getFeedbackByIdPrisma,
+    respondToFeedbackPrisma,
+    getFeedbackSummaryPrisma,
+    createFeedbackPrisma,
+    getAuctionForFeedback,
+    getExistingFeedback,
+    updateUserRating
+} from '../repositories/feedbackRepo.prisma.js';
+import { response } from 'express';
 
-// Helper to update user's average rating
-const updateUserRating = async (userId) => {
-    const result = await prisma.feedback.aggregate({
-        where: { toUserId: userId },
-        _avg: { rating: true },
-        _count: true
-    });
-
-    await prisma.user.update({
-        where: { id: userId },
-        data: {
-            rating: result._avg.rating,
-            ratingCount: result._count
-        }
-    });
-};
 
 // Create feedback
 export const createFeedback = async (req, res) => {
@@ -29,18 +23,8 @@ export const createFeedback = async (req, res) => {
             return res.status(400).json({ status: 'error', message: 'Rating must be between 1 and 5' });
         }
 
-        // Get auction with related data
-        const auction = await prisma.auction.findUnique({
-            where: { id: auctionId, isDeleted: false },
-            include: {
-                seller: true,
-                highestBid: {
-                    include: {
-                        bidder: true
-                    }
-                }
-            }
-        });
+        // Get auction with related data using repository
+        const auction = await getAuctionForFeedback(auctionId);
 
         if (!auction) {
             return res.status(404).json({ status: 'error', message: 'Auction not found' });
@@ -48,7 +32,9 @@ export const createFeedback = async (req, res) => {
 
         // Validate auction status
         if (auction.status !== 'sold') {
-            return res.status(400).json({ status: 'error', message: 'Feedback can only be left for sold auctions' });
+            return res
+                .status(400)
+                .json({ status: 'error', message: 'Feedback can only be left for sold auctions' });
         }
 
         // Determine who is giving feedback to whom
@@ -61,53 +47,32 @@ export const createFeedback = async (req, res) => {
         } else if (type === 'buyer') {
             toUserId = auction.winnerId;
             if (auction.sellerId !== fromUserId) {
-                return res.status(403).json({ status: 'error', message: 'Only the seller can leave buyer feedback' });
+                return res
+                    .status(403)
+                    .json({ status: 'error', message: 'Only the seller can leave buyer feedback' });
             }
         } else {
             return res.status(400).json({ status: 'error', message: 'Invalid feedback type' });
         }
 
-        // Check if feedback already exists
-        const existingFeedback = await prisma.feedback.findUnique({
-            where: {
-                auctionId_fromUserId_type: {
-                    auctionId,
-                    fromUserId,
-                    type
-                }
-            }
-        });
+        // Check if feedback already exists using repository
+        const existingFeedback = await getExistingFeedback(auctionId, fromUserId, type);
 
         if (existingFeedback) {
-            return res.status(400).json({ status: 'error', message: 'Feedback already submitted for this auction' });
+            return res
+                .status(400)
+                .json({ status: 'error', message: 'Feedback already submitted for this auction' });
         }
 
-        // Create feedback
-        const feedback = await prisma.feedback.create({
-            data: {
-                rating,
-                comment,
-                type,
-                auctionId,
-                fromUserId,
-                toUserId,
-                isAnonymous: !!isAnonymous
-            },
-            include: {
-                fromUser: {
-                    select: {
-                        id: true,
-                        username: true,
-                        profilePicture: true
-                    }
-                },
-                auction: {
-                    select: {
-                        id: true,
-                        title: true
-                    }
-                }
-            }
+        // Create feedback using repository
+        const feedback = await createFeedbackPrisma({
+            rating,
+            comment,
+            type,
+            auctionId,
+            fromUserId,
+            toUserId,
+            isAnonymous: !!isAnonymous
         });
 
         // Update user's rating
@@ -118,7 +83,7 @@ export const createFeedback = async (req, res) => {
         logger.error('Error creating feedback', {
             error: error.message,
             userId: req.user?.id,
-            stack: error.stack
+            stack: error.stack,
         });
         res.status(500).json({ status: 'error', message: 'Failed to submit feedback' });
     }
@@ -128,51 +93,40 @@ export const createFeedback = async (req, res) => {
 export const getUserFeedback = async (req, res) => {
     try {
         const { userId } = req.params;
-        const { type, page = 1, limit = 10 } = req.query;
+        const {
+            type,
+            page = 1,
+            limit = 10,
+            sort = 'createdAt:desc',
+            minRating,
+            maxRating,
+            startDate,
+            endDate,
+            fields
+        } = req.query;
 
-        const where = { toUserId: userId };
-        if (type && ['seller', 'buyer'].includes(type)) {
-            where.type = type;
-        }
-
-        const [feedbacks, total] = await Promise.all([
-            prisma.feedback.findMany({
-                where,
-                include: {
-                    fromUser: {
-                        select: {
-                            id: true,
-                            username: true,
-                            profilePicture: true
-                        }
-                    },
-                    auction: {
-                        select: {
-                            id: true,
-                            title: true,
-                            images: true
-                        }
-                    }
-                },
-                orderBy: { createdAt: 'desc' },
-                skip: (parseInt(page) - 1) * parseInt(limit),
-                take: parseInt(limit)
-            }),
-            prisma.feedback.count({ where })
-        ]);
-
-        res.json({
-            data: feedbacks,
-            meta: {
-                total,
-                page: parseInt(page),
-                totalPages: Math.ceil(total / parseInt(limit) || 1)
-            }
+        const result = await listFeedbackPrisma({
+            userId,
+            type,
+            page: parseInt(page),
+            limit: parseInt(limit),
+            sort,
+            minRating: minRating ? parseInt(minRating) : undefined,
+            maxRating: maxRating ? parseInt(maxRating) : undefined,
+            startDate,
+            endDate,
+            fields: fields ? fields.split(',').map(f => f.trim()) : undefined
+        });
+        
+        res.status(200).json({
+            status: 'success',
+            pagination: result.pagination,
+            data: result.data,
         });
     } catch (error) {
         logger.error('Error fetching feedback', {
             error: error.message,
-            stack: error.stack
+            stack: error.stack,
         });
         res.status(500).json({ status: 'error', message: 'Failed to fetch feedback' });
     }
@@ -185,13 +139,7 @@ export const respondToFeedback = async (req, res) => {
         const { response } = req.body;
         const userId = req.user.id;
 
-        const feedback = await prisma.feedback.findUnique({
-            where: { id: feedbackId },
-            include: {
-                auction: true,
-                toUser: true
-            }
-        });
+        const feedback = await getFeedbackByIdPrisma(feedbackId);
 
         if (!feedback) {
             return res.status(404).json({ status: 'error', message: 'Feedback not found' });
@@ -199,28 +147,17 @@ export const respondToFeedback = async (req, res) => {
 
         // Only the user who received the feedback can respond
         if (feedback.toUserId !== userId) {
-            return res.status(403).json({ status: 'error', message: 'Not authorized to respond to this feedback' });
+            return res
+                .status(403)
+                .json({ status: 'error', message: 'Not authorized to respond to this feedback' });
         }
 
-        const updatedFeedback = await prisma.feedback.update({
-            where: { id: feedbackId },
-            data: { response },
-            include: {
-                fromUser: {
-                    select: {
-                        id: true,
-                        username: true,
-                        profilePicture: true
-                    }
-                }
-            }
-        });
-
+        const updatedFeedback = await respondToFeedbackPrisma(feedbackId, response);
         res.json(updatedFeedback);
     } catch (error) {
         logger.error('Error responding to feedback', {
             error: error.message,
-            stack: error.stack
+            stack: error.stack,
         });
         res.status(500).json({ status: 'error', message: 'Failed to respond to feedback' });
     }
@@ -230,53 +167,12 @@ export const respondToFeedback = async (req, res) => {
 export const getFeedbackSummary = async (req, res) => {
     try {
         const { userId } = req.params;
-
-        const [sellerFeedback, buyerFeedback] = await Promise.all([
-            prisma.feedback.groupBy({
-                by: ['rating'],
-                where: {
-                    toUserId: userId,
-                    type: 'seller'
-                },
-                _count: {
-                    rating: true
-                }
-            }),
-            prisma.feedback.groupBy({
-                by: ['rating'],
-                where: {
-                    toUserId: userId,
-                    type: 'buyer'
-                },
-                _count: {
-                    rating: true
-                }
-            })
-        ]);
-
-        const calculateStats = (feedback) => {
-            const total = feedback.reduce((sum, item) => sum + item._count.rating, 0);
-            const average = feedback.length > 0
-                ? feedback.reduce((sum, item) => sum + (item.rating * item._count.rating), 0) / total
-                : 0;
-
-            const distribution = Array(5).fill(0).map((_, i) => {
-                const rating = 5 - i;
-                const count = feedback.find(f => f.rating === rating)?._count.rating || 0;
-                return { rating, count, percentage: total > 0 ? Math.round((count / total) * 100) : 0 };
-            });
-
-            return { total, average, distribution };
-        };
-
-        res.json({
-            seller: calculateStats(sellerFeedback),
-            buyer: calculateStats(buyerFeedback)
-        });
+        const summary = await getFeedbackSummaryPrisma(userId);
+        res.json(summary);
     } catch (error) {
         logger.error('Error fetching feedback summary', {
             error: error.message,
-            stack: error.stack
+            stack: error.stack,
         });
         res.status(500).json({ status: 'error', message: 'Failed to fetch feedback summary' });
     }

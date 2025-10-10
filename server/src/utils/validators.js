@@ -73,6 +73,27 @@ export const bidQuerySchema = Joi.object({
   endDate: Joi.date().iso().optional(),
 });
 
+// Feedback query schema validation
+export const feedbackQuerySchema = Joi.object({
+  page: Joi.number().integer().min(1).default(1),
+  limit: Joi.number().integer().min(1).max(100).default(10),
+  sort: Joi.string()
+    .pattern(/^(rating|createdAt):(asc|desc)$/)
+    .default('createdAt:desc')
+    .optional(),
+  type: Joi.string().valid('seller', 'buyer').optional(),
+  auctionId: Joi.string().uuid({ version: 'uuidv4' }).optional(),
+  fromUserId: Joi.string().uuid({ version: 'uuidv4' }).optional(),
+  toUserId: Joi.string().uuid({ version: 'uuidv4' }).optional(),
+  fields: Joi.string()
+    .pattern(/^[a-zA-Z0-9_, ]*$/)
+    .optional(),
+  minRating: Joi.number().min(1).optional(),
+  maxRating: Joi.number().min(1).optional(),
+  startDate: Joi.date().iso().optional(),
+  endDate: Joi.date().iso().optional(),
+});
+
 // Stats query schema validation
 export const statsQuerySchema = Joi.object({
   timeFrame: Joi.string().valid('day', 'week', 'month', 'year', 'all').default('month').optional(),

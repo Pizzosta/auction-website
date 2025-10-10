@@ -1816,6 +1816,36 @@
             "name": "limit",
             "in": "query",
             "type": "string"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "type": "string"
+          },
+          {
+            "name": "minRating",
+            "in": "query",
+            "type": "string"
+          },
+          {
+            "name": "maxRating",
+            "in": "query",
+            "type": "string"
+          },
+          {
+            "name": "startDate",
+            "in": "query",
+            "type": "string"
+          },
+          {
+            "name": "endDate",
+            "in": "query",
+            "type": "string"
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "type": "string"
           }
         ],
         "responses": {
