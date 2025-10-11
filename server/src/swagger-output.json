@@ -107,6 +107,9 @@
           "400": {
             "description": "Bad Request"
           },
+          "403": {
+            "description": "Forbidden"
+          },
           "500": {
             "description": "Internal Server Error"
           }
@@ -980,6 +983,11 @@
             "name": "lastActiveBefore",
             "in": "query",
             "type": "string"
+          },
+          {
+            "name": "fields",
+            "in": "query",
+            "type": "string"
           }
         ],
         "responses": {
@@ -1130,6 +1138,11 @@
           {
             "name": "authorization",
             "in": "header",
+            "type": "string"
+          },
+          {
+            "name": "fields",
+            "in": "query",
             "type": "string"
           }
         ],

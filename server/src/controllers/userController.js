@@ -1,5 +1,17 @@
-import { listUsersPrisma } from '../repositories/userRepo.prisma.js';
-import prisma from '../config/prisma.js';
+import {
+  listUsersPrisma,
+  getUserByIdPrisma,
+  findUserByEmailPrisma,
+  findUserByUsernamePrisma,
+  findUserByPhonePrisma,
+  hardDeleteUserWithRelatedDataPrisma,
+  softDeleteUserPrisma,
+  getUserWithVersionPrisma,
+  restoreUserPrisma,
+  updateUserDataPrisma,
+  updateUserProfilePicturePrisma,
+  removeUserProfilePicturePrisma,
+} from '../repositories/userRepo.prisma.js';
 import bcrypt from 'bcryptjs';
 import { getCloudinary } from '../config/cloudinary.js';
 import { normalizeToE164 } from '../utils/format.js';
@@ -9,40 +21,22 @@ import logger from '../utils/logger.js';
 // @route   GET /api/users/:id
 // @access  Private/Admin
 // @param   {string} id - User ID
-// @returns {Promise<Object|null>} - User object or null if not found
+// @returns {Promise<Object>} - User object or error response
 export const getUserById = async (req, res) => {
   try {
-    const id = req.params?.id;
+    const { id } = req.params;
+    const { fields } = req.query;
+
     if (!id || typeof id !== 'string' || id.trim() === '') {
-      logger.warn('Invalid user ID provided to getUserById', {
-        userId: id,
-      });
+      logger.warn('Invalid user ID provided to getUserById', { userId: id });
       return res.status(400).json({
         status: 'error',
         message: 'Invalid user ID',
       });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        firstname: true,
-        lastname: true,
-        username: true,
-        email: true,
-        phone: true,
-        role: true,
-        isVerified: true,
-        isDeleted: true,
-        profilePicture: true,
-        rating: true,
-        lastActiveAt: true,
-        createdAt: true,
-        updatedAt: true,
-        version: true,
-      },
-    });
+    const fieldList = fields ? fields.split(',').map(f => f.trim()) : undefined;
+    const user = await getUserByIdPrisma(id, fieldList);
 
     if (!user) {
       logger.warn('User not found', { userId: id });
@@ -66,6 +60,7 @@ export const getUserById = async (req, res) => {
       email: user.email,
       username: user.username,
     });
+
     return res.status(200).json({
       status: 'success',
       data: user,
@@ -89,7 +84,7 @@ export const getUserById = async (req, res) => {
 // @access  Private/Admin
 export const getAllUsers = async (req, res) => {
   try {
-    // Get query parameters (already validated by middleware)
+    // Get query parameters
     const {
       role,
       isVerified,
@@ -101,6 +96,7 @@ export const getAllUsers = async (req, res) => {
       status,
       lastActiveAfter,
       lastActiveBefore,
+      fields,
     } = req.query;
 
     // Only admins can see soft-deleted users
@@ -111,33 +107,25 @@ export const getAllUsers = async (req, res) => {
       });
     }
 
-    // Fetch via Prisma repository
-    const { users, count, pageNum, take } = await listUsersPrisma({
+    // Fetch via repository
+    const result = await listUsersPrisma({
       role,
-      isVerified,
-      rating,
+      isVerified: isVerified ? isVerified === 'true' : undefined,
+      rating: rating ? parseFloat(rating) : undefined,
       search,
-      page,
-      limit,
+      page: parseInt(page),
+      limit: parseInt(limit),
       sort,
       status,
       lastActiveAfter,
       lastActiveBefore,
+      fields: fields ? fields.split(',').map(f => f.trim()) : undefined,
     });
-    const totalPages = Math.ceil(count / take);
 
     res.status(200).json({
       status: 'success',
-      pagination: {
-        currentPage: pageNum,
-        totalUsers: count,
-        totalPages,
-        hasNext: pageNum < totalPages,
-        hasPrev: pageNum > 1,
-      },
-      data: {
-        users,
-      },
+      pagination: result.pagination,
+      data: result.data,
     });
   } catch (error) {
     logger.error('Get all users error:', {
@@ -170,18 +158,17 @@ export const deleteUser = async (req, res) => {
     const permanent =
       getPermanentValue(req.query?.permanent) || getPermanentValue(req.body?.permanent);
 
-    const user = await prisma.user.findUnique({
-      where: { id: req.params.id },
-      select: {
-        id: true,
-        role: true,
-        passwordHash: true,
-        isDeleted: true,
-        version: true,
-        email: true,
-        username: true,
-      },
-    });
+    // Get user with necessary fields for deletion
+    const user = await getUserWithVersionPrisma(req.params.id, [
+      'id',
+      'role',
+      'passwordHash',
+      'isDeleted',
+      'email',
+      'username',
+      'phone',
+      'version',
+    ]);
 
     if (!user) {
       return res.status(404).json({
@@ -233,41 +220,22 @@ export const deleteUser = async (req, res) => {
       });
     }
 
-    if (permanent) {
-      // Cascade delete related data, then delete the user with version check
-      await prisma.$transaction([
-        prisma.auction.deleteMany({ where: { sellerId: user.id } }),
-        prisma.bid.deleteMany({ where: { bidderId: user.id } }),
-        prisma.user.delete({
-          where: {
-            id: user.id,
-            version: user.version, // Optimistic concurrency control
-          },
-        }),
-      ]);
-    } else {
-      // Soft delete with version check
-      const deletedUser = await prisma.user.update({
-        where: {
-          id: user.id,
-          version: user.version, // Optimistic concurrency control
-        },
-        data: {
-          isDeleted: true,
-          deletedAt: new Date(),
-          deletedById: actorId,
-          version: { increment: 1 }, // Increment version
-          // Clear sensitive data
-          email: `deleted-${Date.now()}-${user.id}@deleted.user`,
-          username: `deleted-${Date.now()}-${user.id}`,
-          passwordHash: null,
-          refreshToken: null,
-        },
-      });
-
-      if (!deletedUser) {
-        throw new Error('Failed to soft delete user - version mismatch');
+    try {
+      if (permanent) {
+        // Hard delete with related data
+        await hardDeleteUserWithRelatedDataPrisma(user.id);
+      } else {
+        // Soft delete with cleanup
+        await softDeleteUserPrisma(user.id, actorId, user.version);
       }
+    } catch (error) {
+      logger.error('Error during user deletion:', {
+        error: error.message,
+        userId: user.id,
+        permanent,
+        stack: error.stack
+      });
+      throw error;
     }
 
     // Log the deletion
@@ -313,54 +281,48 @@ export const deleteUser = async (req, res) => {
 // @access  Private
 export const getMe = async (req, res) => {
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: req.user.id },
-      select: {
-        id: true,
-        firstname: true,
-        middlename: true,
-        lastname: true,
-        lastActiveAt: true,
-        username: true,
-        email: true,
-        phone: true,
-        profilePicture: true,
-        role: true,
-        rating: true,
-        bio: true,
-        location: true,
-        isVerified: true,
-        isDeleted: true,
-        deletedAt: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
+    // Get user with all necessary fields
+    const user = await getUserByIdPrisma(req.user.id, [
+      'id',
+      'firstname',
+      'middlename',
+      'lastname',
+      'email',
+      'username',
+      'phone',
+      'role',
+      'isVerified',
+      'isDeleted',
+      'profilePicture',
+      'rating',
+      'lastActiveAt',
+      'createdAt',
+      'updatedAt',
+      'version'
+    ]);
 
     if (!user) {
       return res.status(404).json({
-        success: false,
+        status: 'error',
         message: 'User not found',
       });
     }
 
-    // Format the response
-    const userData = {
-      ...user,
-      fullname: `${user.firstname} ${user.middlename} ${user.lastname}`.trim(),
-    };
+    // Update last active timestamp
+    await updateUserDataPrisma(user.id, { lastActiveAt: new Date() });
 
-    res.status(200).json({
-      success: true,
-      data: userData,
+    return res.status(200).json({
+      status: 'success',
+      data: { user },
     });
   } catch (error) {
-    logger.error('Get me error:', {
+    logger.error('Get current user error:', {
       error: error.message,
       stack: error.stack,
-      userId: typeof req.user?.id === 'string' ? req.user.id : req.user?.id?.id || '[unknown]',
+      userId: req.user?.id,
     });
-    res.status(500).json({
+
+    return res.status(500).json({
       status: 'error',
       message: 'Server error',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined,
@@ -381,19 +343,18 @@ export const restoreUser = async (req, res) => {
       });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: req.params.id },
-      select: {
-        id: true,
-        isDeleted: true,
-        firstname: true,
-        middlename: true,
-        lastname: true,
-        email: true,
-        username: true,
-        role: true,
-      },
-    });
+    // Get user with minimal fields needed for restoration
+    const user = await getUserByIdPrisma(req.params.id, [
+      'id',
+      'isDeleted',
+      'firstname',
+      'middlename',
+      'lastname',
+      'email',
+      'username',
+      'role',
+      'version'
+    ]);
 
     if (!user) {
       return res.status(404).json({
@@ -409,10 +370,8 @@ export const restoreUser = async (req, res) => {
       });
     }
 
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { isDeleted: false, deletedAt: null, deletedById: null },
-    });
+    // Restore the user using repository function
+    await restoreUserPrisma(user.id);
 
     res.status(200).json({
       status: 'success',
@@ -426,6 +385,7 @@ export const restoreUser = async (req, res) => {
           email: user.email,
           username: user.username,
           role: user.role,
+          version: user.version,
         },
       },
     });
@@ -457,13 +417,8 @@ export const uploadProfilePicture = async (req, res) => {
 
     const uploadedFile = req.uploadedFiles[0];
     const actorId = req.user?.id?.toString();
-    const user = await prisma.user.findUnique({
-      where: { id: actorId },
-      select: {
-        id: true,
-        profilePicture: true,
-      },
-    });
+    // Get current user to check for existing picture
+    const user = await getUserByIdPrisma(actorId, ['profilePicture']);
 
     if (!user) {
       return res.status(404).json({
@@ -495,10 +450,7 @@ export const uploadProfilePicture = async (req, res) => {
     };
 
     // Update user with new profile picture
-    await prisma.user.update({
-      where: { id: actorId },
-      data: { profilePicture },
-    });
+    await updateUserProfilePicturePrisma(actorId, profilePicture);
 
     res.status(200).json({
       success: true,
@@ -525,10 +477,8 @@ export const uploadProfilePicture = async (req, res) => {
 export const deleteProfilePicture = async (req, res) => {
   try {
     const actorId = req.user?.id?.toString();
-    const user = await prisma.user.findUnique({
-      where: { id: actorId },
-      select: { id: true, profilePicture: true },
-    });
+    // Get current user to check for existing picture
+    const user = await getUserByIdPrisma(actorId, ['profilePicture']);
 
     if (!user) {
       return res.status(404).json({
@@ -558,11 +508,8 @@ export const deleteProfilePicture = async (req, res) => {
       // Continue even if Cloudinary deletion fails
     }
 
-    // Remove from user
-    await prisma.user.update({
-      where: { id: actorId },
-      data: { profilePicture: null },
-    });
+    // Remove profile picture URL using repository
+    await removeUserProfilePicturePrisma(actorId);
 
     res.status(200).json({
       success: true,
@@ -611,18 +558,16 @@ export const updateUser = async (req, res) => {
     }
 
     // Find the user and include the password hash for verification
-    const user = await prisma.user.findUnique({
-      where: { id },
-      select: {
-        id: true,
-        passwordHash: true,
-        role: true,
-        email: true,
-        phone: true,
-        username: true,
-        version: true,
-      },
-    });
+    const user = await getUserWithVersionPrisma(req.params.id, [
+      'id',
+      'role',
+      'passwordHash',
+      'isDeleted',
+      'email',
+      'username',
+      'phone',
+      'version',
+    ]);
 
     if (!user) {
       return res.status(404).json({
@@ -685,36 +630,42 @@ export const updateUser = async (req, res) => {
 
     // Check if the email is being updated and if it's already in use by another user
     if (updateData.email && updateData.email !== user.email) {
-      const emailExists = await prisma.user.findFirst({
-        where: {
-          email: updateData.email,
-          NOT: { id: user.id },
-          isDeleted: false,
-        },
-      });
+      const existingUser = await findUserByEmailPrisma(updateData.email, ['id', 'isDeleted']);
 
-      if (emailExists) {
+      // Check if email exists and belongs to a different active user
+      if (existingUser && existingUser.id !== user.id && !existingUser.isDeleted) {
         return res.status(400).json({
           status: 'error',
           message: 'Email is already in use by another user',
+        });
+      }
+
+      // Also check if the email belongs to a deleted user
+      if (existingUser && existingUser.id !== user.id && existingUser.isDeleted) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'This email was previously used by another account',
         });
       }
     }
 
     // Check if the username is being updated and if it's already in use by another user
     if (updateData.username && updateData.username !== user.username) {
-      const usernameExists = await prisma.user.findFirst({
-        where: {
-          username: updateData.username,
-          NOT: { id: user.id },
-          isDeleted: false,
-        },
-      });
+      const usernameExists = await findUserByUsernamePrisma(updateData.username, ['id', 'isDeleted']);
 
-      if (usernameExists) {
+      // Check if username exists and belongs to a different active user
+      if (usernameExists && usernameExists.id !== user.id && !usernameExists.isDeleted) {
         return res.status(400).json({
           status: 'error',
           message: 'Username is already in use by another user',
+        });
+      }
+
+      // Also check if the username belongs to a deleted user
+      if (usernameExists && usernameExists.id !== user.id && usernameExists.isDeleted) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'This username was previously used by another account',
         });
       }
     }
@@ -731,22 +682,25 @@ export const updateUser = async (req, res) => {
         });
       }
       // Check if normalized phone already exists
-      const phoneExists = await prisma.user.findFirst({
-        where: {
-          phone: normalizedPhone,
-          NOT: { id: user.id },
-          isDeleted: false,
-        },
-      });
+      const phoneExists = await findUserByPhonePrisma(normalizedPhone, ['id', 'isDeleted']);
 
-      if (phoneExists) {
+      // Check if phone exists and belongs to a different active user
+      if (phoneExists && phoneExists.id !== user.id && !phoneExists.isDeleted) {
         return res.status(400).json({
           status: 'error',
           message: 'Phone number is already in use by another user',
         });
       }
 
-      // Update with normalized phone
+      // Also check if the phone belongs to a deleted user
+      if (phoneExists && phoneExists.id !== user.id && phoneExists.isDeleted) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'This phone number was previously used by another account',
+        });
+      }
+
+      // Update the phone number
       updateData.phone = normalizedPhone;
     }
 
@@ -768,32 +722,26 @@ export const updateUser = async (req, res) => {
     // Add version increment for optimistic concurrency
     updateData.version = { increment: 1 };
 
-    // Update user with version check
-    const updatedUser = await prisma.user.update({
-      where: {
-        id: user.id,
-        version: user.version,
-      },
-      data: updateData,
-      select: {
-        id: true,
-        firstname: true,
-        middlename: true,
-        lastname: true,
-        username: true,
-        email: true,
-        phone: true,
-        role: true,
-        isVerified: true,
-        profilePicture: true,
-        rating: true,
-        bio: true,
-        location: true,
-        createdAt: true,
-        updatedAt: true,
-        version: true,
-      },
-    });
+    // Update user with version check using repository
+    const updatedUser = await updateUserDataPrisma(user.id, updateData, [
+      'id',
+      'firstname',
+      'middlename',
+      'lastname',
+      'username',
+      'email',
+      'phone',
+      'role',
+      'isVerified',
+      'profilePicture',
+      'rating',
+      'bio',
+      'location',
+      'createdAt',
+      'updatedAt',
+      'version'
+    ]
+    );
 
     return res.status(200).json({
       status: 'success',
@@ -820,37 +768,38 @@ export const updateUser = async (req, res) => {
     return res.status(500).json({
       status: 'error',
       message: 'Error updating user',
-      ...(process.env.NODE_ENV === 'development' && {
+      ...(process.env.NODE_ENV === 'development' ? {
         error: error.message,
         code: error.code,
-      }),
+      } : {}),
     });
   }
 };
 
-// Internal helper for user lookup by ID (returns user object or null)
+/**
+ * Internal helper for user lookup by ID (returns user object or null)
+ * @param {string} id - User ID to find
+ * @returns {Promise<Object|null>} User object or null if not found
+ */
 export const findUserById = async id => {
   if (!id || typeof id !== 'string' || id.trim() === '') return null;
-  const user = await prisma.user.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      firstname: true,
-      lastname: true,
-      username: true,
-      email: true,
-      phone: true,
-      role: true,
-      isVerified: true,
-      isDeleted: true,
-      profilePicture: true,
-      rating: true,
-      lastActiveAt: true,
-      createdAt: true,
-      updatedAt: true,
-      version: true,
-    },
-  });
-  logger.debug('findUserById raw result', { id, user });
-  return user;
+
+  return getUserByIdPrisma(id, [
+    'id',
+    'email',
+    'firstname',
+    'lastname',
+    'username',
+    'role',
+    'isVerified',
+    'isDeleted',
+    'deletedAt',
+    'deletedById',
+    'createdAt',
+    'updatedAt',
+    'version',
+    'profilePicture',
+    'phone',
+    'rating',
+  ]);
 };
