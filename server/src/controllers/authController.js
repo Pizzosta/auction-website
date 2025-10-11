@@ -197,6 +197,11 @@ export const login = async (req, res) => {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
 
+    // Check if user is soft-deleted
+    if (user.isDeleted) {
+      return res.status(403).json({ message: 'User account has been deactivated' });
+    }
+
     // Check password
     const isMatch = user.passwordHash ? await bcrypt.compare(password, user.passwordHash) : false;
     if (!isMatch) {
