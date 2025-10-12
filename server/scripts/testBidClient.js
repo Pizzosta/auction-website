@@ -6,7 +6,7 @@ const SERVER_URL = 'http://localhost:5001';
 
 // If you need authentication, provide your JWT token here
 const TOKEN =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiJjNDcyMmFjYi02ODRiLTQ1YzEtYjVjZi0zYTk4OTQzN2ViZTgiLCJlbWFpbCI6InBhc3N3b3JkMTFAbWFpbC5jb20iLCJyb2xlIjoidXNlciIsInR5cGUiOiJhY2Nlc3MiLCJpYXQiOjE3NTk3NjQ1MzgsImV4cCI6MTc1OTc2NTQzOH0.vBfEp2D8eusrCqAf5Ig_MLSKOUBRA7S-bFP8_JhV00U"
+"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2M2E5NjQxNS04NWFiLTQ4NWItYmNmZC05OGM5MWI1NGRlMjkiLCJlbWFpbCI6InBhc3N3b3JkMTFAbWFpbC5jb20iLCJyb2xlIjoidXNlciIsInR5cGUiOiJhY2Nlc3MiLCJpYXQiOjE3NjAyNzgyMzUsImV4cCI6MTc2MDI3OTEzNX0.UjfEWL0YEBpSZbrOk5Hh0Fz5OoBN8VlSHbKzGuhNsEk"
 const socket = io(SERVER_URL, {
   auth: { token: TOKEN },
   transports: ['websocket'],
@@ -33,7 +33,7 @@ socket.on('connect', () => {
     console.log(`User ${socket.id} joined auction ${auctionId}`);
 
     // Place a bid after joining
-    socket.emit('placeBid', { auctionId, amount: 30 }, bidResponse => {
+    socket.emit('placeBid', { auctionId, amount: 42 }, bidResponse => {
       console.log('placeBid response:', bidResponse);
     });
 

@@ -1,13 +1,26 @@
 import prisma from '../config/prisma.js';
 
 /**
- * Creates a Prisma select object based on requested fields
+ * Creates a Prisma select object based on requested fields with security restrictions
  * @param {Array<string>} [fields] - Array of field names to include
+ * @param {Object} [options] - Options for field selection
+ * @param {boolean} [options.allowSensitive] - Whether to allow sensitive fields (admin only)
  * @returns {Object} Prisma select object
  */
-export const createUserSelect = (fields) => {
+export const createUserSelect = (fields, options = {}) => {
+  const { allowSensitive = false } = options;
+
+  // Define sensitive fields that should never be exposed
+  const SENSITIVE_FIELDS = [
+    'passwordHash',
+    'resetPasswordToken',
+    'resetPasswordExpire',
+    'emailVerificationToken',
+    'emailVerificationExpire',
+  ];
+
   if (!fields || !Array.isArray(fields) || fields.length === 0) {
-    // Default fields if none specified
+    // Default fields - explicitly exclude sensitive data
     return {
       id: true,
       firstname: true,
@@ -20,47 +33,68 @@ export const createUserSelect = (fields) => {
       profilePicture: true,
       createdAt: true,
       updatedAt: true,
-      version: true,
-      deletedAt: true,
-      isDeleted: true,
+      bio: true,
+      location: true,
+      rating: true,
+      ratingCount: true,
+      lastActiveAt: true,
+      version: true
     };
   }
 
-  // Create select object with requested fields
-  return fields.reduce((select, field) => {
+  // Filter out sensitive fields unless explicitly allowed
+  const safeFields = allowSensitive
+    ? fields
+    : fields.filter(field => !SENSITIVE_FIELDS.includes(field));
+
+  // Log attempted access to sensitive fields for security monitoring
+  if (!allowSensitive && fields.some(field => SENSITIVE_FIELDS.includes(field))) {
+    logger.warn('Attempted to access sensitive user fields', {
+      requestedFields: fields,
+      allowedFields: safeFields,
+      sensitiveFieldsAttempted: fields.filter(field => SENSITIVE_FIELDS.includes(field)),
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  // Create select object with safe fields
+  return safeFields.reduce((select, field) => {
     select[field] = true;
     return select;
   }, {});
 };
 
 /**
- * Get user by ID with field selection
+ * Find user by ID with field selection
  * @param {string} id - User ID
  * @param {Array<string>} [fields] - Optional fields to include
+ * @param {Object} [options] - Options for field selection
+ * @param {boolean} [options.allowSensitive] - Whether to allow sensitive fields
  * @returns {Promise<Object|null>} User object or null if not found
  */
-export const getUserByIdPrisma = async (id, fields) => {
-  const select = createUserSelect(fields);
+export const findUserByIdPrisma = async (id, fields, options = {}) => {
+  if (!id) return null;
 
-  const user = await prisma.user.findUnique({
+  const select = createUserSelect(fields, options);
+
+  return prisma.user.findUnique({
     where: { id },
     select,
   });
-
-  if (!user) return null;
-  return user;
 };
 
 /**
- * Find user by email
+ * Find user by email with field selection
  * @param {string} email - User email
  * @param {Array<string>} [fields] - Optional fields to include
+ * @param {Object} [options] - Options for field selection
+ * @param {boolean} [options.allowSensitive] - Whether to allow sensitive fields
  * @returns {Promise<Object|null>} User object or null if not found
  */
-export const findUserByEmailPrisma = async (email, fields) => {
+export const findUserByEmailPrisma = async (email, fields, options = {}) => {
   if (!email) return null;
 
-  const select = createUserSelect(fields);
+  const select = createUserSelect(fields, options);
 
   return prisma.user.findUnique({
     where: { email },
@@ -69,15 +103,17 @@ export const findUserByEmailPrisma = async (email, fields) => {
 };
 
 /**
- * Find user by username
+ * Find user by username with field selection
  * @param {string} username - Username
  * @param {Array<string>} [fields] - Optional fields to include
+ * @param {Object} [options] - Options for field selection
+ * @param {boolean} [options.allowSensitive] - Whether to allow sensitive fields
  * @returns {Promise<Object|null>} User object or null if not found
  */
-export const findUserByUsernamePrisma = async (username, fields) => {
+export const findUserByUsernamePrisma = async (username, fields, options = {}) => {
   if (!username) return null;
 
-  const select = createUserSelect(fields);
+  const select = createUserSelect(fields, options);
 
   return prisma.user.findUnique({
     where: { username },
@@ -86,15 +122,17 @@ export const findUserByUsernamePrisma = async (username, fields) => {
 };
 
 /**
- * Find user by phone
- * @param {string} phone - User phone
+ * Find user by phone number with field selection
+ * @param {string} phone - Phone number
  * @param {Array<string>} [fields] - Optional fields to include
+ * @param {Object} [options] - Options for field selection
+ * @param {boolean} [options.allowSensitive] - Whether to allow sensitive fields
  * @returns {Promise<Object|null>} User object or null if not found
  */
-export const findUserByPhonePrisma = async (phone, fields) => {
+export const findUserByPhonePrisma = async (phone, fields, options = {}) => {
   if (!phone) return null;
 
-  const select = createUserSelect(fields);
+  const select = createUserSelect(fields, options);
 
   return prisma.user.findUnique({
     where: { phone },
@@ -153,54 +191,6 @@ export const softDeleteUserPrisma = async (userId, deletedById, version) => {
   });
 };
 
-/*
-/**
- * Permanently delete a user and all related data in a transaction
- * @param {string} userId - ID of the user to delete
- * @returns {Promise<Object>} Result of the transaction
- *
- * 
-export const hardDeleteUserWithRelatedDataPrisma = async (userId) => {
-  return await prisma.$transaction(async (tx) => {
-    // Delete in correct order to respect foreign key constraints
-    await tx.feedback.deleteMany({
-      where: {
-        OR: [
-          { fromUserId: userId },
-          { toUserId: userId }
-        ]
-      }
-    });
-
-    await tx.watchlist.deleteMany({
-      where: { userId }
-    });
-
-    await tx.featuredAuction.deleteMany({
-      where: { addedById: userId }
-    });
-
-    await tx.bid.deleteMany({
-      where: { bidderId: userId }
-    });
-
-    await tx.auction.deleteMany({
-      where: { 
-        OR: [
-          { sellerId: userId },
-          { winnerId: userId }
-        ]
-      }
-    });
-
-    // Finally delete the user
-    return await tx.user.delete({
-      where: { id: userId }
-    });
-  });
-};
-*/
-
 /**
  * Permanently delete a user using database cascades
  * @param {string} userId - ID of the user to delete
@@ -221,7 +211,7 @@ export const restoreUserPrisma = async (userId) => {
   return await prisma.$transaction(async (tx) => {
     // Restore user first
     const user = await tx.user.update({
-      where: { 
+      where: {
         id: userId,
         isDeleted: true // Only restore if currently soft-deleted
       },
@@ -307,10 +297,12 @@ export const removeUserProfilePicturePrisma = async (userId) => {
  * @param {string} userId - ID of the user to update
  * @param {Object} data - Data to update
  * @param {Array<string>} [fields] - Fields to return
+ * @param {Object} [options] - Options for field selection
+ * @param {boolean} [options.allowSensitive] - Whether to allow sensitive fields
  * @returns {Promise<Object>} Updated user object
  */
-export const updateUserDataPrisma = async (userId, data, fields) => {
-  const select = createUserSelect(fields);
+export const updateUserDataPrisma = async (userId, data, fields, options = {}) => {
+  const select = createUserSelect(fields, options);
 
   return prisma.user.update({
     where: { id: userId },
@@ -323,30 +315,13 @@ export const updateUserDataPrisma = async (userId, data, fields) => {
 };
 
 /**
- * Get user by ID with version check
- * @param {string} userId - User ID
- * @param {Array<string>} [fields] - Optional fields to include
- * @returns {Promise<Object|null>} User object or null if not found
- */
-export const getUserWithVersionPrisma = async (userId, fields) => {
-  const select = createUserSelect(fields);
-
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: {
-      ...select,
-      version: true,
-    },
-  });
-
-  if (!user) return null;
-  return user;
-};
-
-/**
  * List users with pagination and filtering
  * @param {Object} options - Query options
- * @param {string} [options.role] - Filter by role
+ * @param {number} [options.page=1] - Page number
+ * @param {number} [options.limit=10] - Items per page
+ * @param {string} [options.search=''] - Search term
+ * @param {string} [options.sort='createdAt:desc'] - Sort field and order
+ * @param {string} [options.role] - Filter by role ('user, 'admin')
  * @param {boolean} [options.isVerified] - Filter by verification status
  * @param {number} [options.rating] - Filter by minimum rating
  * @param {string} [options.search] - Search term
@@ -357,21 +332,26 @@ export const getUserWithVersionPrisma = async (userId, fields) => {
  * @param {string} [options.lastActiveAfter] - Filter by last active after date
  * @param {string} [options.lastActiveBefore] - Filter by last active before date
  * @param {Array<string>} [options.fields] - Fields to include
- * @returns {Promise<Object>} Object containing users and pagination info
+ * @param {boolean} [options.allowSensitive] - Whether to allow sensitive fields
+ * @returns {Promise<Object>} Paginated users and pagination info
  */
-export async function listUsersPrisma({
+export const listUsersPrisma = async ({
   page = 1,
   limit = 10,
+  search = '',
   sort = 'createdAt:desc',
   status,
-  search = '',
-  role = '',
+  role,
   isVerified,
   rating,
   lastActiveAfter,
   lastActiveBefore,
   fields,
-}) {
+  allowSensitive = false,
+}) => {
+  // Build select object based on requested fields
+  const select = createUserSelect(fields, { allowSensitive });
+
   const pageNum = Math.max(1, parseInt(page));
   const take = Math.min(Math.max(1, parseInt(limit)), 100);
   const skip = (pageNum - 1) * take;
@@ -428,9 +408,6 @@ export async function listUsersPrisma({
   const allowed = new Set(['firstname', 'lastname', 'email', 'phone', 'username', 'createdAt']);
   if (!allowed.has(field)) field = 'createdAt';
   const orderBy = { [field]: order === 'asc' ? 'asc' : 'desc' };
-
-  // Build select object based on requested fields
-  const select = createUserSelect(fields);
 
   const [count, users] = await Promise.all([
     prisma.user.count({ where }),

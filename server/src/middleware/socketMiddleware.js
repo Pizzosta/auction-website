@@ -3,7 +3,7 @@ import logger from '../utils/logger.js';
 import { env, validateEnv } from '../config/env.js';
 import prisma from '../config/prisma.js';
 import jwt from 'jsonwebtoken';
-import { findUserById } from '../controllers/userController.js';
+import { findUserByIdPrisma } from '../repositories/userRepo.prisma.js';
 import { placeBidCore } from '../controllers/bidController.js';
 
 // Validate environment variables at module load
@@ -59,7 +59,7 @@ const authenticateSocket = async (socket, next) => {
     }
 
     // Get user from database
-    const user = await findUserById(decoded.userId);
+    const user = await findUserByIdPrisma(decoded.userId);
 
     if (!user || user.isDeleted) {
       logger.warn('User not found or deactivated - treating socket as Guest', {

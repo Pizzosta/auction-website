@@ -1,12 +1,11 @@
 import {
   listUsersPrisma,
-  getUserByIdPrisma,
+  findUserByIdPrisma,
   findUserByEmailPrisma,
   findUserByUsernamePrisma,
   findUserByPhonePrisma,
   hardDeleteUserWithRelatedDataPrisma,
   softDeleteUserPrisma,
-  getUserWithVersionPrisma,
   restoreUserPrisma,
   updateUserDataPrisma,
   updateUserProfilePicturePrisma,
@@ -36,7 +35,8 @@ export const getUserById = async (req, res) => {
     }
 
     const fieldList = fields ? fields.split(',').map(f => f.trim()) : undefined;
-    const user = await getUserByIdPrisma(id, fieldList);
+    const isAdmin = req.user.role === 'admin';
+    const user = await findUserByIdPrisma(id, fieldList, { allowSensitive: isAdmin });
 
     if (!user) {
       logger.warn('User not found', { userId: id });
@@ -82,6 +82,7 @@ export const getUserById = async (req, res) => {
 // @desc    Get all users (admin only)
 // @route   GET /api/users
 // @access  Private/Admin
+// @desc    Get all users with filtering and pagination
 export const getAllUsers = async (req, res) => {
   try {
     // Get query parameters
@@ -99,8 +100,10 @@ export const getAllUsers = async (req, res) => {
       fields,
     } = req.query;
 
+    const isAdmin = req.user.role === 'admin';
+
     // Only admins can see soft-deleted users
-    if ((status === 'deleted' || status === 'all') && req.user.role !== 'admin') {
+    if ((status === 'deleted' || status === 'all') && !isAdmin) {
       return res.status(403).json({
         status: 'error',
         message: 'Only admins can view deleted users',
@@ -120,6 +123,7 @@ export const getAllUsers = async (req, res) => {
       lastActiveAfter,
       lastActiveBefore,
       fields: fields ? fields.split(',').map(f => f.trim()) : undefined,
+      allowSensitive: isAdmin, // Only allow sensitive fields for admins
     });
 
     res.status(200).json({
@@ -159,7 +163,7 @@ export const deleteUser = async (req, res) => {
       getPermanentValue(req.query?.permanent) || getPermanentValue(req.body?.permanent);
 
     // Get user with necessary fields for deletion
-    const user = await getUserWithVersionPrisma(req.params.id, [
+    const user = await findUserByIdPrisma(req.params.id, [
       'id',
       'role',
       'passwordHash',
@@ -168,7 +172,8 @@ export const deleteUser = async (req, res) => {
       'username',
       'phone',
       'version',
-    ]);
+    ],
+      { allowSensitive: true });
 
     if (!user) {
       return res.status(404).json({
@@ -281,8 +286,11 @@ export const deleteUser = async (req, res) => {
 // @access  Private
 export const getMe = async (req, res) => {
   try {
-    // Get user with all necessary fields
-    const user = await getUserByIdPrisma(req.user.id, [
+    // Get the current user's ID from the authenticated request
+    const userId = req.user.id;
+
+    // Fetch the user with only necessary fields
+    const user = await findUserByIdPrisma(userId, [
       'id',
       'firstname',
       'middlename',
@@ -291,15 +299,16 @@ export const getMe = async (req, res) => {
       'username',
       'phone',
       'role',
-      'isVerified',
-      'isDeleted',
       'profilePicture',
+      'bio',
+      'location',
       'rating',
-      'lastActiveAt',
+      'ratingCount',
+      'isVerified',
       'createdAt',
       'updatedAt',
-      'version'
-    ]);
+      'lastActiveAt',
+    ], { allowSensitive: false });
 
     if (!user) {
       return res.status(404).json({
@@ -344,7 +353,7 @@ export const restoreUser = async (req, res) => {
     }
 
     // Get user with minimal fields needed for restoration
-    const user = await getUserByIdPrisma(req.params.id, [
+    const user = await findUserByIdPrisma(req.params.id, [
       'id',
       'isDeleted',
       'firstname',
@@ -356,7 +365,7 @@ export const restoreUser = async (req, res) => {
       'version',
       'auctions',
       'bids',
-    ]);
+    ], { allowSensitive: true });
 
     if (!user) {
       return res.status(404).json({
@@ -423,7 +432,7 @@ export const uploadProfilePicture = async (req, res) => {
     const uploadedFile = req.uploadedFiles[0];
     const actorId = req.user?.id?.toString();
     // Get current user to check for existing picture
-    const user = await getUserByIdPrisma(actorId, ['profilePicture']);
+    const user = await findUserByIdPrisma(actorId, ['profilePicture'], { allowSensitive: false });
 
     if (!user) {
       return res.status(404).json({
@@ -483,7 +492,7 @@ export const deleteProfilePicture = async (req, res) => {
   try {
     const actorId = req.user?.id?.toString();
     // Get current user to check for existing picture
-    const user = await getUserByIdPrisma(actorId, ['profilePicture']);
+    const user = await findUserByIdPrisma(actorId, ['profilePicture'], { allowSensitive: false });
 
     if (!user) {
       return res.status(404).json({
@@ -563,7 +572,7 @@ export const updateUser = async (req, res) => {
     }
 
     // Find the user and include the password hash for verification
-    const user = await getUserWithVersionPrisma(req.params.id, [
+    const user = await findUserByIdPrisma(req.params.id, [
       'id',
       'role',
       'passwordHash',
@@ -572,7 +581,8 @@ export const updateUser = async (req, res) => {
       'username',
       'phone',
       'version',
-    ]);
+    ],
+      { allowSensitive: true });
 
     if (!user) {
       return res.status(404).json({
@@ -635,7 +645,7 @@ export const updateUser = async (req, res) => {
 
     // Check if the email is being updated and if it's already in use by another user
     if (updateData.email && updateData.email !== user.email) {
-      const existingUser = await findUserByEmailPrisma(updateData.email, ['id', 'isDeleted']);
+      const existingUser = await findUserByEmailPrisma(updateData.email, ['id', 'isDeleted'], { allowSensitive: false });
 
       // Check if email exists and belongs to a different active user
       if (existingUser && existingUser.id !== user.id && !existingUser.isDeleted) {
@@ -656,7 +666,7 @@ export const updateUser = async (req, res) => {
 
     // Check if the username is being updated and if it's already in use by another user
     if (updateData.username && updateData.username !== user.username) {
-      const usernameExists = await findUserByUsernamePrisma(updateData.username, ['id', 'isDeleted']);
+      const usernameExists = await findUserByUsernamePrisma(updateData.username, ['id', 'isDeleted'], { allowSensitive: false });
 
       // Check if username exists and belongs to a different active user
       if (usernameExists && usernameExists.id !== user.id && !usernameExists.isDeleted) {
@@ -687,7 +697,7 @@ export const updateUser = async (req, res) => {
         });
       }
       // Check if normalized phone already exists
-      const phoneExists = await findUserByPhonePrisma(normalizedPhone, ['id', 'isDeleted']);
+      const phoneExists = await findUserByPhonePrisma(normalizedPhone, ['id', 'isDeleted'], { allowSensitive: false });
 
       // Check if phone exists and belongs to a different active user
       if (phoneExists && phoneExists.id !== user.id && !phoneExists.isDeleted) {
@@ -745,8 +755,7 @@ export const updateUser = async (req, res) => {
       'createdAt',
       'updatedAt',
       'version'
-    ]
-    );
+    ], { allowSensitive: true });
 
     return res.status(200).json({
       status: 'success',
@@ -781,15 +790,18 @@ export const updateUser = async (req, res) => {
   }
 };
 
+
 /**
  * Internal helper for user lookup by ID (returns user object or null)
  * @param {string} id - User ID to find
+ * @param {Array<string>} fields - Fields to include
+ * @param {boolean} [allowSensitive] - Whether to allow sensitive fields
  * @returns {Promise<Object|null>} User object or null if not found
- */
+ *
 export const findUserById = async id => {
   if (!id || typeof id !== 'string' || id.trim() === '') return null;
 
-  return getUserByIdPrisma(id, [
+  return findUserByIdPrisma(id, [
     'id',
     'email',
     'firstname',
@@ -806,5 +818,6 @@ export const findUserById = async id => {
     'profilePicture',
     'phone',
     'rating',
-  ]);
+  ], { allowSensitive: true });
 };
+*/
