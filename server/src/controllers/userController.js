@@ -353,7 +353,9 @@ export const restoreUser = async (req, res) => {
       'email',
       'username',
       'role',
-      'version'
+      'version',
+      'auctions',
+      'bids',
     ]);
 
     if (!user) {
@@ -373,19 +375,22 @@ export const restoreUser = async (req, res) => {
     // Restore the user using repository function
     await restoreUserPrisma(user.id);
 
+    const nameParts = [user.firstname, user.middlename, user.lastname];
+    const fullname = nameParts.filter(Boolean).join(' ');
+
     res.status(200).json({
       status: 'success',
       message: 'User restored successfully',
       data: {
         user: {
           id: user.id,
-          firstname: user.firstname,
-          middlename: user.middlename,
-          lastname: user.lastname,
+          fullname: fullname,
           email: user.email,
           username: user.username,
           role: user.role,
           version: user.version,
+          auctions: user.auctions,
+          bids: user.bids,
         },
       },
     });

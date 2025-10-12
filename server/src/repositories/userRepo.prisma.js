@@ -153,36 +153,117 @@ export const softDeleteUserPrisma = async (userId, deletedById, version) => {
   });
 };
 
+/*
 /**
  * Permanently delete a user and all related data in a transaction
  * @param {string} userId - ID of the user to delete
  * @returns {Promise<Object>} Result of the transaction
+ *
+ * 
+export const hardDeleteUserWithRelatedDataPrisma = async (userId) => {
+  return await prisma.$transaction(async (tx) => {
+    // Delete in correct order to respect foreign key constraints
+    await tx.feedback.deleteMany({
+      where: {
+        OR: [
+          { fromUserId: userId },
+          { toUserId: userId }
+        ]
+      }
+    });
+
+    await tx.watchlist.deleteMany({
+      where: { userId }
+    });
+
+    await tx.featuredAuction.deleteMany({
+      where: { addedById: userId }
+    });
+
+    await tx.bid.deleteMany({
+      where: { bidderId: userId }
+    });
+
+    await tx.auction.deleteMany({
+      where: { 
+        OR: [
+          { sellerId: userId },
+          { winnerId: userId }
+        ]
+      }
+    });
+
+    // Finally delete the user
+    return await tx.user.delete({
+      where: { id: userId }
+    });
+  });
+};
+*/
+
+/**
+ * Permanently delete a user using database cascades
+ * @param {string} userId - ID of the user to delete
+ * @returns {Promise<Object>} Result of the deletion
  */
 export const hardDeleteUserWithRelatedDataPrisma = async (userId) => {
-  return prisma.$transaction([
-    prisma.feedback.deleteMany({ where: { fromUserId: userId } }),
-    prisma.watchlist.deleteMany({ where: { userId } }),
-    prisma.featuredAuction.deleteMany({ where: { addedById: userId } }),
-    prisma.auction.deleteMany({ where: { sellerId: userId } }),
-    prisma.bid.deleteMany({ where: { bidderId: userId } }),
-    prisma.user.delete({ where: { id: userId } }),
-  ]);
+  return await prisma.user.delete({
+    where: { id: userId }
+  });
 };
 
 /**
- * Restore a soft-deleted user
+ * Restore a soft-deleted user and all related data in a transaction
  * @param {string} userId - ID of the user to restore
  * @returns {Promise<Object>} Updated user object
  */
 export const restoreUserPrisma = async (userId) => {
-  return prisma.user.update({
-    where: { id: userId },
-    data: {
-      isDeleted: false,
-      deletedAt: null,
-      deletedById: null,
-      version: { increment: 1 },
-    },
+  return await prisma.$transaction(async (tx) => {
+    // Restore user first
+    const user = await tx.user.update({
+      where: { 
+        id: userId,
+        isDeleted: true // Only restore if currently soft-deleted
+      },
+      data: {
+        isDeleted: false,
+        deletedAt: null,
+        deletedById: null,
+        version: { increment: 1 },
+      },
+    });
+
+    // Restore user's soft-deleted auctions
+    await tx.auction.updateMany({
+      where: {
+        sellerId: userId,
+        isDeleted: true,
+        deletedById: userId, // Only restore what was deleted by this user not by admin
+      },
+      data: {
+        isDeleted: false,
+        deletedAt: null,
+        deletedById: null,
+        version: { increment: 1 },
+      },
+    });
+
+    // Restore user's soft-deleted bids
+    await tx.bid.updateMany({
+      where: {
+        bidderId: userId,
+        isDeleted: true,
+        deletedById: userId, // Only restore what was deleted by this user not by admin
+      },
+      data: {
+        isDeleted: false,
+        deletedAt: null,
+        deletedById: null,
+        version: { increment: 1 },
+      },
+    });
+
+    return user;
   });
 };
 
