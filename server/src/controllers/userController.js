@@ -789,35 +789,3 @@ export const updateUser = async (req, res) => {
     });
   }
 };
-
-
-/**
- * Internal helper for user lookup by ID (returns user object or null)
- * @param {string} id - User ID to find
- * @param {Array<string>} fields - Fields to include
- * @param {boolean} [allowSensitive] - Whether to allow sensitive fields
- * @returns {Promise<Object|null>} User object or null if not found
- *
-export const findUserById = async id => {
-  if (!id || typeof id !== 'string' || id.trim() === '') return null;
-
-  return findUserByIdPrisma(id, [
-    'id',
-    'email',
-    'firstname',
-    'lastname',
-    'username',
-    'role',
-    'isVerified',
-    'isDeleted',
-    'deletedAt',
-    'deletedById',
-    'createdAt',
-    'updatedAt',
-    'version',
-    'profilePicture',
-    'phone',
-    'rating',
-  ], { allowSensitive: true });
-};
-*/
