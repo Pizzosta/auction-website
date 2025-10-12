@@ -78,18 +78,28 @@ export const parseDuration = (val, defaultMs = 10 * 60 * 1000) => {
 
 // Process feedback to handle deleted users
 export const processFeedbackForDisplay = (feedback) => {
-  // If fromUser is null (user was deleted), set isAnonymous to true
-  if (!feedback.fromUser) {
-    return {
-      ...feedback,
-      isAnonymous: true,
-      fromUser: {
-        id: null,
-        username: 'Anonymous',
-        profilePicture: null
-      },
-     // comment: feedback.comment ? `${feedback.comment} [User deleted]` : feedback.comment,
-    };
+  const processedSingleFeedback = (item) => {
+    if (!item) return item;
+
+    // If fromUser is null or user is soft-deleted, set isAnonymous to true
+    if (!item.fromUser || item.fromUser.isDeleted) {
+      return {
+        ...item,
+        isAnonymous: true,
+        fromUser: {
+          id: null,
+          username: 'Anonymous',
+          profilePicture: null
+        },
+        comment: feedback.comment ? `${feedback.comment} [User deleted]` : null,
+      };
+    }
+    return item;
+  };
+
+  // Handle both arrays and single feedback objects
+  if (Array.isArray(feedback)) {
+    return feedback.map(processFeedbackForDisplay);
   }
-  return feedback;
+  return processedSingleFeedback(feedback);
 };

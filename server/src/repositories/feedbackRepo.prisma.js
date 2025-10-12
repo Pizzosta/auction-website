@@ -160,7 +160,23 @@ export async function listFeedbackPrisma({
     const [feedbacks, count] = await Promise.all([
         prisma.feedback.findMany({
             where,
-            select,
+            include: {
+                fromUser: {
+                    select: {
+                        id: true,
+                        username: true,
+                        profilePicture: true,
+                        isDeleted: true
+                    }
+                },
+                auction: {
+                    select: {
+                        id: true,
+                        title: true,
+                        images: true
+                    }
+                }
+            },
             orderBy: { [sortField]: sortOrder || 'desc' },
             skip,
             take,
