@@ -70,6 +70,7 @@ export async function updateUserRating(userId) {
  */
 export async function listFeedbackPrisma({
     userId,
+    fromUserId,
     type,
     page = 1,
     limit = 10,
@@ -86,20 +87,22 @@ export async function listFeedbackPrisma({
     const [sortField, sortOrder] = sort.split(':');
 
     // Build where clause
-    const where = { toUserId: userId };
-    
+    const where = {};
+    if (userId) where.toUserId = userId;  // For received feedback
+    if (fromUserId) where.fromUserId = fromUserId;  // For sent feedback
+
     if (type && ['seller', 'buyer'].includes(type)) {
         where.type = type;
     }
-    
+
     if (minRating !== undefined) {
         where.rating = { gte: parseInt(minRating) };
     }
-    
+
     if (maxRating !== undefined) {
         where.rating = { ...where.rating, lte: parseInt(maxRating) };
     }
-    
+
     if (startDate || endDate) {
         where.createdAt = {};
         if (startDate) where.createdAt.gte = new Date(startDate);
@@ -136,13 +139,13 @@ export async function listFeedbackPrisma({
     if (fields && Array.isArray(fields)) {
         const fieldSet = new Set(fields);
         const filteredSelect = {};
-        
+
         Object.entries(select).forEach(([key, value]) => {
             if (fieldSet.has(key) || key === 'id') { // Always include id
                 filteredSelect[key] = value;
             }
         });
-        
+
         // Special handling for nested fields
         if (fieldSet.has('fromUser')) {
             filteredSelect.fromUser = select.fromUser;
@@ -150,7 +153,7 @@ export async function listFeedbackPrisma({
         if (fieldSet.has('auction')) {
             filteredSelect.auction = select.auction;
         }
-        
+
         Object.assign(select, filteredSelect);
     }
 
@@ -165,9 +168,9 @@ export async function listFeedbackPrisma({
         prisma.feedback.count({ where }),
     ]);
 
-    const totalPages = Math.ceil(count / take) || 1;
+    const totalPages = Math.ceil(count / take);
 
-    const response = {
+    return {
         data: feedbacks,
         pagination: {
             currentPage: pageNum,
@@ -179,7 +182,6 @@ export async function listFeedbackPrisma({
         },
     };
 
-    return response;
 }
 
 /**

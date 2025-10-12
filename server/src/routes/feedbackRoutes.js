@@ -6,7 +6,8 @@ import {
   createFeedback,
   getUserFeedback,
   respondToFeedback,
-  getFeedbackSummary
+  getFeedbackSummary,
+  getFeedbackSentByUser
 } from '../controllers/feedbackController.js';
 
 const router = express.Router();
@@ -22,5 +23,8 @@ router.get('/summary/:userId', protect, validate(idSchema('userId'), 'params'), 
 
 // Respond to feedback
 router.post('/:feedbackId/respond', protect, validate(idSchema('feedbackId'), 'params'), validate(feedbackSchema.respond, 'body'), respondToFeedback);
+
+// Get feedback sent by user
+router.get('/sent/:userId', protect, validate(idSchema('userId'), 'params'), validate(feedbackQuerySchema, 'query'), getFeedbackSentByUser);
 
 export default router;

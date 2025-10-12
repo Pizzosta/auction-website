@@ -75,3 +75,21 @@ export const parseDuration = (val, defaultMs = 10 * 60 * 1000) => {
 
   return num * (multipliers[unit] || 1);
 }
+
+// Process feedback to handle deleted users
+export const processFeedbackForDisplay = (feedback) => {
+  // If fromUser is null (user was deleted), set isAnonymous to true
+  if (!feedback.fromUser) {
+    return {
+      ...feedback,
+      isAnonymous: true,
+      fromUser: {
+        id: null,
+        username: 'Anonymous',
+        profilePicture: null
+      },
+     // comment: feedback.comment ? `${feedback.comment} [User deleted]` : feedback.comment,
+    };
+  }
+  return feedback;
+};

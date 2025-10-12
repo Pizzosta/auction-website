@@ -9,8 +9,7 @@ import {
     getExistingFeedback,
     updateUserRating
 } from '../repositories/feedbackRepo.prisma.js';
-import { response } from 'express';
-
+import { processFeedbackForDisplay } from '../utils/format.js';
 
 // Create feedback
 export const createFeedback = async (req, res) => {
@@ -117,11 +116,14 @@ export const getUserFeedback = async (req, res) => {
             endDate,
             fields: fields ? fields.split(',').map(f => f.trim()) : undefined
         });
-        
+
+        // Process feedback to handle deleted users
+        const processedData = processFeedbackForDisplay(result.data);
+
         res.status(200).json({
             status: 'success',
             pagination: result.pagination,
-            data: result.data,
+            data: processedData,
         });
     } catch (error) {
         logger.error('Error fetching feedback', {
@@ -175,5 +177,57 @@ export const getFeedbackSummary = async (req, res) => {
             stack: error.stack,
         });
         res.status(500).json({ status: 'error', message: 'Failed to fetch feedback summary' });
+    }
+};
+
+/**
+ * Get all feedback sent by a specific user
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ */
+export const getFeedbackSentByUser = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const {
+            type,
+            page = 1,
+            limit = 10,
+            sort = 'createdAt:desc',
+            minRating,
+            maxRating,
+            startDate,
+            endDate,
+            fields
+        } = req.query;
+
+        const result = await listFeedbackPrisma({
+            fromUserId: userId,  // Filter by user who sent the feedback
+            type,
+            page: parseInt(page),
+            limit: parseInt(limit),
+            sort,
+            minRating: minRating ? parseInt(minRating) : undefined,
+            maxRating: maxRating ? parseInt(maxRating) : undefined,
+            startDate,
+            endDate,
+            fields: fields ? fields.split(',').map(f => f.trim()) : undefined
+        });
+
+        res.status(200).json({
+            status: 'success',
+            pagination: result.pagination,
+            data: result.data,
+        });
+    } catch (error) {
+        logger.error('Error fetching feedback sent by user', {
+            error: error.message,
+            stack: error.stack,
+            userId: req.params.userId,
+            user: req.user?.id
+        });
+        res.status(500).json({ 
+            status: 'error', 
+            message: 'Failed to fetch sent feedback' 
+        });
     }
 };
