@@ -11,7 +11,7 @@ model User {
   id                      String            @id @default(uuid())
   createdAt               DateTime          @default(now())
   updatedAt               DateTime          @updatedAt
-  version                 Int               @default(1) // For optimistic concurrency control
+  version                 Int               @default(1)
   firstname               String
   middlename              String?           @default("")
   lastname                String
@@ -32,28 +32,33 @@ model User {
   emailVerificationToken  String?
   emailVerificationExpire DateTime?
   profilePicture          Json?             @default("{}")
-  deletedAuctions         Auction[]         @relation("AuctionDeletedBy")
+  rating                  Float?            @default(0)
+  ratingCount             Int               @default(0)
+
+  // Relations - REMOVE onDelete from list sides
   auctions                Auction[]         @relation("SellerAuctions")
-  wonAuctions             Auction[]         @relation("WinnerAuctions")
   bids                    Bid[]             @relation("BidBidder")
-  deletedBids             Bid[]             @relation("BidDeletedBy")
-  deletedBy               User?             @relation("UserDeletedBy", fields: [deletedById], references: [id])
+  watchlists              Watchlist[]       @relation()
+  featuredAuctionsAdded   FeaturedAuction[] @relation("FeaturedAuctionAddedBy")
+  feedbackGiven           Feedback[]        @relation("FeedbackGiven")
+
+  // Relations with SetNull - REMOVE onDelete from list sides
+  wonAuctions             Auction[]         @relation("WinnerAuctions")
+  feedbackReceived        Feedback[]        @relation("FeedbackReceived")
+
+  // Administrative relations
+  deletedBy               User?             @relation("UserDeletedBy", fields: [deletedById], references: [id], onDelete: NoAction)
   deletedUsers            User[]            @relation("UserDeletedBy")
-  Watchlist               Watchlist[]
-  FeaturedAuction         FeaturedAuction[]
-
-  rating            Float? @default(0)
-  ratingCount       Int    @default(0)
-
-  feedbackGiven    Feedback[] @relation("FeedbackGiven")
-  feedbackReceived Feedback[] @relation("FeedbackReceived")
+  deletedAuctions         Auction[]         @relation("AuctionDeletedBy")
+  deletedBids             Bid[]             @relation("BidDeletedBy")
+  featuredAuctionsDeleted FeaturedAuction[] @relation("FeaturedAuctionDeletedBy")
 }
 
 model Auction {
   id            String        @id @default(uuid())
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
-  version       Int           @default(1) // For optimistic concurrency control
+  version       Int           @default(1)
   title         String
   description   String
   startingPrice Decimal       @db.Decimal(12, 2)
@@ -70,92 +75,103 @@ model Auction {
   isDeleted     Boolean       @default(false)
   images        Json?
 
-  deletedBy     User?         @relation("AuctionDeletedBy", fields: [deletedById], references: [id])
-  seller        User          @relation("SellerAuctions", fields: [sellerId], references: [id])
-  winner        User?         @relation("WinnerAuctions", fields: [winnerId], references: [id])
-
-  highestBidId    String?          @unique
-  highestBid      Bid?             @relation("AuctionHighestBid", fields: [highestBidId], references: [id])
-  bids            Bid[]            @relation("AuctionBids")
-  Watchlist       Watchlist[]
-  FeaturedAuction FeaturedAuction?
-  Feedback        Feedback[]
+  // Relations - Define onDelete ONLY on foreign key side
+  seller        User          @relation("SellerAuctions", fields: [sellerId], references: [id], onDelete: Cascade)
+  winner        User?         @relation("WinnerAuctions", fields: [winnerId], references: [id], onDelete: SetNull)
+  deletedBy     User?         @relation("AuctionDeletedBy", fields: [deletedById], references: [id], onDelete: NoAction)
+  
+  highestBidId  String?       @unique
+  highestBid    Bid?          @relation("AuctionHighestBid", fields: [highestBidId], references: [id], onDelete: SetNull)
+  
+  // Cascade deletes - REMOVE onDelete from list sides
+  bids          Bid[]         @relation("AuctionBids")
+  watchlists    Watchlist[]   @relation()
+  featured      FeaturedAuction? @relation()
+  feedbacks     Feedback[]    @relation()
 
   @@index([status])
   @@index([endDate])
+  @@index([sellerId])
+  @@index([winnerId])
 }
 
 model Bid {
   id            String   @id @default(uuid())
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
-  version       Int      @default(1) // For optimistic concurrency control
+  version       Int      @default(1)
   amount        Decimal  @db.Decimal(12, 2)
-
   auctionId     String
-  auction       Auction  @relation("AuctionBids", fields: [auctionId], references: [id])
+  bidderId      String
+  isOutbid      Boolean  @default(false)
+  outbidAt      DateTime?
+  deletedAt     DateTime?
+  deletedById   String?
+  isDeleted     Boolean  @default(false)
 
-  highestBidFor Auction? @relation("AuctionHighestBid")
-
-  bidderId    String
-  isOutbid    Boolean   @default(false)
-  outbidAt    DateTime?
-  deletedAt   DateTime?
-  deletedById String?
-  isDeleted   Boolean   @default(false)
-  bidder      User      @relation("BidBidder", fields: [bidderId], references: [id])
-  deletedBy   User?     @relation("BidDeletedBy", fields: [deletedById], references: [id])
+  // Relations - Define onDelete ONLY on foreign key side
+  auction       Auction  @relation("AuctionBids", fields: [auctionId], references: [id], onDelete: Cascade)
+  bidder        User     @relation("BidBidder", fields: [bidderId], references: [id], onDelete: Cascade)
+  deletedBy     User?    @relation("BidDeletedBy", fields: [deletedById], references: [id], onDelete: NoAction)
+  highestBidFor Auction? @relation("AuctionHighestBid") // REMOVE onDelete - defined on Auction.highestBid
 
   @@unique([auctionId, bidderId, amount])
   @@index([auctionId, createdAt])
+  @@index([bidderId])
 }
 
 model Watchlist {
-  id        String    @id @default(uuid())
+  id        String   @id @default(uuid())
   userId    String
   auctionId String
-  createdAt DateTime  @default(now())
+  createdAt DateTime @default(now())
 
-  user      User      @relation(fields: [userId], references: [id])
-  auction   Auction   @relation(fields: [auctionId], references: [id])
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  auction Auction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
 
   @@unique([userId, auctionId])
+  @@index([userId])
+  @@index([auctionId])
 }
 
 model FeaturedAuction {
-  id          String    @id @default(uuid())
-  auctionId   String    @unique
-  createdAt   DateTime  @default(now())
+  id          String   @id @default(uuid())
+  auctionId   String   @unique
+  createdAt   DateTime @default(now())
   addedById   String
   deletedAt   DateTime?
   deletedById String?
-  isDeleted   Boolean   @default(false)
+  isDeleted   Boolean  @default(false)
 
-  auction     Auction   @relation(fields: [auctionId], references: [id])
-  addedBy     User      @relation(fields: [addedById], references: [id])
+  auction   Auction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  addedBy   User    @relation("FeaturedAuctionAddedBy", fields: [addedById], references: [id], onDelete: Cascade)
+  deletedBy User?   @relation("FeaturedAuctionDeletedBy", fields: [deletedById], references: [id], onDelete: NoAction)
 
   @@index([addedById])
+  @@index([deletedById])
 }
 
 model Feedback {
   id          String   @id @default(uuid())
   rating      Int
   comment     String?
-  type        String // 'seller' or 'buyer'
+  type        String   // 'seller' or 'buyer'
   isAnonymous Boolean  @default(false)
   response    String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-
   auctionId   String
-  auction     Auction @relation(fields: [auctionId], references: [id])
   fromUserId  String
-  fromUser    User    @relation("FeedbackGiven", fields: [fromUserId], references: [id])
   toUserId    String
-  toUser      User    @relation("FeedbackReceived", fields: [toUserId], references: [id])
+
+  auction  Auction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  fromUser User    @relation("FeedbackGiven", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser   User    @relation("FeedbackReceived", fields: [toUserId], references: [id], onDelete: SetNull)
 
   @@unique([auctionId, fromUserId, type])
   @@index([toUserId])
+  @@index([fromUserId])
+  @@index([auctionId])
 }
 
 enum AuctionStatus {
