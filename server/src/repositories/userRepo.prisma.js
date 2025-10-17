@@ -179,6 +179,20 @@ export const softDeleteUserPrisma = async (userId, deletedById, version) => {
       }
     });
 
+    // Soft delete user's watchlist
+    await tx.watchlist.updateMany({
+      where: {
+        userId,
+        isDeleted: false
+      },
+      data: {
+        isDeleted: true,
+        deletedAt: new Date(),
+        deletedById: deletedById,
+        version: { increment: 1 },
+      }
+    });
+
     // Soft delete user
     return await tx.user.update({
       where: { id: userId, version },
@@ -243,6 +257,21 @@ export const restoreUserPrisma = async (userId) => {
     await tx.bid.updateMany({
       where: {
         bidderId: userId,
+        isDeleted: true,
+        deletedById: userId, // Only restore what was deleted by this user not by admin
+      },
+      data: {
+        isDeleted: false,
+        deletedAt: null,
+        deletedById: null,
+        version: { increment: 1 },
+      },
+    });
+
+    // Restore user's soft-deleted watchlist
+    await tx.watchlist.updateMany({
+      where: {
+        userId,
         isDeleted: true,
         deletedById: userId, // Only restore what was deleted by this user not by admin
       },
