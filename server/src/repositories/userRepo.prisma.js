@@ -27,6 +27,7 @@ export const createUserSelect = (fields, options = {}) => {
       lastname: true,
       middlename: true,
       email: true,
+      phone: true,
       username: true,
       role: true,
       isVerified: true,
