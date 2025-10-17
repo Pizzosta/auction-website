@@ -225,6 +225,14 @@ export const deleteUser = async (req, res) => {
       });
     }
 
+    // Prevent soft deletion of already deleted users
+    if (user.isDeleted && !permanent) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'User account has been already deactivated',
+      });
+    }
+
     try {
       if (permanent) {
         // Hard delete with related data
