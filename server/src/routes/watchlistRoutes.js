@@ -3,10 +3,11 @@ import {
   addToWatchlist,
   removeFromWatchlist,
   getWatchlist,
+  checkWatchlistStatus,
 } from '../controllers/watchlistController.js';
 import { protect } from '../middleware/authMiddleware.js';
 import { validate } from '../middleware/validationMiddleware.js';
-import { watchlistSchema } from '../utils/validators.js';
+import { idSchema, watchlistSchema } from '../utils/validators.js';
 
 const router = express.Router();
 
@@ -40,5 +41,15 @@ router.delete('/remove', protect, validate(watchlistSchema.remove, 'body'), remo
  * @returns {Error}  default - Unexpected error
  */
 router.get('/', protect, getWatchlist);
+
+/**
+ * @route GET /api/watchlist/check/:auctionId
+ * @group Watchlist - watchlist management
+ * @description Check if an auction is in the user's watchlist. Requires authentication.
+ * @param {string} auctionId.params.required - ID of the auction to check
+ * @returns {object} 200 - Auction status in the user's watchlist
+ * @returns {Error}  default - Unexpected error
+ */
+router.get('/check/:auctionId', protect, validate(idSchema('auctionId'), 'params'), checkWatchlistStatus);
 
 export default router;

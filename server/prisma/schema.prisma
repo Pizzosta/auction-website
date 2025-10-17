@@ -121,17 +121,24 @@ model Bid {
 }
 
 model Watchlist {
-  id        String   @id @default(uuid())
-  userId    String
-  auctionId String
-  createdAt DateTime @default(now())
-
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  auction Auction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  id          String   @id @default(uuid())
+  userId      String
+  auctionId   String
+  isDeleted   Boolean  @default(false)
+  deletedAt   DateTime?
+  deletedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  version     Int      @default(1)
+  
+  // Relations
+  auction     Auction  @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, auctionId])
   @@index([userId])
   @@index([auctionId])
+  @@index([isDeleted])
 }
 
 model FeaturedAuction {

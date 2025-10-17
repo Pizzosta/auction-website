@@ -1523,6 +1523,9 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "OK"
+          },
           "201": {
             "description": "Created"
           },
@@ -1531,6 +1534,9 @@
           },
           "401": {
             "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Not Found"
           },
           "409": {
             "description": "Conflict"
@@ -1584,20 +1590,31 @@
         }
       }
     },
-    "/api/watchlist/{add{where{userId_auctionId:{userId}": {
-      "delete": {
+    "/api/watchlist/check/{auctionId}": {
+      "get": {
         "description": "",
         "parameters": [
           {
-            "name": null,
+            "name": "auctionId",
             "in": "path",
             "required": true,
+            "type": "string"
+          },
+          {
+            "name": "authorization",
+            "in": "header",
             "type": "string"
           }
         ],
         "responses": {
-          "default": {
-            "description": ""
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
           }
         }
       }
