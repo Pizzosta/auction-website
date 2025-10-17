@@ -103,3 +103,23 @@ export const processFeedbackForDisplay = (feedback) => {
   }
   return processedSingleFeedback(feedback);
 };
+
+// Password strength checker
+export const checkPasswordStrength = (password) => {
+  const hasMinLength = password.length >= 8;
+  const hasUpperCase = /[A-Z]/.test(password);
+  const hasLowerCase = /[a-z]/.test(password);
+  const hasNumbers = /\d/.test(password);
+  const hasSpecialChar = /[^A-Za-z0-9]/.test(password);
+
+  return {
+    isValid: hasMinLength && hasUpperCase && hasLowerCase && hasNumbers && hasSpecialChar,
+    issues: {
+      minLength: !hasMinLength ? 'Must be at least 8 characters' : null,
+      upperCase: !hasUpperCase ? 'Must contain at least one uppercase letter' : null,
+      lowerCase: !hasLowerCase ? 'Must contain at least one lowercase letter' : null,
+      numbers: !hasNumbers ? 'Must contain at least one number' : null,
+      specialChar: !hasSpecialChar ? 'Must contain at least one special character' : null,
+    },
+  };
+};

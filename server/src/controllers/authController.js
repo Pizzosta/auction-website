@@ -1,13 +1,12 @@
-import prisma from '../config/prisma.js';
-import bcrypt from 'bcryptjs';
 import zxcvbn from 'zxcvbn';
-import crypto from 'crypto';
 import { addToQueue } from '../services/emailQueue.js';
 import logger from '../utils/logger.js';
 import { env, validateEnv } from '../config/env.js';
 import { generateAccessToken, generateRefreshToken } from '../services/tokenService.js';
-import { normalizeToE164, parseDuration } from '../utils/format.js';
+import { checkPasswordStrength, normalizeToE164 } from '../utils/format.js';
 import jwt from 'jsonwebtoken';
+import { findUserByEmailPrisma, findUserByUsernamePrisma, findUserByPhonePrisma } from '../repositories/userRepo.prisma.js';
+import { createUserWithPassword, findUserByCredentials, updateLastActiveAt, createPasswordResetToken, clearPasswordResetToken, resetUserPassword, createEmailVerificationToken, clearEmailVerificationToken, verifyUserEmail } from '../repositories/authRepo.prisma.js';
 
 // Validate required environment variables
 const missingVars = validateEnv();
@@ -15,26 +14,6 @@ if (missingVars.length > 0) {
   logger.error(`Missing required environment variables: ${missingVars.join(', ')}`);
   process.exit(1);
 }
-
-// Password strength checker
-const checkPasswordStrength = password => {
-  const hasMinLength = password.length >= 8;
-  const hasUpperCase = /[A-Z]/.test(password);
-  const hasLowerCase = /[a-z]/.test(password);
-  const hasNumbers = /\d/.test(password);
-  const hasSpecialChar = /[^A-Za-z0-9]/.test(password);
-
-  return {
-    isValid: hasMinLength && hasUpperCase && hasLowerCase && hasNumbers && hasSpecialChar,
-    issues: {
-      minLength: !hasMinLength ? 'Must be at least 8 characters' : null,
-      upperCase: !hasUpperCase ? 'Must contain at least one uppercase letter' : null,
-      lowerCase: !hasLowerCase ? 'Must contain at least one lowercase letter' : null,
-      numbers: !hasNumbers ? 'Must contain at least one number' : null,
-      specialChar: !hasSpecialChar ? 'Must contain at least one special character' : null,
-    },
-  };
-};
 
 export const register = async (req, res) => {
   try {
@@ -78,47 +57,60 @@ export const register = async (req, res) => {
         message: 'Invalid phone number format',
       });
     }
-
+    
     // Check if user exists
-    const userByEmail = await prisma.user.findFirst({ where: { email: normalizedEmail } });
-    if (userByEmail) {
+    const userByEmail = await findUserByEmailPrisma(normalizedEmail, ['id', 'isDeleted']);
+    if (userByEmail && !userByEmail.isDeleted) {
       return res.status(400).json({
         status: 'error',
         message: 'Email is already in use by another user.',
       });
     }
+    if (userByEmail && userByEmail.isDeleted) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'This email was previously used by another account',
+      })
+    }
 
-    const userByUsername = await prisma.user.findFirst({ where: { username: normalizedUsername } });
-    if (userByUsername) {
+    const userByUsername = await findUserByUsernamePrisma(normalizedUsername, ['id', 'isDeleted']);
+    if (userByUsername && !userByUsername.isDeleted) {
       return res.status(400).json({
         status: 'error',
         message: 'Username is already in use by another user.',
       });
     }
+    if (userByUsername && userByUsername.isDeleted) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'This username was previously used by another account',
+      })
+    }
 
-    const userByPhone = await prisma.user.findFirst({ where: { phone: normalizedPhone } });
-    if (userByPhone) {
+    const userByPhone = await findUserByPhonePrisma(normalizedPhone, ['id', 'isDeleted']);
+    if (userByPhone && !userByPhone.isDeleted) {
       return res.status(400).json({
         status: 'error',
         message: 'Phone number is already in use by another user.',
       });
     }
+    if (userByPhone && userByPhone.isDeleted) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'This phone number was previously used by another account',
+      })
+    }
 
     // Create user (hash password)
-    const salt = await bcrypt.genSalt(10);
-    const passwordHash = await bcrypt.hash(password, salt);
-    const user = await prisma.user.create({
-      data: {
-        firstname,
-        middlename: middlename || '',
-        lastname,
-        phone: normalizedPhone,
-        username: normalizedUsername,
-        email: normalizedEmail,
-        passwordHash,
-        role: 'user',
-        lastActiveAt: new Date(),
-      },
+    const user = await createUserWithPassword({
+      firstname,
+      middlename: middlename || '',
+      lastname,
+      phone: normalizedPhone,
+      username: normalizedUsername,
+      email: normalizedEmail,
+      password,
+      role: 'user',
     });
 
     // Add welcome email to queue
@@ -168,8 +160,15 @@ export const register = async (req, res) => {
       },
     });
   } catch (error) {
-    logger.error('Login error:', error);
-    res.status(500).json({ message: 'Internal server error' });
+    logger.error('Registration error:', {
+      error: error.message,
+      stack: error.stack,
+      email: req.body?.email,
+    });
+    res.status(500).json({
+      status: 'error',
+      message: 'Internal server error'
+    });
   }
 };
 
@@ -178,41 +177,24 @@ export const login = async (req, res) => {
     const { email, password } = req.body;
 
     // Check if user exists
-    const user = await prisma.user.findFirst({
-      where: { email: email?.trim().toLowerCase() },
-      select: {
-        id: true,
-        firstname: true,
-        middlename: true,
-        lastname: true,
-        username: true,
-        email: true,
-        phone: true,
-        role: true,
-        passwordHash: true,
-        isDeleted: true,
-      },
-    });
+    const user = await findUserByCredentials(email, password);
     if (!user) {
-      return res.status(400).json({ message: 'Invalid credentials' });
+      return res.status(400).json({
+        status: 'error',
+        message: 'Invalid credentials'
+      });
     }
 
     // Check if user is soft-deleted
     if (user.isDeleted) {
-      return res.status(403).json({ message: 'User account has been deactivated' });
-    }
-
-    // Check password
-    const isMatch = user.passwordHash ? await bcrypt.compare(password, user.passwordHash) : false;
-    if (!isMatch) {
-      return res.status(400).json({ message: 'Invalid credentials' });
+      return res.status(403).json({
+        status: 'error',
+        message: 'User account has been deactivated'
+      });
     }
 
     // Update lastActiveAt timestamp
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { lastActiveAt: new Date() }
-    });
+    await updateLastActiveAt(user.id);
 
     // Generate tokens
     const accessToken = generateAccessToken(user.id, user.email, user.role);
@@ -245,7 +227,10 @@ export const login = async (req, res) => {
     });
   } catch (error) {
     logger.error('Login error:', error);
-    res.status(500).json({ message: 'Internal server error' });
+    res.status(500).json({
+      status: 'error',
+      message: 'Internal server error'
+    });
   }
 };
 
@@ -260,11 +245,10 @@ export const forgotPassword = async (req, res) => {
       });
     }
 
+    const normalizedEmail = email.trim().toLowerCase();
+
     // Find user by email
-    const user = await prisma.user.findFirst({
-      where: { email: email?.trim().toLowerCase() },
-      select: { id: true, firstname: true, email: true },
-    });
+    const user = await findUserByEmailPrisma(normalizedEmail, ['id', 'firstname', 'email']);
 
     // Don't reveal if user doesn't exist (security best practice)
     if (!user) {
@@ -275,31 +259,17 @@ export const forgotPassword = async (req, res) => {
     }
 
     // Generate reset token and save hashed version to database
-    const resetToken = crypto.randomBytes(32).toString('hex');
-    const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
-
-    // compute expire (default to 10 minutes if not configured)
-    const expireMs = parseDuration(env.resetTokenExpire, 10 * 60 * 1000);
-    const expireAt = new Date(Date.now() + expireMs);
-
-    // Update user with hashed token and expiry
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        resetPasswordToken: hashedToken,
-        resetPasswordExpire: expireAt,
-      },
-    });
+    const resetToken = await createPasswordResetToken(normalizedEmail);
 
     // Create reset URL - use the unhashed token in the URL
     const resetUrl = `${env.clientUrl}/reset-password/${resetToken}`;
 
     // Send email
     try {
-      const rawExpire = env.resetTokenExpire || 10 * 60 * 1000;
-      const expireInMinutes = String(rawExpire).endsWith('m')
-        ? `${String(rawExpire).replace('m', '')} minutes`
-        : String(rawExpire);
+      const rawExpire = env.resetTokenExpire || '10m';
+      const expireInMinutes = rawExpire.endsWith('m')
+        ? `${rawExpire.replace('m', '')} minutes`
+        : rawExpire;
 
       await addToQueue('resetPassword', user.email, {
         name: user.firstname,
@@ -317,10 +287,7 @@ export const forgotPassword = async (req, res) => {
         stack: error.stack,
         userEmail: user.email,
       });
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { resetPasswordToken: null, resetPasswordExpire: null },
-      });
+      await clearPasswordResetToken(user.id);
 
       // Don't fail the request if email fails
     }
@@ -402,17 +369,8 @@ export const resetPassword = async (req, res) => {
       });
     }
 
-    // Get hashed token using the decoded token
-    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
-
-    // Find user with valid reset token and not expired
-    const user = await prisma.user.findFirst({
-      where: {
-        resetPasswordToken: hashedToken,
-        resetPasswordExpire: { gt: new Date() },
-      },
-      select: { id: true, firstname: true, email: true, role: true, passwordHash: true },
-    });
+    // Reset password using repository
+    const user = await resetUserPassword(token, password);
 
     if (!user) {
       return res.status(400).json({
@@ -420,23 +378,6 @@ export const resetPassword = async (req, res) => {
         message: 'Invalid or expired reset token',
       });
     }
-
-    // Check if new password is the same as the old one
-    const isMatch = user.passwordHash ? await bcrypt.compare(password, user.passwordHash) : false;
-    if (isMatch) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'New password cannot be the same as the old password',
-      });
-    }
-
-    // Set new password
-    const salt = await bcrypt.genSalt(10);
-    const passwordHash = await bcrypt.hash(password, salt);
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { passwordHash, resetPasswordToken: null, resetPasswordExpire: null },
-    });
 
     // Send confirmation email
     try {
@@ -464,18 +405,23 @@ export const resetPassword = async (req, res) => {
       status: 'success',
       message: 'Password reset successful',
       data: {
-        token: authToken,
+        accessToken: authToken,
+        expiresIn: env.jwtExpire,
         user: {
           id: user.id,
           firstname: user.firstname,
-          middlename: user.middlename,
-          lastname: user.lastname,
           email: user.email,
           role: user.role,
         },
       },
     });
   } catch (error) {
+    if (error.code === 'SAME_PASSWORD') {
+      return res.status(400).json({
+        status: 'error',
+        message: error.message
+      });
+    };
     logger.error('Reset password error:', {
       error: error.message,
       stack: error.stack,
@@ -503,10 +449,12 @@ export const requestVerification = async (req, res) => {
       });
     }
 
-    const user = await prisma.user.findUnique({
-      where: { email: email?.trim().toLowerCase() },
-      select: { id: true, firstname: true, email: true, isVerified: true, isDeleted: true },
-    });
+    const normalizedEmail = email.trim().toLowerCase();
+
+    // Find user using repository
+    const user = await findUserByEmailPrisma(normalizedEmail, [
+      'id', 'firstname', 'email', 'isVerified', 'isDeleted'
+    ]);
 
     if (!user) {
       return res.status(404).json({
@@ -527,32 +475,18 @@ export const requestVerification = async (req, res) => {
       });
     }
 
-    // Generate token and hash
-    const rawToken = crypto.randomBytes(32).toString('hex');
-    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
-
-    // compute expire (default to 24 hours if not configured)
-    const expireMs = parseDuration(env.verificationTokenExpire, 24 * 60 * 60 * 1000);
-    const expiry = new Date(Date.now() + expireMs);
-
-    // Update user with hashed token and expiry
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        emailVerificationToken: tokenHash,
-        emailVerificationExpire: expiry,
-      },
-    });
+    // Generate verification token using repository
+    const verificationToken = await createEmailVerificationToken(normalizedEmail);
 
     // Create verification link
-    const verificationUrl = `${env.clientUrl}/verify-email/${rawToken}`;
+    const verificationUrl = `${env.clientUrl}/verify-email/${verificationToken}`;
 
     // Send email
     try {
-      const rawExpire = env.verificationTokenExpire || 24 * 60 * 60 * 1000;
-      const expireInHours = String(rawExpire).endsWith('h')
-        ? `${String(rawExpire).replace('h', '')} hours`
-        : String(rawExpire);
+      const rawExpire = env.verificationTokenExpire || '24h';
+      const expireInHours = rawExpire.endsWith('h')
+        ? `${rawExpire.replace('h', '')} hours`
+        : rawExpire;
 
       await addToQueue('verificationEmail', user.email, {
         name: user.firstname,
@@ -571,10 +505,7 @@ export const requestVerification = async (req, res) => {
         userId: user.id,
         userEmail: user.email,
       });
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { emailVerificationToken: null, emailVerificationExpire: null },
-      });
+      await clearEmailVerificationToken(user.id);
 
       // Don't fail the request if email fails
     }
@@ -631,17 +562,8 @@ export const verifyEmail = async (req, res) => {
       isHex: /^[0-9a-fA-F]+$/.test(token),
     });
 
-    // Get hashed token using the decoded token
-    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-
-    // Find user with matching hashed token and not expired
-    const user = await prisma.user.findFirst({
-      where: {
-        emailVerificationToken: tokenHash,
-        emailVerificationExpire: { gt: new Date() },
-        isVerified: false,
-      },
-    });
+    // Verify email using repository
+    const user = await verifyUserEmail(token);
 
     if (!user) {
       return res.status(400).json({
@@ -649,18 +571,17 @@ export const verifyEmail = async (req, res) => {
         message: 'Invalid or expired verification token',
       });
     }
-    // Update user: set verified, clear token fields
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        isVerified: true,
-        emailVerificationToken: null,
-        emailVerificationExpire: null,
-      },
-    });
+
     return res.status(200).json({
       status: 'success',
       message: 'Email verified successfully',
+      data: {
+        user: {
+          id: user.id,
+          email: user.email,
+          isVerified: user.isVerified,
+        }
+      }
     });
   } catch (error) {
     logger.error('Error verifying email:', {
