@@ -2,12 +2,13 @@ import express from 'express';
 import {
   addToWatchlist,
   removeFromWatchlist,
+  toggleWatchlist,
   getWatchlist,
   checkWatchlistStatus,
 } from '../controllers/watchlistController.js';
 import { protect } from '../middleware/authMiddleware.js';
 import { validate } from '../middleware/validationMiddleware.js';
-import { idSchema, watchlistSchema } from '../utils/validators.js';
+import { idSchema, watchlistSchema, watchlistQuerySchema } from '../utils/validators.js';
 
 const router = express.Router();
 
@@ -34,13 +35,24 @@ router.post('/add', protect, validate(watchlistSchema.add, 'body'), addToWatchli
 router.delete('/remove', protect, validate(watchlistSchema.remove, 'body'), removeFromWatchlist);
 
 /**
+ * @route POST /api/watchlist/toggle
+ * @group Watchlist - watchlist management
+ * @description Toggle an auction's status in the user's watchlist. Requires authentication.
+ * @param {ToggleWatchlist.model} body.body.required
+ * @param {string} auctionId.body.required - ID of the auction to toggle
+ * @returns {object} 200 - Auction status toggled in the user's watchlist
+ * @returns {Error}  default - Unexpected error
+ */
+router.post('/toggle', protect, validate(watchlistSchema.toggle, 'body'), toggleWatchlist);
+
+/**
  * @route GET /api/watchlist
  * @group Watchlist - watchlist management
  * @description Get the authenticated user's watchlist. Requires authentication.
  * @returns {object} 200 - List of auctions in the user's watchlist
  * @returns {Error}  default - Unexpected error
  */
-router.get('/', protect, getWatchlist);
+router.get('/', protect, validate(watchlistQuerySchema, 'query'), getWatchlist);
 
 /**
  * @route GET /api/watchlist/check/:auctionId

@@ -94,6 +94,20 @@ export const feedbackQuerySchema = Joi.object({
   endDate: Joi.date().iso().optional(),
 });
 
+// Watchlist query schema validation
+export const watchlistQuerySchema = Joi.object({
+  page: Joi.number().integer().min(1).max(10000).default(1),
+  limit: Joi.number().integer().min(1).max(100).default(10),
+  sort: Joi.string()
+    .valid('newest','oldest')
+    .default('newest')
+    .optional(),
+  status: Joi.string()
+    .valid('upcoming','active','ended','sold')
+    .lowercase()
+    .optional(),
+});
+
 // Stats query schema validation
 export const statsQuerySchema = Joi.object({
   timeFrame: Joi.string().valid('day', 'week', 'month', 'year', 'all').default('month').optional(),
@@ -544,6 +558,12 @@ export const watchlistSchema = {
     }),
   }),
   remove: Joi.object({
+    auctionId: Joi.string().uuid({ version: 'uuidv4' }).required().messages({
+      'string.uuid': 'Invalid Auction ID format',
+      'any.required': 'Auction ID is required',
+    }),
+  }),
+  toggle: Joi.object({
     auctionId: Joi.string().uuid({ version: 'uuidv4' }).required().messages({
       'string.uuid': 'Invalid Auction ID format',
       'any.required': 'Auction ID is required',
