@@ -352,8 +352,11 @@ export const getMe = async (req, res) => {
 // @access  Private/Admin
 export const restoreUser = async (req, res) => {
   try {
+    const { role } = req.user;
+    const { userId } = req.params;
+    
     // Only admins can restore users
-    if (req.user.role !== 'admin') {
+    if (role !== 'admin') {
       return res.status(403).json({
         status: 'error',
         message: 'Only admins can restore users',
@@ -361,7 +364,7 @@ export const restoreUser = async (req, res) => {
     }
 
     // Get user with minimal fields needed for restoration
-    const user = await findUserByIdPrisma(req.params.id, [
+    const user = await findUserByIdPrisma(userId, [
       'id',
       'isDeleted',
       'firstname',
@@ -412,6 +415,13 @@ export const restoreUser = async (req, res) => {
       },
     });
   } catch (error) {
+    if (error.code === 'P2025') {
+      return res.status(409).json({
+        status: 'error',
+        message: 'This user was modified by another user. Please refresh and try again.',
+      });
+    }
+
     logger.error('Restore user error:', {
       error: error.message,
       stack: error.stack,
