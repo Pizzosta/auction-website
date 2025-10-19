@@ -4,7 +4,7 @@ import {
   revokeRefreshToken,
   revokeAllRefreshTokens,
 } from '../services/tokenService.js';
-import prisma from '../config/prisma.js';
+import { findUserByIdPrisma } from '../repositories/userRepo.prisma.js';
 import logger from '../utils/logger.js';
 import { env } from '../config/env.js';
 
@@ -15,17 +15,16 @@ export const refreshToken = async (req, res) => {
   try {
     const { userId, refreshToken } = req;
 
-    // Get user from database (Prisma)
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        firstname: true,
-        lastname: true,
-        email: true,
-        role: true,
-      },
-    });
+    // Get user with only necessary fields for token generation
+    const user = await findUserByIdPrisma(userId, [
+      'id',
+      'firstname',
+      'middlename',
+      'lastname',
+      'email',
+      'role'
+    ]);
+    
     if (!user) {
       return res.status(404).json({
         success: false,
