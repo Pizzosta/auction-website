@@ -6,6 +6,7 @@ import {
   getAuctionById,
   updateAuction,
   deleteAuction,
+  restoreAuction,
 } from '../controllers/auctionController.js';
 import { protect, admin } from '../middleware/authMiddleware.js';
 import { validate } from '../middleware/validationMiddleware.js';
@@ -30,7 +31,7 @@ router.get('/', validate(auctionQuerySchema, 'query'), getPublicAuctions);
  * @returns {object} 200 - List of auctions
  * @returns {Error}  default - Unexpected error
  */
-router.get('/admin', protect, admin, validate(auctionQuerySchema, 'query'), getAuctions);
+router.get('/admin', protect, admin, validate(auctionQuerySchema.search, 'query'), getAuctions);
 
 /**
  * @route POST /api/auctions
@@ -92,9 +93,21 @@ router.patch(
  * @group Auctions - auction management
  * @description Delete an auction by ID. Requires authentication.
  * @param {string} auctionId.path.required
+ * @param {DeleteAuction.model} body.body.required
+ * @param {boolean} permanent.body.optional - Permanently delete the auction
  * @returns {object} 200 - Auction deleted
  * @returns {Error}  default - Unexpected error
  */
-router.delete('/:auctionId', protect, validate(idSchema('auctionId'), 'params'), deleteAuction);
+router.delete('/:auctionId', protect, validate(idSchema('auctionId'), 'params'), validate(auctionQuerySchema.delete, 'query'), deleteAuction);
+
+/**
+ * @route PATCH /api/auctions/{auctionId}/restore
+ * @group Auctions - auction management
+ * @description Restore a soft-deleted auction. Requires authentication and admin role.
+ * @param {string} auctionId.path.required
+ * @returns {object} 200 - Auction restored
+ * @returns {Error}  default - Unexpected error
+ */
+router.patch('/:auctionId/restore', protect, admin, validate(idSchema('auctionId'), 'params'), restoreAuction);
 
 export default router;

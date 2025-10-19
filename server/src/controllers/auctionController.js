@@ -1,8 +1,17 @@
-import { Prisma } from '@prisma/client';
-import prisma from '../config/prisma.js';
 import getCloudinary from '../config/cloudinary.js';
 import logger from '../utils/logger.js';
-import { listAuctionsPrisma } from '../repositories/auctionRepo.prisma.js';
+import {
+  listAuctionsPrisma,
+  createAuctionPrisma,
+  findAuctionById,
+  updateAuctionPrisma,
+  softDeleteAuction,
+  deleteAuctionPermanently,
+  findAuctionPrisma,
+  findDeletedAuction,
+  restoreAuctionPrisma,
+} from '../repositories/auctionRepo.prisma.js';
+import { Prisma } from '@prisma/client';
 
 // @desc    Create a new auction
 // @route   POST /api/auctions
@@ -21,24 +30,20 @@ export const createAuction = async (req, res) => {
     } = req.body;
 
     const sellerId = req.user?.id?.toString();
-    const createdAuction = await prisma.auction.create({
-      data: {
-        title,
-        description,
-        category,
-        startingPrice: new Prisma.Decimal(startingPrice),
-        currentPrice: new Prisma.Decimal(startingPrice),
-        startDate: new Date(startDate),
-        endDate: new Date(endDate),
-        status: 'upcoming',
-        bidIncrement: new Prisma.Decimal(bidIncrement),
-        images,
-        sellerId,
-      },
-      include: {
-        seller: { select: { username: true, email: true, role: true } },
-      },
-    });
+    const auctionData = {
+      title,
+      description,
+      category,
+      startingPrice,
+      bidIncrement,
+      startDate,
+      endDate,
+      status: 'upcoming',
+      images,
+      sellerId,
+    };
+
+    const createdAuction = await createAuctionPrisma(auctionData);
 
     res.status(201).json({
       success: true,
@@ -198,50 +203,13 @@ export const getPublicAuctions = async (req, res, next) => {
   return getAuctions(req, res, next);
 };
 
-// @desc    Get single auction
-// @route   GET /api/auctions/:id
-// @access  Public
-/**
-export const getAuctionById = async (req, res) => {
-  try {
-    const auction = await prisma.auction.findUnique({
-      where: { id: req.params.id },
-      include: {
-        seller: { select: { username: true } },
-        winner: { select: { username: true } },
-      },
-    });
-
-    if (auction) {
-      res.json({
-        status: 'success',
-        data: {
-          ...auction,
-        },
-      });
-    } else {
-      res.status(404).json({ message: 'Auction not found' });
-    }
-  } catch (error) {
-    logger.error('Get auction by id error:', {
-      error: error.message,
-      stack: error.stack,
-      auctionId: req.params.id,
-    });
-    res.status(500).json({ message: 'Server error' });
-  }
-};
-*/
 export const getAuctionById = async (req, res) => {
   try {
     const { auctionId } = req.params;
 
-    const auction = await prisma.auction.findUnique({
-      where: { id: auctionId },
-      include: {
-        seller: { select: { username: true } },
-        winner: { select: { username: true } },
-      },
+    const auction = await findAuctionById(auctionId, {
+      includeSeller: true,
+      includeWinner: true,
     });
 
     if (auction) {
@@ -266,6 +234,7 @@ export const getAuctionById = async (req, res) => {
     res.status(500).json({
       status: 'error',
       message: 'Server error',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }
 };
@@ -276,11 +245,11 @@ export const getAuctionById = async (req, res) => {
 // @access  Private/Owner or Admin
 export const updateAuction = async (req, res) => {
   try {
-    const { title, description, startingPrice, startDate, endDate, images, category } = req.body;
+    const { title, description, startingPrice, bidIncrement, startDate, endDate, images, category } = req.body;
     const { auctionId } = req.params;
 
     // Find the auction
-    const auction = await prisma.auction.findUnique({ where: { id: auctionId } });
+    const auction = await findAuctionById(auctionId);
     if (!auction) {
       return res.status(404).json({
         success: false,
@@ -314,17 +283,18 @@ export const updateAuction = async (req, res) => {
     }
 
     // Update fields if provided
-    const updates = {};
-    if (title) updates.title = title;
-    if (description) updates.description = description;
+    const updateData = {};
+    if (title) updateData.title = title;
+    if (description) updateData.description = description;
     if (startingPrice !== undefined) {
-      updates.startingPrice = new Prisma.Decimal(startingPrice);
+      updateData.startingPrice = new Prisma.Decimal(startingPrice);
       // Update currentPrice to match the new startingPrice if it's being updated
-      updates.currentPrice = new Prisma.Decimal(startingPrice);
+      updateData.currentPrice = new Prisma.Decimal(startingPrice);
     }
-    if (startDate) updates.startDate = new Date(startDate);
-    if (endDate) updates.endDate = new Date(endDate);
-    if (category) updates.category = category;
+    if (bidIncrement) updateData.bidIncrement = new Prisma.Decimal(bidIncrement);
+    if (startDate) updateData.startDate = new Date(startDate);
+    if (endDate) updateData.endDate = new Date(endDate);
+    if (category) updateData.category = category;
 
     // Handle images if provided (delete old images)
     if (images && Array.isArray(images)) {
@@ -348,19 +318,10 @@ export const updateAuction = async (req, res) => {
           // Continue with the update even if image deletion fails
         }
       }
-      updates.images = images;
+      updateData.images = images;
     }
 
-    // Add version to updates
-    updates.version = { increment: 1 };
-
-    const updatedAuction = await prisma.auction.update({
-      where: {
-        id: auctionId,
-        version: auction.version, // Optimistic concurrency control
-      },
-      data: updates,
-    });
+    const updatedAuction = await updateAuctionPrisma(auctionId, updateData, auction.version);
 
     res.status(200).json({
       success: true,
@@ -398,22 +359,19 @@ export const updateAuction = async (req, res) => {
 export const deleteAuction = async (req, res) => {
   const { auctionId } = req.params;
   const actorId = req.user?.id?.toString();
-  // Check both query params and body for the permanent flag
-  //const permanent = req.query.permanent === 'false'; // || req.body.permanent === 'false'
-  const { permanent = false } = req.query;
+
+  const getPermanentValue = value => {
+    if (value == null) return false;
+    if (typeof value === 'string') return value.toLowerCase() === 'true';
+    return !!value;
+  };
+  // Accept permanent from query string (?permanent=true) and fallback to body for backward compatibility
+  const permanent =
+    getPermanentValue(req.query?.permanent) || getPermanentValue(req.body?.permanent);
 
   try {
-    // Find the auction
-    const auction = await prisma.auction.findUnique({
-      where: { id: auctionId },
-      select: {
-        id: true,
-        sellerId: true,
-        startDate: true,
-        images: true,
-        version: true,
-      },
-    });
+    // Find the auction with minimal required fields
+    const auction = await findAuctionPrisma(auctionId);
 
     if (!auction) {
       return res.status(404).json({
@@ -431,7 +389,7 @@ export const deleteAuction = async (req, res) => {
     }
 
     // Only admins can perform permanent deletion
-    if (permanent && (!req.user || req.user.role !== 'admin')) {
+    if (permanent && req.user.role !== 'admin') {
       return res.status(403).json({
         success: false,
         message: 'Only admins can permanently delete auctions',
@@ -448,11 +406,11 @@ export const deleteAuction = async (req, res) => {
 
     if (permanent) {
       // Delete images from Cloudinary if they exist
-      if (auction.images && auction.images.length > 0) {
+      if (auction.images?.length > 0) {
         try {
           const cloudinary = await getCloudinary();
           await Promise.all(
-            auction.images.map(async img => {
+            auction.images.map(async (img) => {
               if (img.publicId) {
                 await cloudinary.uploader.destroy(img.publicId);
               }
@@ -469,30 +427,11 @@ export const deleteAuction = async (req, res) => {
         }
       }
 
-      // Permanently delete auction and associated bids
-      await prisma.$transaction([
-        prisma.bid.deleteMany({ where: { auctionId } }),
-        prisma.auction.delete({
-          where: {
-            id: auctionId,
-            version: auction.version, // Optimistic concurrency control
-          },
-        }),
-      ]);
+      // Permanently delete auction (cascading deletes are handled by the database)
+      await deleteAuctionPermanently(auctionId, auction.version);
     } else {
       // Soft delete with version check
-      const updatedAuction = await prisma.auction.update({
-        where: {
-          id: auctionId,
-          version: auction.version, // Optimistic concurrency control
-        },
-        data: {
-          isDeleted: true,
-          deletedAt: new Date(),
-          deletedById: actorId,
-          version: { increment: 1 }, // Increment version
-        },
-      });
+      const updatedAuction = await softDeleteAuction(auctionId, actorId, auction.version);
 
       if (!updatedAuction) {
         throw new Error('Failed to soft delete auction - version mismatch');
@@ -502,7 +441,7 @@ export const deleteAuction = async (req, res) => {
     res.status(200).json({
       success: true,
       message: permanent
-        ? 'Auction and all associated bids have been permanently deleted'
+        ? 'Auction and all associated data have been permanently deleted'
         : 'Auction has been soft deleted',
       data: { id: auctionId },
     });
@@ -521,9 +460,85 @@ export const deleteAuction = async (req, res) => {
       userId: actorId,
       permanent,
     });
+
     return res.status(500).json({
       success: false,
       message: 'Error deleting auction',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
+  }
+};
+
+// @desc    Restore a soft-deleted auction (Admin only)
+// @route   PATCH /api/auctions/:id/restore
+// @access  Private/Admin
+export const restoreAuction = async (req, res) => {
+  const { auctionId } = req.params;
+  const { role } = req.user;
+
+  try {
+    // Only admins can restore auctions
+    if (role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Only admins can restore auctions',
+      });
+    }
+
+    // Find the auction including soft-deleted ones
+    const auction = await findAuctionPrisma(auctionId);
+
+    if (!auction) {
+      return res.status(404).json({
+        success: false,
+        message: 'Auction not found',
+      });
+    }
+
+    // Check if auction is not soft-deleted (we need to fetch it again with isDeleted field)
+    const auctionWithDeletedStatus = await findDeletedAuction(auctionId);
+
+    if (!auctionWithDeletedStatus.isDeleted) {
+      return res.status(400).json({
+        success: false,
+        message: 'Auction is not deleted',
+      });
+    }
+
+    // Check if auction has already ended
+    if (new Date(auctionWithDeletedStatus.endDate) < new Date()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot restore an auction that has already ended',
+      });
+    }
+
+    // Restore the auction
+    await restoreAuctionPrisma(auctionId, auction.version);
+
+    res.status(200).json({
+      success: true,
+      message: 'Auction has been restored successfully',
+      data: { id: auctionId },
+    });
+  } catch (error) {
+    if (error.code === 'P2025') {
+      return res.status(409).json({
+        success: false,
+        message: 'This auction was modified by another user. Please refresh and try again.',
+      });
+    }
+
+    logger.error('Restore auction error:', {
+      error: error.message,
+      stack: error.stack,
+      auctionId,
+      userId: req.user?.id,
+    });
+
+    res.status(500).json({
+      success: false,
+      message: 'Error restoring auction',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }

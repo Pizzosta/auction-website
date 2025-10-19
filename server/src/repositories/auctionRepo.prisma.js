@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import prisma from '../config/prisma.js';
 
 // Maps REST query params to Prisma where/orderBy objects and returns {auctions, count}
@@ -118,10 +119,148 @@ export async function listAuctionsPrisma({
     }),
   ]);
 
-  return {
-    auctions,
-    count,
-    pageNum,
-    take,
-  };
+  return { auctions, count, page: pageNum, limit: take, totalPages: Math.ceil(count / take) };
 }
+
+/**
+ * Create a new auction
+ * @param {Object} data - Auction data
+ * @returns {Promise<Object>} Created auction
+ */
+export const createAuctionPrisma = async (data) => {
+  return prisma.auction.create({
+    data: {
+      ...data,
+      status: 'upcoming',
+      startingPrice: new Prisma.Decimal(data.startingPrice),
+      currentPrice: new Prisma.Decimal(data.startingPrice),
+      bidIncrement: new Prisma.Decimal(data.bidIncrement),
+      startDate: new Date(data.startDate),
+      endDate: new Date(data.endDate),
+    },
+    include: {
+      seller: { select: { username: true, email: true, role: true } },
+    },
+  });
+};
+
+/**
+ * Find auction by ID with optional includes
+ * @param {string} id - Auction ID
+ * @param {Object} [options] - Options
+ * @param {boolean} [options.includeSeller] - Include seller details
+ * @param {boolean} [options.includeWinner] - Include winner details
+ * @returns {Promise<Object|null>} Auction or null if not found
+ */
+export const findAuctionById = async (id, options = {}) => {
+  const { includeSeller = false, includeWinner = false } = options;
+
+  return prisma.auction.findUnique({
+    where: { id },
+    include: {
+      ...(includeSeller && { seller: { select: { username: true } } }),
+      ...(includeWinner && { winner: { select: { username: true } } }),
+    },
+  });
+};
+
+/**
+ * Update an auction
+ * @param {string} id - Auction ID
+ * @param {Object} data - Data to update
+ * @param {number} version - Current version for optimistic concurrency
+ * @returns {Promise<Object>} Updated auction
+ */
+export const updateAuctionPrisma = async (id, data, version) => {
+  return prisma.auction.update({
+    where: { id, version },
+    data: {
+      ...data,
+      ...(data.startingPrice && { startingPrice: new Prisma.Decimal(data.startingPrice) }),
+      ...(data.currentPrice && { currentPrice: new Prisma.Decimal(data.currentPrice) }),
+      ...(data.bidIncrement && { bidIncrement: new Prisma.Decimal(data.bidIncrement) }),
+      ...(data.startDate && { startDate: new Date(data.startDate) }),
+      ...(data.endDate && { endDate: new Date(data.endDate) }),
+      version: { increment: 1 },
+    },
+  });
+};
+
+/**
+ * Soft delete an auction
+ * @param {string} id - Auction ID
+ * @param {string} deletedById - ID of the user performing the deletion
+ * @param {number} version - Current version for optimistic concurrency
+ * @returns {Promise<Object>} Updated auction
+ */
+export const softDeleteAuction = async (id, deletedById, version) => {
+  return prisma.auction.update({
+    where: { id, version },
+    data: {
+      isDeleted: true,
+      deletedAt: new Date(),
+      deletedById,
+      version: { increment: 1 },
+    },
+  });
+};
+
+/**
+ * Permanently delete an auction
+ * @param {string} id - Auction ID
+ * @param {number} version - Current version for optimistic concurrency
+ * @returns {Promise<Object>} Deleted auction
+ */
+export const deleteAuctionPermanently = async (id, version) => {
+  return prisma.auction.delete({
+    where: { id, version },
+  });
+};
+
+/**
+ * Find auction with minimal fields needed for deletion
+ * @param {string} id - Auction ID
+ * @returns {Promise<Object|null>} Auction with minimal fields or null if not found
+ */
+export const findAuctionPrisma = async (id) => {
+  return prisma.auction.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      sellerId: true,
+      startDate: true,
+      images: true,
+      version: true,
+    },
+  });
+};
+
+/**
+ * Find deleted auction with minimal fields needed for deletion
+ * @param {string} id - Auction ID
+ * @returns {Promise<Object|null>} Auction with minimal fields or null if not found
+ */
+export const findDeletedAuction = async (id) => {
+  return prisma.auction.findUnique({
+    where: { id },
+    select: { isDeleted: true, endDate: true },
+  });
+};
+
+/**
+ * Restore a soft-deleted auction
+ * @param {string} id - Auction ID
+ * @param {number} version - Current version for optimistic concurrency
+ * @returns {Promise<Object>} Restored auction
+ */
+export const restoreAuctionPrisma = async (id, version) => {
+  return prisma.auction.update({
+    where: { id, version },
+    data: {
+      isDeleted: false,
+      deletedAt: null,
+      deletedById: null,
+      version: { increment: 1 },
+    },
+  });
+};

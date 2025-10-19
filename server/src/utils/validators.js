@@ -20,38 +20,46 @@ export const userQuerySchema = Joi.object({
 });
 
 // Auction query schema validation
-export const auctionQuerySchema = Joi.object({
-  page: Joi.number().integer().min(1).default(1),
-  limit: Joi.number().integer().min(1).max(100).default(10),
-  sort: Joi.string()
-    .pattern(
-      /^(title|description|startingPrice|currentPrice|endDate|createdAt|bidCount):(asc|desc)$/
-    )
-    .default('createdAt:desc')
-    .optional(),
-  status: Joi.string()
-    .valid('upcoming', 'active', 'ended', 'sold', 'cancelled', 'all')
-    .lowercase()
-    .optional(),
-  category: Joi.string().optional(),
-  search: Joi.string().optional(),
-  endingSoon: Joi.boolean()
-    .optional()
-    .description('Filter for auctions ending in the next 24 hours'),
-  seller: Joi.string()
-    .pattern(/^[0-9a-fA-F]{24}$/)
-    .optional(),
-  winner: Joi.string()
-    .pattern(/^[0-9a-fA-F]{24}$/)
-    .optional(),
-  fields: Joi.string()
-    .pattern(/^[a-zA-Z0-9_, ]*$/)
-    .optional(),
-  minPrice: Joi.number().min(0).optional(),
-  maxPrice: Joi.number().min(0).optional(),
-  startDate: Joi.date().iso().optional(),
-  endDate: Joi.date().iso().optional(),
-});
+export const auctionQuerySchema = {
+  search: Joi.object({
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(100).default(10),
+    sort: Joi.string()
+      .pattern(
+        /^(title|description|startingPrice|currentPrice|endDate|createdAt|bidCount):(asc|desc)$/
+      )
+      .default('createdAt:desc')
+      .optional(),
+    status: Joi.string()
+      .valid('upcoming', 'active', 'ended', 'sold', 'cancelled', 'all')
+      .lowercase()
+      .optional(),
+    category: Joi.string().optional(),
+    search: Joi.string().optional(),
+    endingSoon: Joi.boolean()
+      .optional()
+      .description('Filter for auctions ending in the next 24 hours'),
+    seller: Joi.string()
+      .pattern(/^[0-9a-fA-F]{24}$/)
+      .optional(),
+    winner: Joi.string()
+      .pattern(/^[0-9a-fA-F]{24}$/)
+      .optional(),
+    fields: Joi.string()
+      .pattern(/^[a-zA-Z0-9_, ]*$/)
+      .optional(),
+    minPrice: Joi.number().min(0).optional(),
+    maxPrice: Joi.number().min(0).optional(),
+    startDate: Joi.date().iso().optional(),
+    endDate: Joi.date().iso().optional(),
+  }),
+
+  delete: Joi.object({
+    permanent: Joi.boolean().default(false).messages({
+      'boolean.base': 'permanent must be a boolean',
+    }),
+  }),
+}
 
 // Bid query schema validation
 export const bidQuerySchema = Joi.object({
@@ -99,11 +107,11 @@ export const watchlistQuerySchema = Joi.object({
   page: Joi.number().integer().min(1).max(10000).default(1),
   limit: Joi.number().integer().min(1).max(100).default(10),
   sort: Joi.string()
-    .valid('newest','oldest')
+    .valid('newest', 'oldest')
     .default('newest')
     .optional(),
   status: Joi.string()
-    .valid('upcoming','active','ended','sold')
+    .valid('upcoming', 'active', 'ended', 'sold')
     .lowercase()
     .optional(),
 });
