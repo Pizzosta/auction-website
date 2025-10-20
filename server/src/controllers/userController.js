@@ -235,6 +235,44 @@ export const deleteUser = async (req, res) => {
 
     try {
       if (permanent) {
+        // Delete user's profile picture on Cloudinary if it exists
+        if (user.profilePicture?.publicId) {
+          try {
+            const cloudinary = getCloudinary();
+            await cloudinary.uploader.destroy(user.profilePicture.publicId);
+          } catch (error) {
+            logger.error('Error deleting profile picture:', {
+              error: error.message,
+              userId: user.id,
+              publicId: user.profilePicture.publicId,
+              stack: error.stack
+            });
+            // Continue even if Cloudinary deletion fails
+          }
+        }
+
+        // Delete images from Cloudinary if they exist
+        if (auction.images?.length > 0) {
+          try {
+            const cloudinary = await getCloudinary();
+            await Promise.all(
+              auction.images.map(async (img) => {
+                if (img.publicId) {
+                  await cloudinary.uploader.destroy(img.publicId);
+                }
+              })
+            );
+          } catch (error) {
+            logger.error('Error deleting images:', {
+              error: error.message,
+              stack: error.stack,
+              auctionId: auction.id,
+              userId: actorId,
+            });
+            // Continue with deletion even if image deletion fails
+          }
+        }
+
         // Hard delete with related data
         await hardDeleteUserWithRelatedDataPrisma(user.id);
       } else {
@@ -354,7 +392,7 @@ export const restoreUser = async (req, res) => {
   try {
     const { role } = req.user;
     const { userId } = req.params;
-    
+
     // Only admins can restore users
     if (role !== 'admin') {
       return res.status(403).json({
