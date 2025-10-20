@@ -10,6 +10,7 @@ import {
   updateUserDataPrisma,
   updateUserProfilePicturePrisma,
   removeUserProfilePicturePrisma,
+  canDeleteUserPrisma,
 } from '../repositories/userRepo.prisma.js';
 import bcrypt from 'bcryptjs';
 import { getCloudinary } from '../config/cloudinary.js';
@@ -230,6 +231,15 @@ export const deleteUser = async (req, res) => {
       return res.status(400).json({
         status: 'error',
         message: 'User account has been already deactivated',
+      });
+    }
+
+    // First check if user can be deleted
+    const { canDelete, reason } = await canDeleteUserPrisma(user.id);
+    if (!canDelete) {
+      return res.status(400).json({
+        status: 'error',
+        message: reason || 'Cannot delete user due to active auctions or bids'
       });
     }
 

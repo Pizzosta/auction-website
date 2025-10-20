@@ -1,4 +1,5 @@
 import prisma from '../config/prisma.js';
+import logger from '../utils/logger.js';
 
 /**
  * Creates a Prisma select object based on requested fields with security restrictions
@@ -139,6 +140,84 @@ export const findUserByPhonePrisma = async (phone, fields, options = {}) => {
     where: { phone },
     select,
   });
+};
+
+/**
+ * Check if a user can be permanently deleted
+ * @param {string} userId - ID of the user to check
+ * @returns {Promise<{canDelete: boolean, reason?: string}>} Object with canDelete status and optional reason
+ */
+export const canDeleteUserPrisma = async (userId) => {
+  try {
+    // Check if user has any active auctions
+    const activeAuctions = await prisma.auction.count({
+      where: {
+        sellerId: userId,
+        status: {
+          in: ['active']
+        },
+        isDeleted: false
+      }
+    });
+
+    if (activeAuctions > 0) {
+      return {
+        canDelete: false,
+        reason: `You have ${activeAuctions} active auction${
+          activeAuctions === 1 ? '' : 's'
+        }. Please let ${activeAuctions === 1 ? 'it' : 'them'} end before deleting your account.`,
+      };
+    }
+
+// Check if user has any upcoming auctions
+    const upcomingAuctions = await prisma.auction.count({
+      where: {
+        sellerId: userId,
+        status: {
+          in: ['upcoming']
+        },
+        isDeleted: false
+      }
+    });
+
+    if (upcomingAuctions > 0) {
+      return {
+        canDelete: false,
+        reason: `You have ${upcomingAuctions} upcoming auction${
+          upcomingAuctions === 1 ? '' : 's'
+        }. Please cancel ${upcomingAuctions === 1 ? 'it' : 'them'} before deleting your account.`,
+      };
+    }
+
+    // Check if user is the highest bidder in any active auction
+    const highestBidAuctions = await prisma.auction.count({
+      where: {
+        status: 'active',
+        isDeleted: false,
+        highestBid: {
+          bidderId: userId
+        }
+      }
+    });
+
+    if (highestBidAuctions > 0) {
+      return {
+        canDelete: false,
+        reason: `You are the highest bidder in ${highestBidAuctions} active auction${
+          highestBidAuctions === 1 ? '' : 's'
+        }. Please complete the auction or cancel ${highestBidAuctions === 1 ? 'it' : 'them'} before deleting your account.`
+      };
+    }
+
+    return { canDelete: true };
+  } catch (error) {
+    logger.error('Error checking if user can be deleted:', {
+      error: error.message,
+      stack: error.stack,
+      userId
+    });
+    throw error;
+  }
 };
 
 /**
