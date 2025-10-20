@@ -1,9 +1,10 @@
 import express from 'express';
-import { featuredAuctionDeleteQuerySchema, featuredAuctionSchema } from '../utils/validators.js';
+import { featuredAuctionQuerySchema, featuredAuctionSchema } from '../utils/validators.js';
 import { protect, admin } from '../middleware/authMiddleware.js';
 import {
   addFeaturedAuction,
   removeFeaturedAuction,
+  getPublicFeaturedAuctions,
   getFeaturedAuctions,
   restoreFeaturedAuction,
 } from '../controllers/featuredAuctionController.js';
@@ -35,29 +36,38 @@ router.delete(
   '/remove',
   protect,
   admin,
-  validate(featuredAuctionDeleteQuerySchema, 'query'),
+  validate(featuredAuctionQuerySchema.delete, 'query'),
   validate(featuredAuctionSchema.remove, 'body'),
   removeFeaturedAuction
 );
 
 /**
- * @route GET /api/featured-auctions
+ * @route GET /api/featured-auctions/admin
  * @group FeaturedAuctions - featured auction management
- * @description Get the list of featured auctions. Publicly accessible.
+ * @description Get the list of all featured auctions. Requires admin privileges.
  * @returns {object} 200 - List of featured auctions
  * @returns {Error}  default - Unexpected error
  */
-router.get('/', getFeaturedAuctions);
+router.get('/admin', protect, admin, validate(featuredAuctionQuerySchema.search, 'query'), getFeaturedAuctions);
 
 /**
- * @route POST /api/featured-auctions/restore
+ * @route GET /api/featured-auctions
+ * @group FeaturedAuctions - featured auction management
+ * @description Get the list of all featured auctions. Publicly accessible.
+ * @returns {object} 200 - List of featured auctions
+ * @returns {Error}  default - Unexpected error
+ */
+router.get('/', getPublicFeaturedAuctions);
+
+/**
+ * @route PATCH /api/featured-auctions/restore
  * @group FeaturedAuctions - featured auction management
  * @description Restore a previously removed featured auction. Requires admin privileges.
  * @param {RestoreFeaturedAuction.model} body.body.required
  * @returns {object} 200 - Featured auction restored
  * @returns {Error}  default - Unexpected error
  */
-router.post(
+router.patch(
   '/restore',
   protect,
   admin,
