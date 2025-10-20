@@ -199,11 +199,11 @@ model Feedback {
   updatedAt   DateTime @updatedAt
   auctionId   String
   fromUserId  String
-  toUserId    String
+  toUserId    String?
 
   auction  Auction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
   fromUser User    @relation("FeedbackGiven", fields: [fromUserId], references: [id], onDelete: Cascade)
-  toUser   User    @relation("FeedbackReceived", fields: [toUserId], references: [id], onDelete: SetNull)
+  toUser   User?   @relation("FeedbackReceived", fields: [toUserId], references: [id], onDelete: SetNull)
 
   @@unique([auctionId, fromUserId, type])
   @@index([toUserId])
