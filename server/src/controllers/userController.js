@@ -239,7 +239,7 @@ export const deleteUser = async (req, res) => {
     if (!canDelete) {
       return res.status(400).json({
         status: 'error',
-        message: reason || 'Cannot delete user due to active auctions or bids'
+        message: reason
       });
     }
 
