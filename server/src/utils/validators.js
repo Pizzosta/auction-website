@@ -2,22 +2,30 @@ import Joi from 'joi';
 import { normalizeToE164 } from './format.js';
 
 // User query schema validation
-export const userQuerySchema = Joi.object({
-  page: Joi.number().integer().min(1).default(1),
-  limit: Joi.number().integer().min(1).max(100).default(10),
-  sort: Joi.string()
-    .pattern(/^(firstname|lastname|email|phone|username|createdAt):(asc|desc)$/)
-    .default('createdAt:desc')
-    .optional(),
-  fields: Joi.string()
-    .pattern(/^[a-zA-Z0-9_, ]*$/)
-    .optional(),
-  search: Joi.string().optional(),
-  role: Joi.string().valid('user', 'admin').optional(),
-  status: Joi.string().valid('active', 'deleted', 'all').default('active').lowercase(),
-  lastActiveAfter: Joi.date().iso().optional(),
-  lastActiveBefore: Joi.date().iso().optional(),
-});
+export const userQuerySchema = {
+  search: Joi.object({
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(100).default(10),
+    sort: Joi.string()
+      .pattern(/^(firstname|lastname|email|phone|username|createdAt):(asc|desc)$/)
+      .default('createdAt:desc')
+      .optional(),
+    fields: Joi.string()
+      .pattern(/^[a-zA-Z0-9_, ]*$/)
+      .optional(),
+    search: Joi.string().optional(),
+    role: Joi.string().valid('user', 'admin').optional(),
+    status: Joi.string().valid('active', 'deleted', 'all').default('active').lowercase(),
+    lastActiveAfter: Joi.date().iso().optional(),
+    lastActiveBefore: Joi.date().iso().optional(),
+  }),
+
+  delete: Joi.object({
+    permanent: Joi.boolean().default(false).messages({
+      'boolean.base': 'permanent must be a boolean',
+    }),
+  }),
+};
 
 // Auction query schema validation
 export const auctionQuerySchema = {
@@ -62,24 +70,41 @@ export const auctionQuerySchema = {
 }
 
 // Bid query schema validation
-export const bidQuerySchema = Joi.object({
-  page: Joi.number().integer().min(1).default(1),
-  limit: Joi.number().integer().min(1).max(100).default(20),
-  sort: Joi.string()
-    .pattern(/^(amount|createdAt):(asc|desc)$/)
-    .default('createdAt:desc')
-    .optional(),
-  status: Joi.string()
-    .valid('active', 'won', 'lost', 'outbid', 'cancelled', 'all')
-    .lowercase()
-    .optional(),
-  auctionId: Joi.string().uuid({ version: 'uuidv4' }).optional(),
-  bidderId: Joi.string().uuid({ version: 'uuidv4' }).optional(),
-  minAmount: Joi.number().min(0).optional(),
-  maxAmount: Joi.number().min(0).optional(),
-  startDate: Joi.date().iso().optional(),
-  endDate: Joi.date().iso().optional(),
-});
+export const bidQuerySchema = {
+  search: Joi.object({
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(100).default(10),
+    sort: Joi.string()
+      .pattern(/^(amount|createdAt):(asc|desc)$/)
+      .default('createdAt:desc')
+      .optional(),
+    status: Joi.string()
+      .valid('active', 'won', 'lost', 'outbid', 'cancelled', 'all')
+      .lowercase()
+      .optional(),
+    auctionId: Joi.string().uuid({ version: 'uuidv4' }).optional(),
+    bidderId: Joi.string().uuid({ version: 'uuidv4' }).optional(),
+    minAmount: Joi.number().min(0).optional(),
+    maxAmount: Joi.number().min(0).optional(),
+    startDate: Joi.date().iso().optional(),
+    endDate: Joi.date().iso().optional(),
+  }),
+
+  bidSort: Joi.object({
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(100).default(10),
+    sort: Joi.string()
+      .pattern(/^(amount|createdAt):(asc|desc)$/)
+      .default('createdAt:desc')
+      .optional(),
+  }),
+
+  delete: Joi.object({
+    permanent: Joi.boolean().default(false).messages({
+      'boolean.base': 'permanent must be a boolean',
+    }),
+  })
+};
 
 // Feedback query schema validation
 export const feedbackQuerySchema = Joi.object({
@@ -104,7 +129,7 @@ export const feedbackQuerySchema = Joi.object({
 
 // Watchlist query schema validation
 export const watchlistQuerySchema = Joi.object({
-  page: Joi.number().integer().min(1).max(10000).default(1),
+  page: Joi.number().integer().min(1).default(1),
   limit: Joi.number().integer().min(1).max(100).default(10),
   sort: Joi.string()
     .valid('newest', 'oldest')
@@ -116,24 +141,34 @@ export const watchlistQuerySchema = Joi.object({
     .optional(),
 });
 
+// Featured auction delete query schema (for ?permanent=true)
+export const featuredAuctionQuerySchema = {
+  search: Joi.object({
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(100).default(10),
+    sort: Joi.string()
+      .valid('newest', 'oldest')
+      .default('newest')
+      .optional(),
+    status: Joi.string()
+      .valid('active', 'deleted', 'all')
+      .lowercase()
+      .optional(),
+  }),
+
+  delete: Joi.object({
+    permanent: Joi.boolean().default(false).messages({
+      'boolean.base': 'permanent must be a boolean',
+    }),
+  }),
+};
+
 // Stats query schema validation
 export const statsQuerySchema = Joi.object({
-  timeFrame: Joi.string().valid('day', 'week', 'month', 'year', 'all').default('month').optional(),
-});
-
-// User stats query schema validation
-export const userStatsQuerySchema = Joi.object({
-  timeFrame: Joi.string().valid('day', 'week', 'month', 'year', 'all').default('month').optional(),
-});
-
-// Auction stats query schema validation
-export const auctionStatsQuerySchema = Joi.object({
-  timeFrame: Joi.string().valid('day', 'week', 'month', 'year', 'all').default('month').optional(),
-});
-
-// Bid stats query schema validation
-export const bidStatsQuerySchema = Joi.object({
-  timeFrame: Joi.string().valid('day', 'week', 'month', 'year', 'all').default('month').optional(),
+  timeFrame: Joi.string()
+    .valid('day', 'week', 'month', 'year', 'all')
+    .default('month')
+    .optional(),
 });
 
 // ID schema validation (for any ID parameter)
@@ -259,13 +294,6 @@ export const authSchema = {
   }),
 };
 
-// User delete query schema (for ?permanent=true)
-export const userDeleteQuerySchema = Joi.object({
-  permanent: Joi.boolean().default(false).messages({
-    'boolean.base': 'permanent must be a boolean',
-  }),
-});
-
 // Auction schema validation
 export const auctionSchema = {
   create: Joi.object({
@@ -357,13 +385,6 @@ export const bidSchema = {
       'string.length': 'Auction ID must be 36 characters long',
       'any.required': 'Auction ID is required',
     }),
-  }),
-  delete: Joi.object({
-    permanent: Joi.boolean().default(false).messages({
-      'boolean.base': 'permanent must be a boolean',
-    }),
-  }).messages({
-    'object.unknown': 'Unknown parameters provided',
   }),
 };
 
@@ -557,55 +578,26 @@ export const userSchema = {
   }),
 };
 
+const uuid = Joi.string()
+  .uuid({ version: 'uuidv4' })
+  .required()
+  .messages({
+    'string.uuid': 'Invalid Auction ID format',
+    'any.required': 'Auction ID is required',
+  });
+
 // Watchlist schema validation
 export const watchlistSchema = {
-  add: Joi.object({
-    auctionId: Joi.string().uuid({ version: 'uuidv4' }).required().messages({
-      'string.uuid': 'Invalid Auction ID format',
-      'any.required': 'Auction ID is required',
-    }),
-  }),
-  remove: Joi.object({
-    auctionId: Joi.string().uuid({ version: 'uuidv4' }).required().messages({
-      'string.uuid': 'Invalid Auction ID format',
-      'any.required': 'Auction ID is required',
-    }),
-  }),
-  toggle: Joi.object({
-    auctionId: Joi.string().uuid({ version: 'uuidv4' }).required().messages({
-      'string.uuid': 'Invalid Auction ID format',
-      'any.required': 'Auction ID is required',
-    }),
-  }),
+  add: Joi.object({ auctionId: uuid }),
+  remove: Joi.object({ auctionId: uuid }),
+  toggle: Joi.object({ auctionId: uuid }),
 };
-
-// Featured auction delete query schema (for ?permanent=true)
-export const featuredAuctionDeleteQuerySchema = Joi.object({
-  permanent: Joi.boolean().default(false).messages({
-    'boolean.base': 'permanent must be a boolean',
-  }),
-});
 
 // FeaturedAuction schema validation
 export const featuredAuctionSchema = {
-  add: Joi.object({
-    auctionId: Joi.string().uuid({ version: 'uuidv4' }).required().messages({
-      'string.uuid': 'Invalid Auction ID format',
-      'any.required': 'Auction ID is required',
-    }),
-  }),
-  remove: Joi.object({
-    auctionId: Joi.string().uuid({ version: 'uuidv4' }).required().messages({
-      'string.uuid': 'Invalid Auction ID format',
-      'any.required': 'Auction ID is required',
-    }),
-  }),
-  restore: Joi.object({
-    auctionId: Joi.string().uuid({ version: 'uuidv4' }).required().messages({
-      'string.uuid': 'Invalid Auction ID format',
-      'any.required': 'Auction ID is required',
-    }),
-  }),
+  add: Joi.object({ auctionId: uuid }),
+  remove: Joi.object({ auctionId: uuid }),
+  restore: Joi.object({ auctionId: uuid }),
 };
 
 // Feedback schema validation

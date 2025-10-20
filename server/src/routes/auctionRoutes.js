@@ -22,7 +22,7 @@ const router = express.Router();
  * @returns {object} 200 - List of auctions
  * @returns {Error}  default - Unexpected error
  */
-router.get('/', validate(auctionQuerySchema, 'query'), getPublicAuctions);
+router.get('/', validate(auctionQuerySchema.search, 'query'), getPublicAuctions);
 
 /**
  * @route GET /api/auctions/admin

@@ -35,7 +35,7 @@ router.post('/', protect, bidLimiter, validate(bidSchema.create, 'body'), placeB
 router.get(
   '/auction/:auctionId',
   validate(idSchema('auctionId'), 'params'),
-  validate(bidQuerySchema, 'query'),
+  validate(bidQuerySchema.bidSort, 'query'),
   getBidsByAuction
 );
 
@@ -46,12 +46,13 @@ router.get(
  * @returns {object} 200 - List of user's bids
  * @returns {Error}  default - Unexpected error
  */
-router.get('/me', protect, validate(bidQuerySchema, 'query'), getMyBids);
+router.get('/me', protect, validate(bidQuerySchema.search, 'query'), getMyBids);
 
 /**
  * @route DELETE /api/bids/{bidId}
  * @group Bids - bid management
- * @description Delete a bid (soft delete by default, permanent delete for admins with query param)
+ * @description Delete a bid by ID. Only allowed for the user or admin.
+ *              Soft delete by default. Add `?permanent=true` (admin only) to permanently delete.
  * @param {string} bidId.path.required - The ID of the bid to delete
  * @param {boolean} permanent.query - Whether to permanently delete the bid (admin only)
  * @returns {object} 200 - Bid deleted successfully
@@ -63,7 +64,7 @@ router.delete(
   '/:bidId',
   protect,
   validate(idSchema('bidId'), 'params'),
-  validate(bidSchema.delete, 'query'),
+  validate(bidQuerySchema.delete, 'query'),
   deleteBid
 );
 

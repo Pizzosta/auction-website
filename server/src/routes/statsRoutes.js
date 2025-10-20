@@ -2,7 +2,7 @@ import express from 'express';
 import { protect, admin } from '../middleware/authMiddleware.js';
 import { getSystemStats, getAuctionStats, getUserStats, getBidStats, getSocketStatsController, getSocketRoomsController } from '../controllers/statsController.js';
 import { validate } from '../middleware/validationMiddleware.js';
-import { statsQuerySchema, auctionStatsQuerySchema, userStatsQuerySchema, bidStatsQuerySchema } from '../utils/validators.js';
+import { statsQuerySchema } from '../utils/validators.js';
 
 const router = express.Router();
 
@@ -10,13 +10,13 @@ const router = express.Router();
 router.get('/', protect, admin, validate(statsQuerySchema), getSystemStats);
 
 // Get auction statistics
-router.get('/auctions', protect, admin, validate(auctionStatsQuerySchema), getAuctionStats);
+router.get('/auctions', protect, admin, validate(statsQuerySchema), getAuctionStats);
 
 // Get user statistics
-router.get('/users', protect, admin, validate(userStatsQuerySchema), getUserStats);
+router.get('/users', protect, admin, validate(statsQuerySchema), getUserStats);
 
 // Get bid statistics
-router.get('/bids', protect, admin, validate(bidStatsQuerySchema), getBidStats);
+router.get('/bids', protect, admin, validate(statsQuerySchema), getBidStats);
 
 // Get socket statistics
 router.get('/socket', protect, admin, getSocketStatsController);

@@ -1,7 +1,7 @@
 import express from 'express';
 import { protect, admin } from '../middleware/authMiddleware.js';
 import { validate } from '../middleware/validationMiddleware.js';
-import { userSchema, idSchema, userQuerySchema, userDeleteQuerySchema } from '../utils/validators.js';
+import { userSchema, idSchema, userQuerySchema } from '../utils/validators.js';
 import {
   deleteUser,
   restoreUser,
@@ -65,7 +65,7 @@ router.delete(
   '/:id',
   protect,
   validate(idSchema('id'), 'params'),
-  validate(userDeleteQuerySchema, 'query'),
+  validate(userQuerySchema.delete, 'query'),
   validate(userSchema.deleteUser, 'body'),
   deleteUser
 );

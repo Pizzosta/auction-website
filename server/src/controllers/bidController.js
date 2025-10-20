@@ -2,7 +2,6 @@ import { Prisma } from '@prisma/client';
 import prisma from '../config/prisma.js';
 import logger from '../utils/logger.js';
 import { acquireLock } from '../utils/lock.js';
-import { executeRedisCommand } from '../config/redis.js';
 import {
   listBidsPrisma,
   listBidsByAuctionPrisma,
@@ -359,8 +358,16 @@ export const placeBidCore = async ({ auctionId, amount, actorId, io, socket }) =
 // @access  Private (Admin for permanent delete)
 export const deleteBid = async (req, res) => {
   const { bidId } = req.params;
-  const { permanent = false } = req.query;
-  const actorId = req.user?.id?.toString(); // Move this outside try block
+  const actorId = req.user?.id?.toString();
+
+  const getPermanentValue = value => {
+    if (value == null) return false;
+    if (typeof value === 'string') return value.toLowerCase() === 'true';
+    return !!value;
+  };
+  // Accept permanent from query string (?permanent=true) and fallback to body for backward compatibility
+  const permanent =
+    getPermanentValue(req.query?.permanent) || getPermanentValue(req.body?.permanent);
 
   try {
     // Find the bid with auction
