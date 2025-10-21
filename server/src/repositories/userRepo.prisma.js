@@ -25,8 +25,8 @@ export const createUserSelect = (fields, options = {}) => {
     return {
       id: true,
       firstname: true,
-      lastname: true,
       middlename: true,
+      lastname: true,
       email: true,
       phone: true,
       username: true,
@@ -40,6 +40,9 @@ export const createUserSelect = (fields, options = {}) => {
       rating: true,
       ratingCount: true,
       lastActiveAt: true,
+      isDeleted: true,
+      deletedAt: true,
+      deletedById: true,
       version: true
     };
   }
@@ -163,13 +166,12 @@ export const canDeleteUserPrisma = async (userId) => {
     if (activeAuctions > 0) {
       return {
         canDelete: false,
-        reason: `You have ${activeAuctions} active auction${
-          activeAuctions === 1 ? '' : 's'
-        }. Please let ${activeAuctions === 1 ? 'it' : 'them'} end before deleting your account.`,
+        reason: `You have ${activeAuctions} active auction${activeAuctions === 1 ? '' : 's'
+          }. Please let ${activeAuctions === 1 ? 'it' : 'them'} end before deleting your account.`,
       };
     }
 
-// Check if user has any upcoming auctions
+    // Check if user has any upcoming auctions
     const upcomingAuctions = await prisma.auction.count({
       where: {
         sellerId: userId,
@@ -183,9 +185,8 @@ export const canDeleteUserPrisma = async (userId) => {
     if (upcomingAuctions > 0) {
       return {
         canDelete: false,
-        reason: `You have ${upcomingAuctions} upcoming auction${
-          upcomingAuctions === 1 ? '' : 's'
-        }. Please cancel ${upcomingAuctions === 1 ? 'it' : 'them'} before deleting your account.`,
+        reason: `You have ${upcomingAuctions} upcoming auction${upcomingAuctions === 1 ? '' : 's'
+          }. Please cancel ${upcomingAuctions === 1 ? 'it' : 'them'} before deleting your account.`,
       };
     }
 
@@ -203,9 +204,8 @@ export const canDeleteUserPrisma = async (userId) => {
     if (highestBidAuctions > 0) {
       return {
         canDelete: false,
-        reason: `You are the highest bidder in ${highestBidAuctions} active auction${
-          highestBidAuctions === 1 ? '' : 's'
-        }. Please complete the auction or cancel ${highestBidAuctions === 1 ? 'it' : 'them'} before deleting your account.`
+        reason: `You are the highest bidder in ${highestBidAuctions} active auction${highestBidAuctions === 1 ? '' : 's'
+          }. Please complete the auction or cancel ${highestBidAuctions === 1 ? 'it' : 'them'} before deleting your account.`
       };
     }
 

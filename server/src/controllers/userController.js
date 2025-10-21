@@ -35,9 +35,16 @@ export const getUserById = async (req, res) => {
       });
     }
 
-    const fieldList = fields ? fields.split(',').map(f => f.trim()) : undefined;
     const isAdmin = req.user.role === 'admin';
-    const user = await findUserByIdPrisma(id, fieldList, { allowSensitive: isAdmin });
+    if (!isAdmin) {
+      return res.status(403).json({
+        status: 'error',
+        message: 'Not authorized to access this user',
+      });
+    }
+
+    const fieldList = fields ? fields.split(',').map(f => f.trim()) : undefined;
+    const user = await findUserByIdPrisma(id, fieldList, { allowSensitive: false });
 
     if (!user) {
       logger.warn('User not found', { userId: id });
@@ -48,10 +55,10 @@ export const getUserById = async (req, res) => {
     }
 
     if (user.isDeleted) {
-      logger.warn('Attempted to access deleted user', { userId: id });
+      logger.warn('Attempted to access deactivated user', { userId: id });
       return res.status(410).json({
         status: 'error',
-        message: 'User is deleted',
+        message: 'User is deactivated',
         data: { ...user, isActive: false },
       });
     }
@@ -401,7 +408,7 @@ export const getMe = async (req, res) => {
 export const restoreUser = async (req, res) => {
   try {
     const { role } = req.user;
-    const { userId } = req.params;
+    const userId = req.params.id;
 
     // Only admins can restore users
     if (role !== 'admin') {
@@ -422,8 +429,6 @@ export const restoreUser = async (req, res) => {
       'username',
       'role',
       'version',
-      'auctions',
-      'bids',
     ], { allowSensitive: true });
 
     if (!user) {
@@ -443,22 +448,19 @@ export const restoreUser = async (req, res) => {
     // Restore the user using repository function
     await restoreUserPrisma(user.id);
 
-    const nameParts = [user.firstname, user.middlename, user.lastname];
-    const fullname = nameParts.filter(Boolean).join(' ');
-
     res.status(200).json({
       status: 'success',
       message: 'User restored successfully',
       data: {
         user: {
           id: user.id,
-          fullname: fullname,
+          firstname: user.firstname,
+          middlename: user.middlename,
+          lastname: user.lastname,
           email: user.email,
           username: user.username,
           role: user.role,
           version: user.version,
-          auctions: user.auctions,
-          bids: user.bids,
         },
       },
     });
@@ -482,6 +484,7 @@ export const restoreUser = async (req, res) => {
     });
   }
 };
+
 
 // @desc    Upload profile picture
 // @route   POST /api/users/me/upload-picture
