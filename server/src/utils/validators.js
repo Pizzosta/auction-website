@@ -230,6 +230,7 @@ export const authSchema = {
       .min(3)
       .max(20)
       .pattern(/^[a-zA-Z0-9_]+$/)
+      .required()
       .messages({
         'string.pattern.base':
           'Username should be one word (can only contain letters, numbers, and underscores)',
