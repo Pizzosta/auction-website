@@ -48,7 +48,7 @@ router.get('/admin', protect, admin, validate(auctionQuerySchema.search, 'query'
  * @returns {Error}  default - Unexpected error
  */
 router.post(
-  '/',
+  '/create-auction',
   protect,
   uploadAuctionImagesMiddleware,
   validate(auctionSchema.create, 'body'),

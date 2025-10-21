@@ -23,7 +23,7 @@ const router = express.Router();
  * @returns {object} 200 - List of users
  * @returns {Error}  default - Unexpected error
  */
-router.get('/', protect, admin, validate(userQuerySchema, 'query'), getAllUsers);
+router.get('/', protect, admin, validate(userQuerySchema.search, 'query'), getAllUsers);
 
 /**
  * @route GET /api/users/me
