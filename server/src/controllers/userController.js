@@ -242,12 +242,27 @@ export const deleteUser = async (req, res) => {
     }
 
     // First check if user can be deleted
-    const { canDelete, reason } = await canDeleteUserPrisma(user.id);
-    if (!canDelete) {
-      return res.status(400).json({
-        status: 'error',
-        message: reason
+    let canDeleteResult;
+    try {
+      canDeleteResult = await canDeleteUserPrisma(user.id);
+
+      if (!canDeleteResult.canDelete) {
+        return res.status(400).json({
+          status: 'error',
+          message: canDeleteResult.reason
+        });
+      }
+    } catch (error) {
+      logger.error('Error checking if user can be deleted:', {
+        error: error.message,
+        stack: error.stack,
+        userId: user.id,
+        action: 'deleteUser',
+        timestamp: new Date().toISOString(),
+        userRole: user.role,
+        permanentDeletion: permanent
       });
+      throw error; // Re-throw to be caught by the outer try-catch
     }
 
     try {

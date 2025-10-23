@@ -151,115 +151,106 @@ export const findUserByPhonePrisma = async (phone, fields, options = {}) => {
  * @returns {Promise<{canDelete: boolean, reason?: string}>} Object with canDelete status and optional reason
  */
 export const canDeleteUserPrisma = async (userId) => {
-  try {
-    // Check if user has any active auctions
-    const activeAuctions = await prisma.auction.count({
-      where: {
-        sellerId: userId,
-        status: {
-          in: ['active']
-        },
-        isDeleted: false
-      }
-    });
-
-    if (activeAuctions > 0) {
-      return {
-        canDelete: false,
-        reason: `You have ${activeAuctions} active auction${activeAuctions === 1 ? '' : 's'
-          }. Please let ${activeAuctions === 1 ? 'it' : 'them'} end before deleting your account.`,
-      };
+  // Check if user has any active auctions
+  const activeAuctions = await prisma.auction.count({
+    where: {
+      sellerId: userId,
+      status: {
+        in: ['active']
+      },
+      isDeleted: false
     }
+  });
 
-    // Check if user has any upcoming auctions
-    const upcomingAuctions = await prisma.auction.count({
-      where: {
-        sellerId: userId,
-        status: {
-          in: ['upcoming']
-        },
-        isDeleted: false
-      }
-    });
-
-    if (upcomingAuctions > 0) {
-      return {
-        canDelete: false,
-        reason: `You have ${upcomingAuctions} upcoming auction${upcomingAuctions === 1 ? '' : 's'
-          }. Please cancel ${upcomingAuctions === 1 ? 'it' : 'them'} before deleting your account.`,
-      };
-    }
-
-    // Check if user is the highest bidder in any active auction
-    const highestBidAuctions = await prisma.auction.count({
-      where: {
-        status: 'active',
-        isDeleted: false,
-        highestBid: {
-          bidderId: userId
-        }
-      }
-    });
-
-    if (highestBidAuctions > 0) {
-      return {
-        canDelete: false,
-        reason: `You are the highest bidder in ${highestBidAuctions} active auction${highestBidAuctions === 1 ? '' : 's'
-          }. Please complete the auction or cancel ${highestBidAuctions === 1 ? 'it' : 'them'} before deleting your account.`
-      };
-    }
-
-    // Check for incomplete won auctions where user is the buyer (sold but not completed)
-    const incompleteWonAuctions = await prisma.auction.count({
-      where: {
-        winnerId: userId,
-        status: 'sold',
-        OR: [
-          { isPaymentConfirmed: false },
-          { isDeliveryConfirmed: false }
-        ],
-        isDeleted: false
-      }
-    });
-
-    if (incompleteWonAuctions > 0) {
-      return {
-        canDelete: false,
-        reason: `You have ${incompleteWonAuctions} won auction${incompleteWonAuctions === 1 ? '' : 's'} that ${incompleteWonAuctions === 1 ? 'has' : 'have'} not been completed. ` +
-          `Please complete the payment and delivery process before deleting your account.`
-      };
-    }
-
-    // Check for incomplete sold auctions where user is the seller
-    const incompleteSoldAuctions = await prisma.auction.count({
-      where: {
-        sellerId: userId,
-        status: 'sold',
-        OR: [
-          { isPaymentConfirmed: false },
-          { isDeliveryConfirmed: false }
-        ],
-        isDeleted: false
-      }
-    });
-
-    if (incompleteSoldAuctions > 0) {
-      return {
-        canDelete: false,
-        reason: `You have ${incompleteSoldAuctions} sold auction${incompleteSoldAuctions === 1 ? '' : 's'} that ${incompleteSoldAuctions === 1 ? 'has' : 'have'} not been completed. ` +
-          `Please ensure all payment and delivery processes are complete before deleting your account.`
-      };
-    }
-
-    return { canDelete: true };
-  } catch (error) {
-    logger.error('Error checking if user can be deleted:', {
-      error: error.message,
-      stack: error.stack,
-      userId
-    });
-    throw error;
+  if (activeAuctions > 0) {
+    return {
+      canDelete: false,
+      reason: `You have ${activeAuctions} active auction${activeAuctions === 1 ? '' : 's'
+        }. Please let ${activeAuctions === 1 ? 'it' : 'them'} end before deleting your account.`,
+    };
   }
+
+  // Check if user has any upcoming auctions
+  const upcomingAuctions = await prisma.auction.count({
+    where: {
+      sellerId: userId,
+      status: {
+        in: ['upcoming']
+      },
+      isDeleted: false
+    }
+  });
+
+  if (upcomingAuctions > 0) {
+    return {
+      canDelete: false,
+      reason: `You have ${upcomingAuctions} upcoming auction${upcomingAuctions === 1 ? '' : 's'
+        }. Please cancel ${upcomingAuctions === 1 ? 'it' : 'them'} before deleting your account.`,
+    };
+  }
+
+  // Check if user is the highest bidder in any active auction
+  const highestBidAuctions = await prisma.auction.count({
+    where: {
+      status: 'active',
+      isDeleted: false,
+      highestBid: {
+        bidderId: userId
+      }
+    }
+  });
+
+  if (highestBidAuctions > 0) {
+    return {
+      canDelete: false,
+      reason: `You are the highest bidder in ${highestBidAuctions} active auction${highestBidAuctions === 1 ? '' : 's'
+        }. Please complete the auction or cancel ${highestBidAuctions === 1 ? 'it' : 'them'} before deleting your account.`
+    };
+  }
+
+  // Check for incomplete won auctions where user is the buyer (sold but not completed)
+  const incompleteWonAuctions = await prisma.auction.count({
+    where: {
+      winnerId: userId,
+      status: 'sold',
+      OR: [
+        { isPaymentConfirmed: false },
+        { isDeliveryConfirmed: false }
+      ],
+      isDeleted: false
+    }
+  });
+
+  if (incompleteWonAuctions > 0) {
+    return {
+      canDelete: false,
+      reason: `You have ${incompleteWonAuctions} won auction${incompleteWonAuctions === 1 ? '' : 's'} that ${incompleteWonAuctions === 1 ? 'has' : 'have'} not been completed. ` +
+        `Please complete the payment and delivery process before deleting your account.`
+    };
+  }
+
+  // Check for incomplete sold auctions where user is the seller
+  const incompleteSoldAuctions = await prisma.auction.count({
+    where: {
+      sellerId: userId,
+      status: 'sold',
+      OR: [
+        { isPaymentConfirmed: false },
+        { isDeliveryConfirmed: false }
+      ],
+      isDeleted: false
+    }
+  });
+
+  if (incompleteSoldAuctions > 0) {
+    return {
+      canDelete: false,
+      reason: `You have ${incompleteSoldAuctions} sold auction${incompleteSoldAuctions === 1 ? '' : 's'} that ${incompleteSoldAuctions === 1 ? 'has' : 'have'} not been completed. ` +
+        `Please ensure all payment and delivery processes are complete before deleting your account.`
+    };
+  }
+
+  return { canDelete: true };
 };
 
 /**
