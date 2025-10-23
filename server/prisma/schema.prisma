@@ -53,6 +53,8 @@ model User {
   deletedUsers    User[]    @relation("UserDeletedBy")
   deletedAuctions Auction[] @relation("AuctionDeletedBy")
   deletedBids     Bid[]     @relation("BidDeletedBy")
+  paymentConfirmations  Auction[] @relation("AuctionPaymentConfirmedBy")
+  deliveryConfirmations Auction[] @relation("AuctionDeliveryConfirmedBy")
 
   @@index([email])
   @@index([username])
@@ -85,11 +87,19 @@ model Auction {
   deletedById   String?
   isDeleted     Boolean       @default(false)
   images        Json?
+  isPaymentConfirmed        Boolean   @default(false)
+  isDeliveryConfirmed       Boolean   @default(false)
+  paymentConfirmedByUserId  String?
+  deliveryConfirmedByUserId String?
+  paymentConfirmedAt        DateTime?
+  deliveryConfirmedAt       DateTime?
 
   // Relations - Define onDelete ONLY on foreign key side
-  seller    User  @relation("SellerAuctions", fields: [sellerId], references: [id], onDelete: Cascade)
-  winner    User? @relation("WinnerAuctions", fields: [winnerId], references: [id], onDelete: SetNull)
-  deletedBy User? @relation("AuctionDeletedBy", fields: [deletedById], references: [id], onDelete: NoAction)
+  seller              User  @relation("SellerAuctions", fields: [sellerId], references: [id], onDelete: Cascade)
+  winner              User? @relation("WinnerAuctions", fields: [winnerId], references: [id], onDelete: SetNull)
+  deletedBy           User? @relation("AuctionDeletedBy", fields: [deletedById], references: [id], onDelete: NoAction)
+  paymentConfirmedBy  User? @relation("AuctionPaymentConfirmedBy", fields: [paymentConfirmedByUserId], references: [id], onDelete: NoAction)
+  deliveryConfirmedBy User? @relation("AuctionDeliveryConfirmedBy", fields: [deliveryConfirmedByUserId], references: [id], onDelete: NoAction)
 
   highestBidId String? @unique
   highestBid   Bid?    @relation("AuctionHighestBid", fields: [highestBidId], references: [id], onDelete: SetNull)
@@ -110,6 +120,10 @@ model Auction {
   @@index([currentPrice])
   @@index([isDeleted, status])
   @@index([sellerId, status, createdAt])
+  @@index([isPaymentConfirmed])
+  @@index([isDeliveryConfirmed])
+  @@index([paymentConfirmedByUserId])
+  @@index([deliveryConfirmedByUserId])
 }
 
 model Bid {
@@ -203,7 +217,7 @@ model Feedback {
 
   auction  Auction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
   fromUser User    @relation("FeedbackGiven", fields: [fromUserId], references: [id], onDelete: Cascade)
-  toUser   User?   @relation("FeedbackReceived", fields: [toUserId], references: [id], onDelete: SetNull)
+  toUser   User?    @relation("FeedbackReceived", fields: [toUserId], references: [id], onDelete: SetNull)
 
   @@unique([auctionId, fromUserId, type])
   @@index([toUserId])
@@ -221,5 +235,6 @@ enum AuctionStatus {
   upcoming
   ended
   sold
+  completed
   cancelled
 }

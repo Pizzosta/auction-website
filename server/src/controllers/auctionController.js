@@ -10,7 +10,12 @@ import {
   findAuctionPrisma,
   findDeletedAuction,
   restoreAuctionPrisma,
+  confirmAuctionPaymentPrisma,
+  confirmAuctionDeliveryPrisma,
+  completeAuctionPrisma,
+  checkAuctionConfirmationStatusPrisma,
 } from '../repositories/auctionRepo.prisma.js';
+import { findUserByIdPrisma } from '../repositories/userRepo.prisma.js';
 import { Prisma } from '@prisma/client';
 
 // @desc    Create a new auction
@@ -112,13 +117,20 @@ export const getAuctions = async (req, res) => {
       sort = 'createdAt:desc',
     } = req.query;
 
-    const role = req.user?.role || null;
+    const isAdmin = req.user?.role === 'admin';
 
     // Only admins can see soft-deleted auctions
-    if ((status === 'cancelled' || status === 'all') && role !== 'admin') {
+    if ((status === 'cancelled' || status === 'all') && !isAdmin) {
       return res.status(403).json({
         status: 'error',
         message: 'Only admins can view deleted auctions',
+      });
+    }
+
+    if ((status === 'completed') && !isAdmin) {
+      return res.status(403).json({
+        status: 'error',
+        message: 'Only admins can view completed auctions',
       });
     }
 
@@ -212,6 +224,13 @@ export const getAuctionById = async (req, res) => {
       includeWinner: true,
     });
 
+    if (!auction) {
+      return res.status(404).json({
+        success: false,
+        message: 'Auction not found',
+      });
+    }
+
     if (auction) {
       res.json({
         status: 'success',
@@ -219,17 +238,12 @@ export const getAuctionById = async (req, res) => {
           ...auction,
         },
       });
-    } else {
-      res.status(404).json({
-        status: 'error',
-        message: 'Auction not found',
-      });
     }
   } catch (error) {
     logger.error('Get auction by id error:', {
       error: error.message,
       stack: error.stack,
-      auctionId,
+      auctionId: req.params.auctionId,
     });
     res.status(500).json({
       status: 'error',
@@ -258,8 +272,8 @@ export const updateAuction = async (req, res) => {
     }
 
     // Check if user is the owner or admin
-    const actorId = req.user?.id?.toString();
-    if (auction.sellerId.toString() !== actorId && req.user.role !== 'admin') {
+    const actorId = req.user?.id;
+    if (auction.sellerId !== actorId && req.user.role !== 'admin') {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to update this auction',
@@ -338,7 +352,7 @@ export const updateAuction = async (req, res) => {
       error: error.message,
       stack: error.stack,
       errorName: error.name,
-      auctionId,
+      auctionId: req.params.auctionId,
       userId: req.user?.id,
     });
     res.status(500).json({
@@ -358,7 +372,7 @@ export const updateAuction = async (req, res) => {
 // @access  Private/Owner or Admin
 export const deleteAuction = async (req, res) => {
   const { auctionId } = req.params;
-  const actorId = req.user?.id?.toString();
+  const actorId = req.user?.id;
 
   const getPermanentValue = value => {
     if (value == null) return false;
@@ -381,7 +395,7 @@ export const deleteAuction = async (req, res) => {
     }
 
     // Check if user is the owner or admin
-    if (auction.sellerId.toString() !== actorId && req.user.role !== 'admin') {
+    if (auction.sellerId !== actorId && req.user.role !== 'admin') {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to delete this auction',
@@ -456,7 +470,7 @@ export const deleteAuction = async (req, res) => {
     logger.error('Delete auction error:', {
       error: error.message,
       stack: error.stack,
-      auctionId,
+      auctionId: req.params.auctionId,
       userId: actorId,
       permanent,
     });
@@ -473,10 +487,10 @@ export const deleteAuction = async (req, res) => {
 // @route   PATCH /api/auctions/:id/restore
 // @access  Private/Admin
 export const restoreAuction = async (req, res) => {
-  const { auctionId } = req.params;
-  const { role } = req.user;
-
   try {
+    const { auctionId } = req.params;
+    const { role } = req.user;
+
     // Only admins can restore auctions
     if (role !== 'admin') {
       return res.status(403).json({
@@ -532,13 +546,201 @@ export const restoreAuction = async (req, res) => {
     logger.error('Restore auction error:', {
       error: error.message,
       stack: error.stack,
-      auctionId,
+      auctionId: req.params.auctionId,
       userId: req.user?.id,
     });
 
     res.status(500).json({
       success: false,
       message: 'Error restoring auction',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
+  }
+};
+
+// @desc    Confirm payment for an auction
+// @route   PATCH /api/auctions/:id/confirm-payment
+// @access  Private/Owner or Admin
+export const confirmPayment = async (req, res) => {
+  try {
+    const { auctionId } = req.params;
+    const userId = req.user.id;
+
+    // Fetch the user with only necessary fields
+    const user = await findUserByIdPrisma(userId, ['id', 'role'], { allowSensitive: false });
+
+    if (!user) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'User not found',
+      });
+    }
+
+    const auction = await findAuctionById(auctionId, {
+      includeSeller: false,
+      includeWinner: true,
+    });
+
+    if (!auction) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Auction not found',
+      });
+    }
+
+    // Allow payment confirmation only if admin or the user themselves
+    const actorId = req.user?.id;
+    if (auction.winnerId !== actorId && req.user.role !== 'admin') {
+      return res.status(403).json({
+        status: 'error',
+        message: 'Not authorized to confirm payment for this auction',
+      });
+    }
+
+    // Check if auction has ended
+    if (new Date(auction.endDate) > new Date()) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Cannot confirm payment for an auction that has not ended',
+      });
+    }
+
+    if (auction.isPaymentConfirmed) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Payment is already confirmed',
+      });
+    }
+
+    // Confirm payment
+    await confirmAuctionPaymentPrisma(auctionId, userId, auction.version);
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Payment confirmed successfully',
+      data: { id: auctionId },
+    });
+  } catch (error) {
+    if (error.code === 'P2025') {
+      return res.status(409).json({
+        status: 'error',
+        message: 'This auction was modified by another user. Please refresh and try again.',
+      });
+    }
+    logger.error('Confirm payment error:', {
+      error: error.message,
+      stack: error.stack,
+      auctionId: req.params.auctionId,
+      userId: req.user?.id,
+    });
+    res.status(500).json({
+      status: 'error',
+      message: 'Error confirming payment',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
+  }
+};
+
+// @desc    Confirm delivery for an auction
+// @route   PATCH /api/auctions/:id/confirm-delivery
+// @access  Private/Owner or Admin
+export const confirmDelivery = async (req, res) => {
+  try {
+    const { auctionId } = req.params;
+    const userId = req.user.id;
+
+    // Fetch the user with only necessary fields
+    const user = await findUserByIdPrisma(userId, ['id', 'role'], { allowSensitive: false });
+
+    if (!user) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'User not found',
+      });
+    }
+
+    const auction = await findAuctionById(auctionId, {
+      includeSeller: true,
+      includeWinner: true,
+    });
+
+    if (!auction) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Auction not found',
+      });
+    }
+
+    if (auction.status !== 'sold') {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Auction is not sold yet',
+      });
+    }
+
+    if (!auction.isPaymentConfirmed) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Payment must be confirmed before delivery can be confirmed',
+      });
+    }
+
+    if (auction.isDeliveryConfirmed) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Delivery is already confirmed',
+      });
+    }
+
+    // Check if user is the owner or admin
+    const actorId = req.user?.id;
+    if (auction.sellerId !== actorId && req.user.role !== 'admin') {
+      return res.status(403).json({
+        status: 'error',
+        message: 'Not authorized to confirm delivery for this auction',
+      });
+    }
+
+    // Check if auction has ended
+    if (new Date(auction.endDate) > new Date()) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Cannot confirm delivery for an auction that has not ended',
+      });
+    }
+
+    // Confirm delivery
+    await confirmAuctionDeliveryPrisma(auctionId, userId, auction.version);
+
+    const { isPaymentConfirmed, isDeliveryConfirmed, version } =
+      await checkAuctionConfirmationStatusPrisma(auctionId);
+
+    // Check if auction is complete and update status
+    if (isPaymentConfirmed && isDeliveryConfirmed) {  
+      await completeAuctionPrisma(auctionId, version);
+    }
+
+    res.status(200).json({
+      status: 'success',
+      message: 'Delivery confirmed successfully',
+      data: { id: auctionId },
+    });
+  } catch (error) {
+    if (error.code === 'P2025') {
+      return res.status(409).json({
+        status: 'error',
+        message: 'This auction was modified by another user. Please refresh and try again.',
+      });
+    }
+    logger.error('Confirm delivery error:', {
+      error: error.message,
+      stack: error.stack,
+      auctionId: req.params.auctionId,
+      userId: req.user?.id,
+    });
+    res.status(500).json({
+      status: 'error',
+      message: 'Error confirming delivery',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined,
     });
   }

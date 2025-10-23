@@ -41,6 +41,8 @@ export async function listAuctionsPrisma({
       ];
     } else if (normalizedStatus === 'sold') {
       where.status = 'sold';
+    } else if (normalizedStatus === 'completed') {
+      where.AND = [{ status: 'completed' }];
     } else if (normalizedStatus === 'cancelled') {
       where.AND = [{ status: 'cancelled' }, { isDeleted: true }];
     } else if (normalizedStatus === 'all') {
@@ -49,6 +51,12 @@ export async function listAuctionsPrisma({
       // fallback for unknown status strings
       where.status = normalizedStatus;
     }
+  } else {
+    // default behavior: show active & upcoming auctions
+    where.OR = [
+      { AND: [{ status: 'active' }, { endDate: { gt: new Date() } }] },
+      { AND: [{ status: 'upcoming' }, { startDate: { gt: new Date() } }] },
+    ];
   }
 
   // Other filters
@@ -158,8 +166,8 @@ export const findAuctionById = async (id, options = {}) => {
   return prisma.auction.findUnique({
     where: { id },
     include: {
-      ...(includeSeller && { seller: { select: { username: true } } }),
-      ...(includeWinner && { winner: { select: { username: true } } }),
+      ...(includeSeller && { seller: { select: { id: true, username: true } } }),
+      ...(includeWinner && { winner: { select: { id: true, username: true } } }),
     },
   });
 };
@@ -228,6 +236,7 @@ export const findAuctionPrisma = async (id) => {
     select: {
       id: true,
       sellerId: true,
+      winnerId: true,
       startDate: true,
       images: true,
       version: true,
@@ -260,6 +269,62 @@ export const restoreAuctionPrisma = async (id, version) => {
       isDeleted: false,
       deletedAt: null,
       deletedById: null,
+      version: { increment: 1 },
+    },
+  });
+};
+
+/**
+ * Confirm payment for an auction
+ * @param {string} auctionId - Auction ID
+ * @param {string} paymentConfirmedByUserId - ID of the user confirming the payment
+ * @param {number} version - Current version for optimistic concurrency
+ * @returns {Promise<Object>} Updated auction
+ */
+export const confirmAuctionPaymentPrisma = async (auctionId, paymentConfirmedByUserId, version) => {
+  return prisma.auction.update({
+    where: { id: auctionId, version },
+    data: { isPaymentConfirmed: true, paymentConfirmedAt: new Date(), paymentConfirmedByUserId, version: { increment: 1 } }
+  });
+}
+
+/**
+ * Confirm delivery for an auction
+ * @param {string} auctionId - Auction ID
+ * @param {string} deliveryConfirmedByUserId - ID of the user confirming the delivery
+ * @param {number} version - Current version for optimistic concurrency
+ * @returns {Promise<Object>} Updated auction
+ */
+export const confirmAuctionDeliveryPrisma = async (auctionId, deliveryConfirmedByUserId, version) => {
+  return prisma.auction.update({
+    where: { id: auctionId, version },
+    data: { isDeliveryConfirmed: true, deliveryConfirmedAt: new Date(), deliveryConfirmedByUserId, version: { increment: 1 } }
+  });
+};
+
+/**
+ * Check auction confirmation status
+ * @param {string} auctionId - Auction ID
+ * @returns {Promise<Object>} Auction status
+ */
+export const checkAuctionConfirmationStatusPrisma = async (auctionId) => {
+  return prisma.auction.findUnique({
+    where: { id: auctionId, version },
+    select: { isPaymentConfirmed: true, isDeliveryConfirmed: true, version: true },
+  });
+};
+
+/**
+ * Complete an auction
+ * @param {string} auctionId - Auction ID
+ * @param {number} version - Current version for optimistic concurrency
+ * @returns {Promise<Object>} Updated auction
+ */
+export const completeAuctionPrisma = async (auctionId, version) => {
+  return prisma.auction.update({
+    where: { id: auctionId, version },
+    data: {
+      status: 'completed',
       version: { increment: 1 },
     },
   });

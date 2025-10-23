@@ -132,7 +132,7 @@ export const cleanupOldData = async () => {
 
     // Remove old completed auctions
     const result = await prisma.auction.deleteMany({
-      where: { status: { in: ['ended', 'sold'] }, updatedAt: { lt: thirtyDaysAgo } },
+      where: { status: { in: ['ended', 'sold', 'completed'] }, updatedAt: { lt: thirtyDaysAgo } },
     });
 
     logger.info('Cleaned up old auctions', {

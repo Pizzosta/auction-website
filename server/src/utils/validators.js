@@ -39,7 +39,7 @@ export const auctionQuerySchema = {
       .default('createdAt:desc')
       .optional(),
     status: Joi.string()
-      .valid('upcoming', 'active', 'ended', 'sold', 'cancelled', 'all')
+      .valid('upcoming', 'active', 'ended', 'sold', 'completed', 'cancelled', 'all')
       .lowercase()
       .optional(),
     category: Joi.string().optional(),
@@ -302,7 +302,7 @@ export const auctionSchema = {
     description: Joi.string().trim().min(3).max(500).required(),
     startingPrice: Joi.number().min(0).required(),
     bidIncrement: Joi.number().min(0.01).required(),
-    startDate: Joi.date().iso().greater('now').required(),
+    startDate: Joi.date().iso().min('now').required(),
     endDate: Joi.date().iso().greater(Joi.ref('startDate')).required(),
     category: Joi.string()
       .required()
@@ -342,7 +342,7 @@ export const auctionSchema = {
     description: Joi.string().trim().min(3).max(500).optional(),
     startingPrice: Joi.number().min(0).optional(),
     bidIncrement: Joi.number().min(0.01).optional(),
-    startDate: Joi.date().iso().greater('now').optional(),
+    startDate: Joi.date().iso().min('now').optional(),
     endDate: Joi.date().iso().greater(Joi.ref('startDate')).optional(),
     category: Joi.string()
       .optional()

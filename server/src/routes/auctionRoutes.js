@@ -7,6 +7,8 @@ import {
   updateAuction,
   deleteAuction,
   restoreAuction,
+  confirmPayment,
+  confirmDelivery,
 } from '../controllers/auctionController.js';
 import { protect, admin } from '../middleware/authMiddleware.js';
 import { validate } from '../middleware/validationMiddleware.js';
@@ -109,5 +111,25 @@ router.delete('/:auctionId', protect, validate(idSchema('auctionId'), 'params'),
  * @returns {Error}  default - Unexpected error
  */
 router.patch('/:auctionId/restore', protect, admin, validate(idSchema('auctionId'), 'params'), restoreAuction);
+
+/**
+ * @route PATCH /api/auctions/{auctionId}/confirm-payment
+ * @group Auctions - auction management
+ * @description Confirm payment for an auction. Requires authentication.
+ * @param {string} auctionId.path.required
+ * @returns {object} 200 - Payment confirmed
+ * @returns {Error}  default - Unexpected error
+ */
+router.patch('/:auctionId/confirm-payment', protect, validate(idSchema('auctionId'), 'params'), confirmPayment);
+
+/**
+ * @route PATCH /api/auctions/{auctionId}/confirm-delivery
+ * @group Auctions - auction management
+ * @description Confirm delivery for an auction. Requires authentication.
+ * @param {string} auctionId.path.required
+ * @returns {object} 200 - Delivery confirmed
+ * @returns {Error}  default - Unexpected error
+ */
+router.patch('/:auctionId/confirm-delivery', protect, validate(idSchema('auctionId'), 'params'), confirmDelivery);
 
 export default router;
