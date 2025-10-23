@@ -239,6 +239,7 @@ export const placeBidCore = async ({ auctionId, amount, actorId, io, socket }) =
                 version: true,
               },
             });
+
             if (!auction) throw new Error('AUCTION_NOT_FOUND');
             const minAllowedBid = Number(auction.currentPrice) + Number(auction.bidIncrement);
             if (Number(amount) < minAllowedBid) {
@@ -246,7 +247,9 @@ export const placeBidCore = async ({ auctionId, amount, actorId, io, socket }) =
               err.details = { minAllowedBid, bidIncrement: Number(auction.bidIncrement) };
               throw err;
             }
+
             if (auction.status !== 'active') throw new Error('NOT_ACTIVE');
+
             const now = new Date();
             if (new Date(auction.endDate) < now) {
               await tx.auction.update({
@@ -255,7 +258,9 @@ export const placeBidCore = async ({ auctionId, amount, actorId, io, socket }) =
               });
               throw new Error('ALREADY_ENDED');
             }
+
             if (auction.sellerId.toString() === actorId) throw new Error('BID_ON_OWN_AUCTION');
+
             const bid = await tx.bid.create({
               data: {
                 amount: new Prisma.Decimal(amount),
@@ -270,11 +275,14 @@ export const placeBidCore = async ({ auctionId, amount, actorId, io, socket }) =
                 bidder: { select: { id: true, username: true } },
               },
             });
+
             const bidCount = await tx.bid.count({
               where: { auctionId: auction.id, isDeleted: false },
             });
+
             const updateData = {
               currentPrice: new Prisma.Decimal(amount),
+              highestBidId: bid.id,
               version: { increment: 1 },
             };
 
