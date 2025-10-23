@@ -38,6 +38,7 @@ const DEFAULT_REQUIRED_VARS = [
   'DEFAULT_RATE_LIMIT_MAX',
   'VERIFICATION_TOKEN_EXPIRE',
   'AUCTION_EXTENSION_MINUTES',
+  'SERVER_TIME_TOLERANCE_MINUTES',
 ];
 
 export function validateEnv(requiredVars = DEFAULT_REQUIRED_VARS) {
@@ -67,7 +68,8 @@ export const env = {
   webhookSecret: process.env.WEBHOOK_SECRET,
   cookieSecret: process.env.COOKIE_SECRET,
   auctionExtensionMinutes: process.env.AUCTION_EXTENSION_MINUTES,
-
+  serverTimeToleranceMinutes: process.env.SERVER_TIME_TOLERANCE_MINUTES,
+  
   redis: {
     host: process.env.REDIS_HOST,
     port: process.env.REDIS_PORT ? parseInt(process.env.REDIS_PORT, 10) : undefined,

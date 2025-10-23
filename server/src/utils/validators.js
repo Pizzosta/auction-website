@@ -302,8 +302,12 @@ export const auctionSchema = {
     description: Joi.string().trim().min(3).max(500).required(),
     startingPrice: Joi.number().min(0).required(),
     bidIncrement: Joi.number().min(0.01).required(),
-    startDate: Joi.date().iso().min('now').required(),
-    endDate: Joi.date().iso().greater(Joi.ref('startDate')).required(),
+    startDate: Joi.date().iso().greater(Joi.ref('$serverTime')).required().messages({
+      'date.greater': 'Start date must be after the current time',
+    }),
+    endDate: Joi.date().iso().greater(Joi.ref('startDate')).required().messages({
+      'date.greater': 'End date must be after the start date',
+    }),
     category: Joi.string()
       .required()
       .valid(
@@ -342,8 +346,12 @@ export const auctionSchema = {
     description: Joi.string().trim().min(3).max(500).optional(),
     startingPrice: Joi.number().min(0).optional(),
     bidIncrement: Joi.number().min(0.01).optional(),
-    startDate: Joi.date().iso().min('now').optional(),
-    endDate: Joi.date().iso().greater(Joi.ref('startDate')).optional(),
+    startDate: Joi.date().iso().greater(Joi.ref('$serverTime')).optional().messages({
+      'date.greater': 'Start date must be after the current time',
+    }),
+    endDate: Joi.date().iso().greater(Joi.ref('startDate')).optional().messages({
+      'date.greater': 'End date must be after the start date',
+    }),
     category: Joi.string()
       .optional()
       .valid(
