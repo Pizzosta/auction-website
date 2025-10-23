@@ -295,7 +295,7 @@ export const placeBidCore = async ({ auctionId, amount, actorId, io, socket }) =
 
               // Only extend if the auction is ending within the extension window
               if (timeUntilEnd <= auctionExtensionMs) {
-                const newEndDate = new Date(now.getTime() + auctionExtensionMs);
+                const newEndDate = new Date(currentEndDate.getTime() + auctionExtensionMs);
                 updateData.endDate = newEndDate;
 
                 logger.info('Extended auction end time due to first bid', {
@@ -825,18 +825,41 @@ export const getMyBids = async (req, res) => {
     // Enhance bids with additional information
     const enhancedBids = await Promise.all(
       bids.map(async bid => {
-        const auction = await prisma.auction.findUnique({
-          where: { id: bid.auctionId },
-          select: {
-            status: true,
-            endDate: true,
-            winnerId: true,
-          },
-        });
+        // Get auction and highest bid in parallel for better performance
+        const [auction, highestBid] = await Promise.all([
+          prisma.auction.findUnique({
+            where: { id: bid.auctionId },
+            select: {
+              status: true,
+              endDate: true,
+              winnerId: true,
+              highestBidId: true,
+            },
+          }),
+          // Get the highest bid for this auction
+          prisma.bid.findFirst({
+            where: { 
+              auctionId: bid.auctionId, 
+              isDeleted: false 
+            },
+            orderBy: { amount: 'desc' },
+            select: { 
+              id: true,
+              bidderId: true,
+              amount: true
+            },
+          }),
+        ]);
 
-        const isWinning = auction?.winnerId === bid.bidderId;
         const isActive = auction?.status === 'active' && new Date(auction?.endDate) > new Date();
         const isEnded = auction ? ['ended', 'sold'].includes(auction.status) : false;
+        
+        // User is winning if:
+        // 1. Auction is active AND they have the highest bid, OR
+        // 2. Auction has ended AND they are the winner
+        const isWinning = isActive 
+          ? highestBid?.bidderId === bid.bidderId
+          : auction?.winnerId === bid.bidderId;
 
         return {
           ...bid,
