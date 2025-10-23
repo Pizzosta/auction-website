@@ -209,6 +209,48 @@ export const canDeleteUserPrisma = async (userId) => {
       };
     }
 
+    // Check for incomplete won auctions where user is the buyer (sold but not completed)
+    const incompleteWonAuctions = await prisma.auction.count({
+      where: {
+        winnerId: userId,
+        status: 'sold',
+        OR: [
+          { isPaymentConfirmed: false },
+          { isDeliveryConfirmed: false }
+        ],
+        isDeleted: false
+      }
+    });
+
+    if (incompleteWonAuctions > 0) {
+      return {
+        canDelete: false,
+        reason: `You have ${incompleteWonAuctions} won auction${incompleteWonAuctions === 1 ? '' : 's'} that ${incompleteWonAuctions === 1 ? 'has' : 'have'} not been completed. ` +
+          `Please complete the payment and delivery process before deleting your account.`
+      };
+    }
+
+    // Check for incomplete sold auctions where user is the seller
+    const incompleteSoldAuctions = await prisma.auction.count({
+      where: {
+        sellerId: userId,
+        status: 'sold',
+        OR: [
+          { isPaymentConfirmed: false },
+          { isDeliveryConfirmed: false }
+        ],
+        isDeleted: false
+      }
+    });
+
+    if (incompleteSoldAuctions > 0) {
+      return {
+        canDelete: false,
+        reason: `You have ${incompleteSoldAuctions} sold auction${incompleteSoldAuctions === 1 ? '' : 's'} that ${incompleteSoldAuctions === 1 ? 'has' : 'have'} not been completed. ` +
+          `Please ensure all payment and delivery processes are complete before deleting your account.`
+      };
+    }
+
     return { canDelete: true };
   } catch (error) {
     logger.error('Error checking if user can be deleted:', {
