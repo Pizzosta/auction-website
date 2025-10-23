@@ -711,13 +711,29 @@ export const confirmDelivery = async (req, res) => {
 
     // Confirm delivery
     await confirmAuctionDeliveryPrisma(auctionId, userId, auction.version);
+    /*(
+        // Check if both confirmations are done and complete auction
+        const { isPaymentConfirmed, isDeliveryConfirmed, version } =
+          await checkAuctionConfirmationStatusPrisma(auctionId);
+    
+        // Check if auction is complete and update status
+        if (isPaymentConfirmed && isDeliveryConfirmed) {
+          await completeAuctionPrisma(auctionId, version);
+        })*/
+       
+    // Check confirmation status
+    const confirmationStatus = await checkAuctionConfirmationStatusPrisma(auctionId);
 
-    const { isPaymentConfirmed, isDeliveryConfirmed, version } =
-      await checkAuctionConfirmationStatusPrisma(auctionId);
+    if (!confirmationStatus) {
+      return res.status(404).json({
+        status: 'error',
+        message: 'Auction not found after delivery confirmation',
+      });
+    }
 
-    // Check if auction is complete and update status
-    if (isPaymentConfirmed && isDeliveryConfirmed) {  
-      await completeAuctionPrisma(auctionId, version);
+    // Update status to completed if both payment and delivery are confirmed
+    if (confirmationStatus.isPaymentConfirmed && confirmationStatus.isDeliveryConfirmed) {
+      await completeAuctionPrisma(auctionId, confirmationStatus.version);
     }
 
     res.status(200).json({

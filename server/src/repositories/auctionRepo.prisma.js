@@ -307,9 +307,9 @@ export const confirmAuctionDeliveryPrisma = async (auctionId, deliveryConfirmedB
  * @param {string} auctionId - Auction ID
  * @returns {Promise<Object>} Auction status
  */
-export const checkAuctionConfirmationStatusPrisma = async (auctionId, version) => {
+export const checkAuctionConfirmationStatusPrisma = async (auctionId) => {
   return prisma.auction.findUnique({
-    where: { id: auctionId, version },
+    where: { id: auctionId },
     select: { isPaymentConfirmed: true, isDeliveryConfirmed: true, version: true },
   });
 };
