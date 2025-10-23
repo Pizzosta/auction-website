@@ -558,9 +558,9 @@ export const restoreAuction = async (req, res) => {
   }
 };
 
-// @desc    Confirm payment for an auction
+// @desc    Confirm payment for an auction (Seller confirms they received payment)
 // @route   PATCH /api/auctions/:id/confirm-payment
-// @access  Private/Owner or Admin
+// @access  Private/Seller or Admin
 export const confirmPayment = async (req, res) => {
   try {
     const { auctionId } = req.params;
@@ -577,7 +577,7 @@ export const confirmPayment = async (req, res) => {
     }
 
     const auction = await findAuctionById(auctionId, {
-      includeSeller: false,
+      includeSeller: true,
       includeWinner: true,
     });
 
@@ -588,9 +588,8 @@ export const confirmPayment = async (req, res) => {
       });
     }
 
-    // Allow payment confirmation only if admin or the user themselves
-    const actorId = req.user?.id;
-    if (auction.winnerId !== actorId && req.user.role !== 'admin') {
+    // Only the seller or admin can confirm payment
+    if (auction.sellerId !== userId && user.role !== 'admin') {
       return res.status(403).json({
         status: 'error',
         message: 'Not authorized to confirm payment for this auction',
@@ -641,9 +640,9 @@ export const confirmPayment = async (req, res) => {
   }
 };
 
-// @desc    Confirm delivery for an auction
+// @desc    Confirm delivery for an auction (Winner confirms they received the item)
 // @route   PATCH /api/auctions/:id/confirm-delivery
-// @access  Private/Owner or Admin
+// @access  Private/Winner or Admin
 export const confirmDelivery = async (req, res) => {
   try {
     const { auctionId } = req.params;
@@ -692,9 +691,8 @@ export const confirmDelivery = async (req, res) => {
       });
     }
 
-    // Check if user is the owner or admin
-    const actorId = req.user?.id;
-    if (auction.sellerId !== actorId && req.user.role !== 'admin') {
+    // Only the winner or admin can confirm delivery
+    if (auction.winnerId !== userId && user.role !== 'admin') {
       return res.status(403).json({
         status: 'error',
         message: 'Not authorized to confirm delivery for this auction',
@@ -711,16 +709,7 @@ export const confirmDelivery = async (req, res) => {
 
     // Confirm delivery
     await confirmAuctionDeliveryPrisma(auctionId, userId, auction.version);
-    /*(
-        // Check if both confirmations are done and complete auction
-        const { isPaymentConfirmed, isDeliveryConfirmed, version } =
-          await checkAuctionConfirmationStatusPrisma(auctionId);
-    
-        // Check if auction is complete and update status
-        if (isPaymentConfirmed && isDeliveryConfirmed) {
-          await completeAuctionPrisma(auctionId, version);
-        })*/
-       
+
     // Check confirmation status
     const confirmationStatus = await checkAuctionConfirmationStatusPrisma(auctionId);
 
