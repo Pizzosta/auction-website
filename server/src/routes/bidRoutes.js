@@ -35,7 +35,7 @@ router.post('/', protect, bidLimiter, validate(bidSchema.create, 'body'), placeB
 router.get(
   '/auction/:auctionId',
   validate(idSchema('auctionId'), 'params'),
-  validate(bidQuerySchema.bidSort, 'query'),
+  validate(bidQuerySchema.auctionBidSort, 'query'),
   getBidsByAuction
 );
 
@@ -46,7 +46,7 @@ router.get(
  * @returns {object} 200 - List of user's bids
  * @returns {Error}  default - Unexpected error
  */
-router.get('/me', protect, validate(bidQuerySchema.search, 'query'), getMyBids);
+router.get('/me', protect, validate(bidQuerySchema.personalBidSort, 'query'), getMyBids);
 
 /**
  * @route DELETE /api/bids/{bidId}
@@ -101,7 +101,7 @@ router.get(
   '/',
   protect,
   admin,
-  validate(bidQuerySchema, 'query'),
+  validate(bidQuerySchema.adminBidSort, 'query'),
   getAllBids
 );
 

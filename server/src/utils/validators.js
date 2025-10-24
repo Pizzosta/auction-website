@@ -71,7 +71,7 @@ export const auctionQuerySchema = {
 
 // Bid query schema validation
 export const bidQuerySchema = {
-  search: Joi.object({
+  adminBidSort: Joi.object({
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(100).default(10),
     sort: Joi.string()
@@ -90,13 +90,24 @@ export const bidQuerySchema = {
     endDate: Joi.date().iso().optional(),
   }),
 
-  bidSort: Joi.object({
+  auctionBidSort: Joi.object({
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(100).default(10),
     sort: Joi.string()
       .pattern(/^(amount|createdAt):(asc|desc)$/)
       .default('createdAt:desc')
       .optional(),
+  }),
+
+  personalBidSort: Joi.object({
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(100).default(10),
+    sort: Joi.string()
+      .pattern(/^(amount|createdAt):(asc|desc)$/)
+      .default('createdAt:desc')
+      .optional(),
+    highestBidderOnly: Joi.boolean().optional(),
+    winningBidsOnly: Joi.boolean().optional(),
   }),
 
   delete: Joi.object({
