@@ -798,7 +798,15 @@ export const getBidsByAuction = async (req, res) => {
 // @access  Private
 export const getMyBids = async (req, res) => {
   try {
-    const { status, page = 1, limit = 10, sort = 'createdAt:desc' } = req.query;
+    const { 
+      status, 
+      page = 1, 
+      limit = 10, 
+      sort = 'createdAt:desc',
+      highestBidderOnly = 'false',
+      winningBidsOnly = 'false'
+    } = req.query;
+    
     const { id: userId } = req.user;
 
     // Check if user has permission to view cancelled bids
@@ -809,14 +817,68 @@ export const getMyBids = async (req, res) => {
       });
     }
 
-    // Use the repository to get paginated and filtered bids
-    const { bids, count, pageNum, take } = await listBidsPrisma({
+    // First, get all the user's bids
+    let { bids, count, pageNum, take } = await listBidsPrisma({
       bidderId: userId,
       status,
       page: parseInt(page),
       limit: parseInt(limit),
       sort,
     });
+
+    // Apply filters if needed
+    if (highestBidderOnly === 'true' || winningBidsOnly === 'true') {
+      // Get all auctions where the user has bids
+      const auctionIds = [...new Set(bids.map(bid => bid.auctionId))];
+      
+      // Build the where clause based on filter type
+      const where = {
+        id: { in: auctionIds },
+        isDeleted: false
+      };
+
+      if (highestBidderOnly === 'true') {
+        // For highest bidder, check current highest bid
+        where.highestBid = { bidderId: userId };
+      } else if (winningBidsOnly === 'true') {
+        // For winning bids, check if auction ended and user is the winner
+        where.AND = [
+          { status: { in: ['ended', 'sold'] } },
+          { winnerId: userId }
+        ];
+      }
+      
+      // Find matching auctions
+      const matchingAuctions = await prisma.auction.findMany({
+        where,
+        select: {
+          id: true,
+          highestBidId: true,
+          status: true,
+          winnerId: true
+        }
+      });
+
+      const matchingAuctionIds = new Set(
+        matchingAuctions.map(a => a.id)
+      );
+
+      // Filter bids based on the selected filter
+      if (highestBidderOnly === 'true') {
+        bids = bids.filter(bid => matchingAuctionIds.has(bid.auctionId));
+      } else if (winningBidsOnly === 'true') {
+        // For winning bids, only include bids that won the auction
+        const winningBidIds = new Set(
+          matchingAuctions.map(a => a.highestBidId).filter(Boolean)
+        );
+        bids = bids.filter(bid => winningBidIds.has(bid.id));
+      }
+      
+      // Update count and pagination
+      count = bids.length;
+      const totalPages = Math.ceil(count / take);
+      pageNum = Math.min(pageNum, Math.max(1, totalPages));
+    }
 
     const totalPages = Math.ceil(count / take);
     const hasNext = pageNum < totalPages;

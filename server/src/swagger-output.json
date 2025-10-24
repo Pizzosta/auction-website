@@ -946,6 +946,16 @@
             "name": "sort",
             "in": "query",
             "type": "string"
+          },
+          {
+            "name": "highestBidderOnly",
+            "in": "query",
+            "type": "string"
+          },
+          {
+            "name": "winningBidsOnly",
+            "in": "query",
+            "type": "string"
           }
         ],
         "responses": {
