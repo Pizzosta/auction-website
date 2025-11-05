@@ -73,7 +73,7 @@ import { getSocketStats, userRooms, auctionRooms, auctionTimers } from '../middl
  *       500:
  *         description: Internal server error
  */
-export const getSystemStats = async (req, res) => {
+export const getSystemStats = async (req, res, next) => {
     try {
         const { timeFrame = 'month' } = req.query;
         const now = new Date();
@@ -205,10 +205,7 @@ export const getSystemStats = async (req, res) => {
         });
     } catch (error) {
         logger.error('Error fetching system stats:', error);
-        res.status(500).json({
-            status: 'error',
-            message: 'Failed to fetch system statistics'
-        });
+        next(error);
     }
 };
 
@@ -270,7 +267,7 @@ export const getSystemStats = async (req, res) => {
  *       500:
  *         description: Internal server error
  */
-export const getAuctionStats = async (req, res) => {
+export const getAuctionStats = async (req, res, next) => {
     try {
         const { timeFrame = 'month' } = req.query;
         const now = new Date();
@@ -374,10 +371,7 @@ export const getAuctionStats = async (req, res) => {
         });
     } catch (error) {
         logger.error('Error fetching auction stats:', error);
-        res.status(500).json({
-            status: 'error',
-            message: 'Failed to fetch auction statistics'
-        });
+        next(error);
     }
 };
 
@@ -448,7 +442,7 @@ export const getAuctionStats = async (req, res) => {
  *       500:
  *         description: Internal server error
  */
-export const getBidStats = async (req, res) => {
+export const getBidStats = async (req, res, next) => {
     try {
         const { timeFrame = 'month' } = req.query;
         const now = new Date();
@@ -582,10 +576,7 @@ export const getBidStats = async (req, res) => {
         });
     } catch (error) {
         logger.error('Error fetching bid stats:', error);
-        res.status(500).json({
-            status: 'error',
-            message: 'Failed to fetch bid statistics'
-        });
+        next(error);
     }
 };
 
@@ -648,7 +639,7 @@ export const getBidStats = async (req, res) => {
  *       500:
  *         description: Internal server error
  */
-export const getUserStats = async (req, res) => {
+export const getUserStats = async (req, res, next) => {
     try {
         const { timeFrame = 'month' } = req.query;
         const now = new Date();
@@ -739,15 +730,11 @@ export const getUserStats = async (req, res) => {
         });
     } catch (error) {
         logger.error('Error fetching user stats:', error);
-        res.status(500).json({
-            status: 'error',
-            message: 'Failed to fetch user statistics'
-        });
+        next(error);
     }
 };
 
-
-export const getSocketStatsController = (req, res) => {
+export const getSocketStatsController = (req, res, next) => {
     try {
         // Basic stats from getSocketStats
         const stats = getSocketStats();
@@ -766,38 +753,35 @@ export const getSocketStatsController = (req, res) => {
             userId: req.user.id
         });
 
-        res.status(500).json({
-            status: 'error',
-            message: 'Failed to retrieve socket statistics'
-        });
+        next(error);
     }
 };
 
 
-export const getSocketRoomsController = (req, res) => {
+export const getSocketRoomsController = (req, res, next) => {
     try {
-        const detailedRoomInfo = 
-            // Additional detailed information
-            {
-                userRooms: Array.from(userRooms.entries()).map(([userId, rooms]) => ({
-                    userId,
-                    roomCount: rooms.size,
-                    rooms: Array.from(rooms)
-                })),
-                auctionRooms: Array.from(auctionRooms.entries()).map(([auctionId, room]) => ({
-                    auctionId,
-                    bidders: Array.from(room.bidders),
-                    biddersCount: room.bidders.size,
-                    viewers: room.viewers,
-                    total: room.bidders.size + room.viewers
-                })),
-                auctionTimers: Array.from(auctionTimers.entries()).map(([auctionId, timer]) => ({
-                    auctionId,
-                    hasTimer: !!timer.timer,
-                    hasInterval: !!timer.interval,
-                    endTime: timer.endTime
-                }))
-            };
+        const detailedRoomInfo =
+        // Additional detailed information
+        {
+            userRooms: Array.from(userRooms.entries()).map(([userId, rooms]) => ({
+                userId,
+                roomCount: rooms.size,
+                rooms: Array.from(rooms)
+            })),
+            auctionRooms: Array.from(auctionRooms.entries()).map(([auctionId, room]) => ({
+                auctionId,
+                bidders: Array.from(room.bidders),
+                biddersCount: room.bidders.size,
+                viewers: room.viewers,
+                total: room.bidders.size + room.viewers
+            })),
+            auctionTimers: Array.from(auctionTimers.entries()).map(([auctionId, timer]) => ({
+                auctionId,
+                hasTimer: !!timer.timer,
+                hasInterval: !!timer.interval,
+                endTime: timer.endTime
+            }))
+        };
 
         res.json({
             status: 'success',
@@ -814,9 +798,6 @@ export const getSocketRoomsController = (req, res) => {
             stack: error.stack
         });
 
-        res.status(500).json({
-            status: 'error',
-            message: 'Failed to retrieve room information'
-        });
+        next(error);
     }
 };

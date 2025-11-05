@@ -21,7 +21,7 @@ import { Prisma } from '@prisma/client';
 // @desc    Create a new auction
 // @route   POST /api/auctions
 // @access  Private
-export const createAuction = async (req, res) => {
+export const createAuction = async (req, res, next) => {
   try {
     const {
       title,
@@ -86,19 +86,14 @@ export const createAuction = async (req, res) => {
         });
       }
     }
-
-    res.status(500).json({
-      success: false,
-      message: 'Server error while creating auction',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
+    next(error);
   }
 };
 
 // @desc    Get all auctions
 // @route   GET /api/auctions/admin
 // @access  Admin
-export const getAuctions = async (req, res) => {
+export const getAuctions = async (req, res, next) => {
   try {
     const {
       status,
@@ -191,11 +186,7 @@ export const getAuctions = async (req, res) => {
       stack: error.stack,
       query: req.query,
     });
-    res.status(500).json({
-      status: 'error',
-      message: 'Failed to fetch auctions',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
+    next(error);
   }
 };
 
@@ -215,7 +206,7 @@ export const getPublicAuctions = async (req, res, next) => {
   return getAuctions(req, res, next);
 };
 
-export const getAuctionById = async (req, res) => {
+export const getAuctionById = async (req, res, next) => {
   try {
     const { auctionId } = req.params;
 
@@ -245,11 +236,7 @@ export const getAuctionById = async (req, res) => {
       stack: error.stack,
       auctionId: req.params.auctionId,
     });
-    res.status(500).json({
-      status: 'error',
-      message: 'Server error',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
+    next(error);
   }
 };
 
@@ -257,7 +244,7 @@ export const getAuctionById = async (req, res) => {
 // @desc    Update auction
 // @route   PUT /api/auctions/:id
 // @access  Private/Owner or Admin
-export const updateAuction = async (req, res) => {
+export const updateAuction = async (req, res, next) => {
   try {
     const { title, description, startingPrice, bidIncrement, startDate, endDate, images, category } = req.body;
     const { auctionId } = req.params;
@@ -355,22 +342,14 @@ export const updateAuction = async (req, res) => {
       auctionId: req.params.auctionId,
       userId: req.user?.id,
     });
-    res.status(500).json({
-      success: false,
-      message:
-        error.name === 'ValidationError'
-          ? Object.values(error.errors)
-            .map(val => val.message)
-            .join(', ')
-          : 'Server error while updating auction',
-    });
+    next(error);
   }
 };
 
 // @desc    Delete auction
 // @route   DELETE /api/auctions/:id
 // @access  Private/Owner or Admin
-export const deleteAuction = async (req, res) => {
+export const deleteAuction = async (req, res, next) => {
   const { auctionId } = req.params;
   const actorId = req.user?.id;
 
@@ -475,18 +454,14 @@ export const deleteAuction = async (req, res) => {
       permanent,
     });
 
-    return res.status(500).json({
-      success: false,
-      message: 'Error deleting auction',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
+    next(error);
   }
 };
 
 // @desc    Restore a soft-deleted auction (Admin only)
 // @route   PATCH /api/auctions/:id/restore
 // @access  Private/Admin
-export const restoreAuction = async (req, res) => {
+export const restoreAuction = async (req, res, next) => {
   try {
     const { auctionId } = req.params;
     const { role } = req.user;
@@ -550,18 +525,14 @@ export const restoreAuction = async (req, res) => {
       userId: req.user?.id,
     });
 
-    res.status(500).json({
-      success: false,
-      message: 'Error restoring auction',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
+    next(error);
   }
 };
 
 // @desc    Confirm payment for an auction (Seller confirms they received payment)
 // @route   PATCH /api/auctions/:id/confirm-payment
 // @access  Private/Seller or Admin
-export const confirmPayment = async (req, res) => {
+export const confirmPayment = async (req, res, next) => {
   try {
     const { auctionId } = req.params;
     const userId = req.user.id;
@@ -632,18 +603,14 @@ export const confirmPayment = async (req, res) => {
       auctionId: req.params.auctionId,
       userId: req.user?.id,
     });
-    res.status(500).json({
-      status: 'error',
-      message: 'Error confirming payment',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
+    next(error);
   }
 };
 
 // @desc    Confirm delivery for an auction (Winner confirms they received the item)
 // @route   PATCH /api/auctions/:id/confirm-delivery
 // @access  Private/Winner or Admin
-export const confirmDelivery = async (req, res) => {
+export const confirmDelivery = async (req, res, next) => {
   try {
     const { auctionId } = req.params;
     const userId = req.user.id;
@@ -743,10 +710,6 @@ export const confirmDelivery = async (req, res) => {
       auctionId: req.params.auctionId,
       userId: req.user?.id,
     });
-    res.status(500).json({
-      status: 'error',
-      message: 'Error confirming delivery',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
+    next(error);
   }
 };

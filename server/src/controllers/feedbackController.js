@@ -12,7 +12,7 @@ import {
 import { processFeedbackForDisplay } from '../utils/format.js';
 
 // Create feedback
-export const createFeedback = async (req, res) => {
+export const createFeedback = async (req, res, next) => {
     try {
         const { auctionId, rating, comment, type, isAnonymous } = req.body;
         const fromUserId = req.user.id;
@@ -84,12 +84,12 @@ export const createFeedback = async (req, res) => {
             userId: req.user?.id,
             stack: error.stack,
         });
-        res.status(500).json({ status: 'error', message: 'Failed to submit feedback' });
+        next(error);
     }
 };
 
 // Get feedback for a user
-export const getUserFeedback = async (req, res) => {
+export const getUserFeedback = async (req, res, next) => {
     try {
         const { userId } = req.params;
         const {
@@ -130,12 +130,12 @@ export const getUserFeedback = async (req, res) => {
             error: error.message,
             stack: error.stack,
         });
-        res.status(500).json({ status: 'error', message: 'Failed to fetch feedback' });
+        next(error);
     }
 };
 
 // Respond to feedback
-export const respondToFeedback = async (req, res) => {
+export const respondToFeedback = async (req, res, next) => {
     try {
         const { feedbackId } = req.params;
         const { response } = req.body;
@@ -161,12 +161,12 @@ export const respondToFeedback = async (req, res) => {
             error: error.message,
             stack: error.stack,
         });
-        res.status(500).json({ status: 'error', message: 'Failed to respond to feedback' });
+        next(error);
     }
 };
 
 // Get feedback summary for a user
-export const getFeedbackSummary = async (req, res) => {
+export const getFeedbackSummary = async (req, res, next) => {
     try {
         const { userId } = req.params;
         const summary = await getFeedbackSummaryPrisma(userId);
@@ -176,7 +176,7 @@ export const getFeedbackSummary = async (req, res) => {
             error: error.message,
             stack: error.stack,
         });
-        res.status(500).json({ status: 'error', message: 'Failed to fetch feedback summary' });
+        next(error);
     }
 };
 
@@ -184,8 +184,9 @@ export const getFeedbackSummary = async (req, res) => {
  * Get all feedback sent by a specific user
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
+ * @param {Object} next - Express next middleware function
  */
-export const getFeedbackSentByUser = async (req, res) => {
+export const getFeedbackSentByUser = async (req, res, next) => {
     try {
         const { userId } = req.params;
         const {
@@ -225,9 +226,6 @@ export const getFeedbackSentByUser = async (req, res) => {
             userId: req.params.userId,
             user: req.user?.id
         });
-        res.status(500).json({ 
-            status: 'error', 
-            message: 'Failed to fetch sent feedback' 
-        });
+        next(error);
     }
 };

@@ -14,7 +14,7 @@ async function scanKeys(client, pattern, count = 100) {
   return keys;
 }
 
-export async function getHotAuctions(req, res) {
+export async function getHotAuctions(req, res, next) {
   try {
     const client = await getRedisClient();
     // safer limit parsing
@@ -46,12 +46,12 @@ export async function getHotAuctions(req, res) {
     });
   } catch (error) {
     logger.error('getHotAuctions error', { error: error.message, stack: error.stack });
-    res.status(500).json({ status: 'error', message: 'Failed to get hot auctions' });
+    next(error);
   }
 }
 
 // Prometheus metrics exposition (text/plain; version=0.0.4)
-export async function getPrometheusMetrics(req, res) {
+export async function getPrometheusMetrics(req, res, next) {
   try {
     const client = await getRedisClient();
 
@@ -195,6 +195,7 @@ export async function getPrometheusMetrics(req, res) {
     res.setHeader('Content-Type', 'text/plain; version=0.0.4');
     res.status(200).send(lines.join('\n') + '\n');
   } catch (error) {
-    res.status(500).send(`# Error generating metrics: ${error.message}\n`);
+    logger.error('Error generating metrics:', { error: error.message, stack: error.stack });
+    next(error);
   }
 }

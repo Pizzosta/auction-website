@@ -22,7 +22,7 @@ import logger from '../utils/logger.js';
 // @access  Private/Admin
 // @param   {string} id - User ID
 // @returns {Promise<Object>} - User object or error response
-export const getUserById = async (req, res) => {
+export const getUserById = async (req, res, next) => {
   try {
     const { id } = req.params;
     const { fields } = req.query;
@@ -79,11 +79,7 @@ export const getUserById = async (req, res) => {
       stack: error.stack,
       userId: req.params?.id,
     });
-    return res.status(500).json({
-      status: 'error',
-      message: 'Server error',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
+    next(error);
   }
 };
 
@@ -91,7 +87,7 @@ export const getUserById = async (req, res) => {
 // @route   GET /api/users
 // @access  Private/Admin
 // @desc    Get all users with filtering and pagination
-export const getAllUsers = async (req, res) => {
+export const getAllUsers = async (req, res, next) => {
   try {
     // Get query parameters
     const {
@@ -146,18 +142,14 @@ export const getAllUsers = async (req, res) => {
       query: JSON.stringify(req.query),
     });
 
-    res.status(500).json({
-      status: 'error',
-      message: 'Server error',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
+    next(error);
   }
 };
 
 // @desc    Delete a user
 // @route   DELETE /api/users/:id
 // @access  Private/Admin
-export const deleteUser = async (req, res) => {
+export const deleteUser = async (req, res, next) => {
   try {
     const { password } = req.body || {};
 
@@ -351,18 +343,14 @@ export const deleteUser = async (req, res) => {
       });
     }
 
-    res.status(500).json({
-      status: 'error',
-      message: 'Server error',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
+    next(error);
   }
 };
 
 // @desc    Get current user
 // @route   GET /api/users/me
 // @access  Private
-export const getMe = async (req, res) => {
+export const getMe = async (req, res, next) => {
   try {
     // Get the current user's ID from the authenticated request
     const userId = req.user.id;
@@ -409,18 +397,14 @@ export const getMe = async (req, res) => {
       userId: req.user?.id,
     });
 
-    return res.status(500).json({
-      status: 'error',
-      message: 'Server error',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
+    next(error);
   }
 };
 
 // @desc    Restore a soft-deleted user
 // @route   POST /api/users/:id/restore
 // @access  Private/Admin
-export const restoreUser = async (req, res) => {
+export const restoreUser = async (req, res, next) => {
   try {
     const { role } = req.user;
     const userId = req.params.id;
@@ -492,11 +476,7 @@ export const restoreUser = async (req, res) => {
       stack: error.stack,
       userId: typeof req.params.id === 'string' ? req.params.id : req.params.id?.id || '[unknown]',
     });
-    res.status(500).json({
-      status: 'error',
-      message: 'Server error',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
+    next(error);
   }
 };
 
@@ -504,7 +484,7 @@ export const restoreUser = async (req, res) => {
 // @desc    Upload profile picture
 // @route   POST /api/users/me/upload-picture
 // @access  Private
-export const uploadProfilePicture = async (req, res) => {
+export const uploadProfilePicture = async (req, res, next) => {
   try {
     if (!req.uploadedFiles || req.uploadedFiles.length === 0) {
       return res.status(400).json({
@@ -561,18 +541,14 @@ export const uploadProfilePicture = async (req, res) => {
       stack: error.stack,
       userId: typeof req.user?.id === 'string' ? req.user.id : req.user?.id?.id || '[unknown]',
     });
-    res.status(500).json({
-      success: false,
-      message: 'Server error while uploading profile picture',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
+    next(error);
   }
 };
 
 // @desc    Delete profile picture
 // @route   DELETE /api/users/me/remove-picture
 // @access  Private
-export const deleteProfilePicture = async (req, res) => {
+export const deleteProfilePicture = async (req, res, next) => {
   try {
     const actorId = req.user?.id?.toString();
     // Get current user to check for existing picture
@@ -619,20 +595,15 @@ export const deleteProfilePicture = async (req, res) => {
       stack: error.stack,
       userId: typeof req.user?.id === 'string' ? req.user.id : req.user?.id?.id || '[unknown]',
     });
-    res.status(500).json({
-      success: false,
-      message: 'Server error while removing profile picture',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
+    next(error);
   }
 };
 
 // @desc    Update a user
 // @route   PATCH /api/users/:id
 // @access  Private/Admin
-export const updateUser = async (req, res) => {
+export const updateUser = async (req, res, next) => {
   try {
-    const { id } = req.params;
     const updateData = { ...req.body };
 
     // Ensure the request body is not empty before proceeding
@@ -863,13 +834,6 @@ export const updateUser = async (req, res) => {
       });
     }
 
-    return res.status(500).json({
-      status: 'error',
-      message: 'Error updating user',
-      ...(process.env.NODE_ENV === 'development' ? {
-        error: error.message,
-        code: error.code,
-      } : {}),
-    });
+    next(error);
   }
 };

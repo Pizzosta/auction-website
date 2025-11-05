@@ -10,7 +10,7 @@ import {
 import logger from '../utils/logger.js';
 
 // Add auction to user's watchlist
-export const addToWatchlist = async (req, res) => {
+export const addToWatchlist = async (req, res, next) => {
   try {
     const userId = req.user.id;
     const { auctionId } = req.body;
@@ -71,12 +71,12 @@ export const addToWatchlist = async (req, res) => {
       userId: req.user?.id,
       auctionId: req.body?.auctionId
     });
-    return res.status(500).json({ status: 'error', message: 'Failed to add to watchlist' });
+    next(error);
   }
 };
 
 // Remove auction from user's watchlist
-export const removeFromWatchlist = async (req, res) => {
+export const removeFromWatchlist = async (req, res, next) => {
   try {
     const userId = req.user.id;
     const { auctionId } = req.body;
@@ -101,12 +101,12 @@ export const removeFromWatchlist = async (req, res) => {
     return res.status(200).json({ status: 'success', message: 'Removed from watchlist' });
   } catch (error) {
     logger.error('Remove from watchlist error', { error: error.message, stack: error.stack, userId: req.user.id, auctionId: req.body.auctionId });
-    return res.status(500).json({ status: 'error', message: 'Failed to remove from watchlist' });
+    next(error);
   }
 };
 
 // Get user's watchlist
-export const getWatchlist = async (req, res) => {
+export const getWatchlist = async (req, res, next) => {
   try {
     const userId = req.user.id;
     const { page = 1,
@@ -130,15 +130,12 @@ export const getWatchlist = async (req, res) => {
       stack: error.stack,
       userId: req.user?.id
     });
-    return res.status(500).json({
-      status: 'error',
-      message: 'Failed to retrieve watchlist'
-    });
+    next(error);
   }
 };
 
 // Check if auction is in user's watchlist (heart icon state)
-export const checkWatchlistStatus = async (req, res) => {
+export const checkWatchlistStatus = async (req, res, next) => {
   try {
     const userId = req.user.id;
     const { auctionId } = req.params;
@@ -168,15 +165,12 @@ export const checkWatchlistStatus = async (req, res) => {
       userId: req.user?.id,
       auctionId: req.params.auctionId
     });
-    return res.status(500).json({
-      status: 'error',
-      message: 'Failed to check watchlist status'
-    });
+    next(error);
   }
 };
 
 // Toggle watchlist status (add/remove in one endpoint)
-export const toggleWatchlist = async (req, res) => {
+export const toggleWatchlist = async (req, res, next) => {
   try {
     const userId = req.user.id;
     const { auctionId } = req.body;
@@ -248,9 +242,6 @@ export const toggleWatchlist = async (req, res) => {
       auctionId: req.body?.auctionId
     });
     
-    return res.status(500).json({
-      status: 'error',
-      message: 'Failed to toggle watchlist'
-    });
+    next(error);
   }
 };

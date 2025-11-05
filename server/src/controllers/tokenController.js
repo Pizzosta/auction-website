@@ -11,7 +11,7 @@ import { env } from '../config/env.js';
 /**
  * Refresh access token using a valid refresh token
  */
-export const refreshToken = async (req, res) => {
+export const refreshToken = async (req, res, next) => {
   try {
     const { userId, refreshToken } = req;
 
@@ -24,7 +24,7 @@ export const refreshToken = async (req, res) => {
       'email',
       'role'
     ]);
-    
+
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -67,17 +67,14 @@ export const refreshToken = async (req, res) => {
     });
   } catch (error) {
     logger.error('Token refresh error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to refresh token',
-    });
+    next(error);
   }
 };
 
 /**
  * Logout user by revoking all refresh tokens
  */
-export const logout = async (req, res) => {
+export const logout = async (req, res, next) => {
   try {
     const { userId } = req;
 
@@ -97,17 +94,14 @@ export const logout = async (req, res) => {
     });
   } catch (error) {
     logger.error('Logout error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to log out',
-    });
+    next(error);
   }
 };
 
 /**
  * Logout from all devices by revoking all refresh tokens for the user
  */
-export const logoutAllDevices = async (req, res) => {
+export const logoutAllDevices = async (req, res, next) => {
   try {
     const { userId } = req;
 
@@ -127,9 +121,6 @@ export const logoutAllDevices = async (req, res) => {
     });
   } catch (error) {
     logger.error('Logout all devices error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to log out from all devices',
-    });
+    next(error);
   }
 };

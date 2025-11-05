@@ -15,7 +15,7 @@ if (missingVars.length > 0) {
   process.exit(1);
 }
 
-export const register = async (req, res) => {
+export const register = async (req, res, next) => {
   try {
     const { firstname, middlename, lastname, phone, username, email, password, confirmPassword } =
       req.body;
@@ -165,14 +165,11 @@ export const register = async (req, res) => {
       stack: error.stack,
       email: req.body?.email,
     });
-    res.status(500).json({
-      status: 'error',
-      message: 'Internal server error'
-    });
+    next(error);
   }
 };
 
-export const login = async (req, res) => {
+export const login = async (req, res, next) => {
   try {
     const { email, password } = req.body;
 
@@ -227,14 +224,11 @@ export const login = async (req, res) => {
     });
   } catch (error) {
     logger.error('Login error:', error);
-    res.status(500).json({
-      status: 'error',
-      message: 'Internal server error'
-    });
+    next(error);
   }
 };
 
-export const forgotPassword = async (req, res) => {
+export const forgotPassword = async (req, res, next) => {
   try {
     const { email } = req.body;
 
@@ -298,14 +292,11 @@ export const forgotPassword = async (req, res) => {
       stack: error.stack,
       userEmail: req.body?.email,
     });
-    return res.status(500).json({
-      status: 'error',
-      message: 'Internal server error',
-    });
+    next(error);
   }
 };
 
-export const resetPassword = async (req, res) => {
+export const resetPassword = async (req, res, next) => {
   try {
     const { token } = req.params;
     const { password, confirmPassword } = req.body;
@@ -426,10 +417,7 @@ export const resetPassword = async (req, res) => {
       error: error.message,
       stack: error.stack,
     });
-    res.status(500).json({
-      status: 'error',
-      message: 'Internal server error',
-    });
+    next(error);
   }
 };
 
@@ -438,7 +426,7 @@ export const resetPassword = async (req, res) => {
  * Usage: POST /api/auth/request-verification
  * Body: { email }
  */
-export const requestVerification = async (req, res) => {
+export const requestVerification = async (req, res, next) => {
   try {
     const { email } = req.body;
 
@@ -516,10 +504,7 @@ export const requestVerification = async (req, res) => {
       stack: error.stack,
       userEmail: req.body?.email,
     });
-    return res.status(500).json({
-      status: 'error',
-      message: 'Internal server error',
-    });
+    next(error);
   }
 };
 
@@ -527,7 +512,7 @@ export const requestVerification = async (req, res) => {
  * Verify email (user clicks link)
  * Usage: GET /api/auth/verify-email/:token
  */
-export const verifyEmail = async (req, res) => {
+export const verifyEmail = async (req, res, next) => {
   try {
     const { token } = req.params;
     if (!token) {
@@ -588,9 +573,6 @@ export const verifyEmail = async (req, res) => {
       error: error.message,
       stack: error.stack,
     });
-    return res.status(500).json({
-      status: 'error',
-      message: 'Internal server error',
-    });
+    next(error);
   }
 };

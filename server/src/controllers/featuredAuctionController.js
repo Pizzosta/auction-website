@@ -72,14 +72,14 @@ export const addFeaturedAuction = async (req, res, next) => {
       status: 'success',
       data: featured
     });
-  } catch (err) {
+  } catch (error) {
     logger.error('Error adding featured auction', {
-      error: err.message,
-      stack: err.stack,
+      error: error.message,
+      stack: error.stack,
       auctionId: req.body?.auctionId,
       userId: actorId
     });
-    next(err);
+    next(error);
   }
 };
 
@@ -166,15 +166,15 @@ export const removeFeaturedAuction = async (req, res, next) => {
         isPermanent: permanent
       }
     });
-  } catch (err) {
+  } catch (error) {
     logger.error('Error removing featured auction', {
-      error: err.message,
-      stack: err.stack,
+      error: error.message,
+      stack: error.stack,
       auctionId: req.body?.auctionId,
       permanent: req.query?.permanent,
       userId: req.user?.id
     });
-    next(err);
+    next(error);
   }
 };
 
@@ -187,7 +187,7 @@ export const removeFeaturedAuction = async (req, res, next) => {
  * @query   {string} [sort=newest] - Sort field and direction (field:asc|desc)
  * @query   {boolean} [includeDeleted=false] - Include soft-deleted items (admin only)
  */
-export const getFeaturedAuctions = async (req, res) => {
+export const getFeaturedAuctions = async (req, res, next) => {
   try {
     const {
       page = 1,
@@ -237,11 +237,7 @@ export const getFeaturedAuctions = async (req, res) => {
       query: req.query,
       userId: req.user?.id
     });
-    res.status(500).json({
-      status: 'error',
-      message: 'Failed to fetch featured auctions',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
+    next(error);
   }
 };
 
@@ -337,13 +333,13 @@ export const restoreFeaturedAuction = async (req, res, next) => {
         restoredAt: new Date().toISOString()
       }
     });
-  } catch (err) {
+  } catch (error) {
     logger.error('Error restoring featured auction', {
-      error: err.message,
-      stack: err.stack,
+      error: error.message,
+      stack: error.stack,
       auctionId: req.body?.auctionId,
       userId: actorId
     });
-    next(err);
+    next(error);
   }
 };

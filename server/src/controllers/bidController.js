@@ -364,7 +364,7 @@ export const placeBidCore = async ({ auctionId, amount, actorId, io, socket }) =
 // @desc    Delete a bid (with support for soft and permanent delete)
 // @route   DELETE /api/bids/:bidId
 // @access  Private (Admin for permanent delete)
-export const deleteBid = async (req, res) => {
+export const deleteBid = async (req, res, next) => {
   const { bidId } = req.params;
   const actorId = req.user?.id?.toString();
 
@@ -630,18 +630,14 @@ export const deleteBid = async (req, res) => {
       userId: actorId, // Now actorId is accessible here
     });
 
-    res.status(500).json({
-      success: false,
-      message: 'Error deleting bid',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
+    next(error);
   }
 };
 
 // @desc    Restore a soft-deleted bid
 // @route   POST /api/bids/:bidId/restore
 // @access  Private (Admin only)
-export const restoreBid = async (req, res) => {
+export const restoreBid = async (req, res, next) => {
   try {
     const { bidId } = req.params;
 
@@ -685,18 +681,14 @@ export const restoreBid = async (req, res) => {
       userId: req.user?.id,
     });
 
-    res.status(500).json({
-      success: false,
-      message: 'Error restoring bid',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
+    next(error);
   }
 };
 
 // @desc    Place a bid on an auction
 // @route   POST /api/bids
 // @access  Private
-export const placeBid = async (req, res) => {
+export const placeBid = async (req, res, next) => {
   try {
     const { auctionId, amount } = req.body;
     const actorId = req.user?.id?.toString();
@@ -724,14 +716,15 @@ export const placeBid = async (req, res) => {
       return res.status(400).json({ message: 'You cannot bid on your own auction' });
     }
     logger.error('Place bid error:', { error: error.message, stack: error.stack });
-    res.status(500).json({ message: 'Server error' });
+
+    next(error);
   }
 };
 
 // @desc    Get bids by auction
 // @route   GET /api/bids/auction/:auctionId
 // @access  Public
-export const getBidsByAuction = async (req, res) => {
+export const getBidsByAuction = async (req, res, next) => {
   try {
     const { auctionId } = req.params;
     const { page = 1, limit = 10, sort = 'amount:desc', status } = req.query;
@@ -786,17 +779,14 @@ export const getBidsByAuction = async (req, res) => {
     });
   } catch (error) {
     logger.error('Get bids by auction error:', { error: error.message, stack: error.stack });
-    res.status(500).json({
-      status: 'error',
-      message: 'Failed to fetch bids',
-    });
+    next(error);
   }
 };
 
 // @desc    Get my bids
 // @route   GET /api/bids/me
 // @access  Private
-export const getMyBids = async (req, res) => {
+export const getMyBids = async (req, res, next) => {
   try {
     const { 
       status, 
@@ -950,7 +940,7 @@ export const getMyBids = async (req, res) => {
     });
   } catch (error) {
     logger.error('Get my bids error:', { error: error.message, stack: error.stack });
-    res.status(500).json({ message: 'Server error' });
+    next(error);
   }
 };
 
@@ -959,7 +949,7 @@ export const getMyBids = async (req, res) => {
  * @route   GET /api/bids
  * @access  Admin
  */
-export const getAllBids = async (req, res) => {
+export const getAllBids = async (req, res, next) => {
   try {
     const {
       page = 1,
@@ -1012,10 +1002,6 @@ export const getAllBids = async (req, res) => {
       stack: error.stack,
       query: req.query,
     });
-    res.status(500).json({
-      status: 'error',
-      message: 'Failed to fetch bids',
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
-    });
+    next(error);
   }
 };
