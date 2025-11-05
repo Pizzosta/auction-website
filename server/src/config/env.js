@@ -5,7 +5,6 @@ dotenv.config();
 
 // Default list of required environment variables for server startup
 const DEFAULT_REQUIRED_VARS = [
-  'MONGODB_URI',
   'JWT_SECRET',
   'NODE_ENV',
   'PORT',
@@ -58,7 +57,6 @@ export const env = {
   port: parseInt(process.env.PORT, 10) || 5001,
   clientUrl: process.env.CLIENT_URL,
 
-  mongodbUri: process.env.MONGODB_URI,
   jwtSecret: process.env.JWT_SECRET,
   jwtExpire: process.env.JWT_EXPIRE,
   accessTokenExpiry: process.env.ACCESS_TOKEN_EXPIRY,

@@ -1,6 +1,7 @@
 Remove the auction extension
 
 email.js db.js redis.js should be uniform inside the server.js
+
 check it image accepts PNG,JPG,JPEG,HEIC, & WEBP - add heic to the formats
 
 add rate limiting sendEmail
@@ -61,7 +62,7 @@ implement message parsing for any specific socket events in socketmiddleware
 
 Map API messages to user‑friendly UI messages
 
-check if soft delete auction. Add restore/reactivate auction
+check if soft delete auction. Add restore/reactivate auction and sorting
 
 make req.user.id is not return in the codes except logger
 
@@ -82,3 +83,35 @@ setTimeout(async () => {
     });
   }
 }, 1 * 60 * 60 * 1000); // 1 hour after auction ends
+
+replace the in-memory maps with Redis in socketMiddleware and add redis to docker-compose.yml
+
+Auction Verification - Admin verification before auctions go live - Content moderation
+
+Even if auction is deleted the ratings and reviews should show
+
+refactor the codes by seperating data access layer from business logic layer (simple responsibility, cache, easy change of database)
+
+controller functions to use the repository pattern and add query options similar to what we did for the feedback system.
+
+prisma errors should also be mapped to user-friendly messages
+
+when restoring a deleted user, we should restore also watchlists and featured auctions and feedbacks
+
+check auctions et all show only active users
+
+auto-clean orphaned watchlist entries
+
+seperate auction query search by user from admin (fimplement eatured auction -- auction, user)
+
+add restoredBy to all restore functions (bid, auction, featured auction, user, feedback, watchlist)
+
+For better database management, consider naming your indexes
+
+check if winner is deleted what happens
+
+add versioning to the featured auction
+
+add cleanup jobs for orphaned images, profile picture, featured auction, watchlist, feedback, bid, auction, user 
+
+Block account deletion if the user has won any auctions that haven't been completed (not yet paid or delivered)
