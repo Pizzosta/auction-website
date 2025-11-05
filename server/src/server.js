@@ -140,7 +140,7 @@ if (env.isProd) {
 
 // 404 handler
 app.use((req, res, next) => {
-  next(new AppError(`Can't find ${req.originalUrl} on this server!`, 404));
+  next(new AppError('ROUTE_NOT_FOUND', `Can't find ${req.originalUrl} on this server!`, 404, { method: req.method, url: req.originalUrl }));
 });
 
 // Global error handler
