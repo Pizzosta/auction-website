@@ -8,6 +8,7 @@ import {
   checkWatchlist
 } from '../repositories/watchlistRepo.prisma.js';
 import logger from '../utils/logger.js';
+import { AppError } from '../middleware/errorHandler.js';
 
 // Add auction to user's watchlist
 export const addToWatchlist = async (req, res, next) => {
@@ -16,17 +17,14 @@ export const addToWatchlist = async (req, res, next) => {
     const { auctionId } = req.body;
 
     if (!auctionId) {
-      return res.status(400).json({ status: 'error', message: 'Auction ID required' });
+      return next(new AppError('INVALID_AUCTION_ID', 'Auction ID is required', 400));
     }
 
     // Check if auction exists and is active
     const auction = await findAuction(auctionId)
 
     if (!auction) {
-      return res.status(404).json({
-        status: 'error',
-        message: 'Auction not found'
-      });
+      return next(new AppError('AUCTION_NOT_FOUND', 'Auction not found', 404));
     }
 
     // Check if already in watchlist (including soft-deleted)
@@ -34,10 +32,7 @@ export const addToWatchlist = async (req, res, next) => {
 
     if (existingItem) {
       if (!existingItem.isDeleted) {
-        return res.status(409).json({
-          status: 'error',
-          message: 'Auction is already in your watchlist'
-        });
+        return next(new AppError('AUCTION_ALREADY_IN_WATCHLIST', 'Auction is already in your watchlist', 409));
       }
 
       // Restore if previously soft-deleted
@@ -82,16 +77,13 @@ export const removeFromWatchlist = async (req, res, next) => {
     const { auctionId } = req.body;
 
     if (!auctionId) {
-      return res.status(400).json({ status: 'error', message: 'Auction ID required' });
+      return next(new AppError('INVALID_AUCTION_ID', 'Auction ID is required', 400));
     }
 
     // Find the watchlist entry
     const watchlistItem = await findWatchlist(userId, auctionId);
     if (!watchlistItem) {
-      return res.status(404).json({
-        status: 'error',
-        message: 'Auction not found in your watchlist'
-      });
+      return next(new AppError('AUCTION_NOT_FOUND_IN_WATCHLIST', 'Auction not found in your watchlist', 404));
     }
 
     // Soft delete the watchlist entry
@@ -141,10 +133,7 @@ export const checkWatchlistStatus = async (req, res, next) => {
     const { auctionId } = req.params;
 
     if (!auctionId) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'Auction ID is required'
-      });
+      return next(new AppError('INVALID_AUCTION_ID', 'Auction ID is required', 400));
     }
 
     const watchlistItem = await checkWatchlist(userId, auctionId);
@@ -177,19 +166,13 @@ export const toggleWatchlist = async (req, res, next) => {
 
     // Input validation (Business Logic)
     if (!auctionId) {
-      return res.status(400).json({ 
-        status: 'error', 
-        message: 'Auction ID is required' 
-      });
+      return next(new AppError('INVALID_AUCTION_ID', 'Auction ID is required', 400));
     }
 
     // Check if auction exists
     const auction = await findAuction(auctionId);
     if (!auction) {
-      return res.status(404).json({
-        status: 'error',
-        message: 'Auction not found or inactive'
-      });
+      return next(new AppError('AUCTION_NOT_FOUND', 'Auction not found or inactive', 404));
     }
 
     // Check current status (include soft-deleted to check for restoration)

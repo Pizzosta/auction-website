@@ -8,6 +8,7 @@ import {
   restoreFeaturedAuctionPrisma,
 } from '../repositories/featuredAuctionRepo.prisma.js';
 import { findAuctionById } from '../repositories/auctionRepo.prisma.js';
+import { AppError } from '../middleware/errorHandler.js';
 
 // Only admin users can add/remove featured auctions
 /**
@@ -22,41 +23,26 @@ export const addFeaturedAuction = async (req, res, next) => {
     const actorId = req.user?.id?.toString();
 
     if (role !== 'admin') {
-      return res.status(403).json({
-        status: 'error',
-        message: 'Forbidden: Admins only'
-      });
+      return next(new AppError('NOT_AUTHORIZED', 'Forbidden: Admins only', 403));
     }
 
     if (!auctionId) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'Auction ID is required'
-      });
+      return next(new AppError('INVALID_AUCTION_ID', 'Auction ID is required', 400));
     }
 
     // Check if auction is already featured
     const exists = await findFeaturedAuctionByIdPrisma(auctionId, { includeAuction: false });
     if (exists) {
       if (exists.isDeleted) {
-        return res.status(409).json({
-          status: 'error',
-          message: 'Auction was previously featured and is soft deleted. Please restore it instead.'
-        });
+        return next(new AppError('AUCTION_ALREADY_FEATURED', 'Auction was previously featured and is soft deleted. Please restore it instead.', 409));
       }
-      return res.status(409).json({
-        status: 'error',
-        message: 'Auction is already featured'
-      });
+      return next(new AppError('AUCTION_ALREADY_FEATURED', 'Auction is already featured', 409));
     }
 
     // Verify auction exists and is in a valid state
     const auction = await findAuctionById(auctionId);
     if (!auction || !['upcoming', 'active'].includes(auction.status)) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'Only upcoming or active auctions can be featured'
-      });
+      return next(new AppError('INVALID_AUCTION_STATUS', 'Only upcoming or active auctions can be featured', 400));
     }
 
     // Create the featured auction
@@ -106,18 +92,12 @@ export const removeFeaturedAuction = async (req, res, next) => {
 
     // Authorization check
     if (role !== 'admin') {
-      return res.status(403).json({
-        status: 'error',
-        message: 'Forbidden: Admins only'
-      });
+      return next(new AppError('NOT_AUTHORIZED', 'Forbidden: Admins only', 403));
     }
 
     // Input validation
     if (!auctionId) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'Auction ID is required'
-      });
+      return next(new AppError('INVALID_AUCTION_ID', 'Auction ID is required', 400));
     }
 
     // Check if featured auction exists
@@ -127,17 +107,11 @@ export const removeFeaturedAuction = async (req, res, next) => {
     });
 
     if (!featured) {
-      return res.status(404).json({
-        status: 'error',
-        message: 'Featured auction not found'
-      });
+      return next(new AppError('FEATURED_AUCTION_NOT_FOUND', 'Featured auction not found', 404));
     }
 
     if (featured.isDeleted && !permanent) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'Featured auction is already soft deleted. Use permanent=true to delete permanently.'
-      });
+      return next(new AppError('FEATURED_AUCTION_ALREADY_DELETED', 'Featured auction is already soft deleted. Use permanent=true to delete permanently.', 400));
     }
 
     // Perform deletion based on type
@@ -200,10 +174,7 @@ export const getFeaturedAuctions = async (req, res, next) => {
 
     // Only admins can see soft-deleted auctions
     if ((status === 'deleted' || status === 'all') && !isAdmin) {
-      return res.status(403).json({
-        status: 'error',
-        message: 'Only admins can view deleted auctions',
-      });
+      return next(new AppError('NOT_AUTHORIZED', 'Only admins can view deleted auctions', 403));
     }
 
     // Get featured auctions with pagination
@@ -271,27 +242,18 @@ export const restoreFeaturedAuction = async (req, res, next) => {
 
     // Authorization check
     if (role !== 'admin') {
-      return res.status(403).json({
-        status: 'error',
-        message: 'Forbidden: Admins only'
-      });
+      return next(new AppError('NOT_AUTHORIZED', 'Forbidden: Admins only', 403));
     }
 
     // Input validation
     if (!auctionId) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'Auction ID is required'
-      });
+      return next(new AppError('INVALID_AUCTION_ID', 'Auction ID is required', 400));
     }
 
     // Verify auction is in a valid state to be featured
     const auction = await findAuctionById(auctionId);
     if (!auction || !['upcoming', 'active'].includes(auction.status)) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'Only upcoming or active auctions can be restored to featured list'
-      });
+      return next(new AppError('INVALID_AUCTION_STATUS', 'Only upcoming or active auctions can be restored to featured list', 400));
     }
 
     // Check if featured auction exists and is soft-deleted
@@ -301,17 +263,11 @@ export const restoreFeaturedAuction = async (req, res, next) => {
     });
 
     if (!featured) {
-      return res.status(404).json({
-        status: 'error',
-        message: 'Featured auction not found',
-      });
+      return next(new AppError('FEATURED_AUCTION_NOT_FOUND', 'Featured auction not found', 404));
     }
 
     if (!featured.isDeleted) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'Featured auction is not deleted',
-      });
+      return next(new AppError('FEATURED_AUCTION_NOT_DELETED', 'Featured auction is not deleted', 400));
     }
 
     // Restore the featured auction

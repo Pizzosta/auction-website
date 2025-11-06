@@ -36,12 +36,12 @@ export const updateUser = async (req, res, next) => {
     // Check if the user is updating their own profile or is an admin
     const actorId = req.user.id.toString();
     if (user.id.toString() !== actorId && req.user.role !== 'admin') {
-      return next(new AppError('FORBIDDEN', 'Not authorized to update this user', 403));
+      return next(new AppError('USER_UPDATE_FORBIDDEN', 'Not authorized to update this user', 403));
     }
 
     // Prevent role modification by non-admins
     if (updateData.role && updateData.role !== user.role && req.user.role !== 'admin') {
-      return next(new AppError('FORBIDDEN', 'Not authorized to modify user role', 403));
+      return next(new AppError('ROLE_MODIFICATION_FORBIDDEN', 'Not authorized to modify user role', 403));
     }
 
     // Handle password update with enhanced validation

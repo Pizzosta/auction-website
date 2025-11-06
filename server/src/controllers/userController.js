@@ -16,6 +16,7 @@ import bcrypt from 'bcryptjs';
 import { getCloudinary } from '../config/cloudinary.js';
 import { normalizeToE164 } from '../utils/format.js';
 import logger from '../utils/logger.js';
+import { AppError } from '../middleware/errorHandler.js';
 
 // @desc    Get a single user by ID (admin only)
 // @route   GET /api/users/:id
@@ -29,18 +30,12 @@ export const getUserById = async (req, res, next) => {
 
     if (!id || typeof id !== 'string' || id.trim() === '') {
       logger.warn('Invalid user ID provided to getUserById', { userId: id });
-      return res.status(400).json({
-        status: 'error',
-        message: 'Invalid user ID',
-      });
+      return next(new AppError('INVALID_USER_ID', 'Invalid user ID', 400));
     }
 
     const isAdmin = req.user.role === 'admin';
     if (!isAdmin) {
-      return res.status(403).json({
-        status: 'error',
-        message: 'Not authorized to access this user',
-      });
+      return next(new AppError('NOT_AUTHORIZED', 'Not authorized to access this user', 403));
     }
 
     const fieldList = fields ? fields.split(',').map(f => f.trim()) : undefined;
@@ -48,19 +43,12 @@ export const getUserById = async (req, res, next) => {
 
     if (!user) {
       logger.warn('User not found', { userId: id });
-      return res.status(404).json({
-        status: 'error',
-        message: 'User not found',
-      });
+      return next(new AppError('USER_NOT_FOUND', 'User not found', 404));
     }
 
     if (user.isDeleted) {
       logger.warn('Attempted to access deactivated user', { userId: id });
-      return res.status(410).json({
-        status: 'error',
-        message: 'User is deactivated',
-        data: { ...user, isActive: false },
-      });
+      return next(new AppError('USER_DEACTIVATED', 'User is deactivated', 410, { ...user, isActive: false }));
     }
 
     logger.info('User found', {
@@ -108,10 +96,7 @@ export const getAllUsers = async (req, res, next) => {
 
     // Only admins can see soft-deleted users
     if ((status === 'deleted' || status === 'all') && !isAdmin) {
-      return res.status(403).json({
-        status: 'error',
-        message: 'Only admins can view deleted users',
-      });
+      return next(new AppError('NOT_AUTHORIZED', 'Only admins can view deleted users', 403));
     }
 
     // Fetch via repository
@@ -176,61 +161,40 @@ export const deleteUser = async (req, res, next) => {
       { allowSensitive: true });
 
     if (!user) {
-      return res.status(404).json({
-        status: 'error',
-        message: 'User not found',
-      });
+      return next(new AppError('USER_NOT_FOUND', 'User not found', 404));
     }
 
     // Allow deletion only if admin or the user themselves
     const actorId = req.user?.id?.toString();
     if (user.id.toString() !== actorId && req.user.role !== 'admin') {
-      return res.status(403).json({
-        status: 'error',
-        message: 'Not authorized to delete this user',
-      });
+      return next(new AppError('NOT_AUTHORIZED', 'Not authorized to delete this user', 403));
     }
 
     // If user is deleting their own account, require password
     if (user.id.toString() === actorId) {
       if (!password) {
-        return res.status(400).json({
-          status: 'error',
-          message: 'Password is required to confirm account deletion',
-        });
+        return next(new AppError('PASSWORD_REQUIRED', 'Password is required to confirm account deletion', 400));
       }
 
       const isMatch = user.passwordHash ? await bcrypt.compare(password, user.passwordHash) : false;
       if (!isMatch) {
-        return res.status(400).json({
-          status: 'error',
-          message: 'Incorrect password',
-        });
+        return next(new AppError('PASSWORD_INCORRECT', 'Incorrect password', 400));
       }
     }
 
     // Prevent admin from deleting themselves
     if (user.role === 'admin' && user.id.toString() === actorId) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'Admins cannot delete themselves. Please contact another admin for assistance.',
-      });
+      return next(new AppError('ADMIN_SELF_DELETION', 'Admins cannot delete themselves. Please contact another admin for assistance.', 400));
     }
 
     // Only admins can perform permanent deletions
     if (permanent && req.user.role !== 'admin') {
-      return res.status(403).json({
-        status: 'error',
-        message: 'Only admins can permanently delete users',
-      });
+      return next(new AppError('ONLY_ADMINS_CAN_PERMANENTLY_DELETE_USERS', 'Only admins can permanently delete users', 403));
     }
 
     // Prevent soft deletion of already deleted users
     if (user.isDeleted && !permanent) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'User account has been already deactivated',
-      });
+      return next(new AppError('USER_ALREADY_DELETED', 'User account has been already deactivated', 400));
     }
 
     // First check if user can be deleted
@@ -239,10 +203,7 @@ export const deleteUser = async (req, res, next) => {
       canDeleteResult = await canDeleteUserPrisma(user.id);
 
       if (!canDeleteResult.canDelete) {
-        return res.status(400).json({
-          status: 'error',
-          message: canDeleteResult.reason
-        });
+        return next(new AppError('USER_CANNOT_BE_DELETED', canDeleteResult.reason, 400));
       }
     } catch (error) {
       logger.error('Error checking if user can be deleted:', {
@@ -336,11 +297,9 @@ export const deleteUser = async (req, res, next) => {
       permanent: req.query?.permanent,
     });
 
+    // Override P2025 for concurrency conflicts only
     if (error.code === 'P2025') {
-      return res.status(409).json({
-        status: 'error',
-        message: 'This user was modified by another user. Please refresh and try again.',
-      });
+      return next(new AppError('CONFLICT', 'This user was modified by another user. Please refresh and try again.', 409));
     }
 
     next(error);
@@ -377,10 +336,7 @@ export const getMe = async (req, res, next) => {
     ], { allowSensitive: false });
 
     if (!user) {
-      return res.status(404).json({
-        status: 'error',
-        message: 'User not found',
-      });
+      return next(new AppError('USER_NOT_FOUND', 'User not found', 404));
     }
 
     // Update last active timestamp
@@ -431,17 +387,11 @@ export const restoreUser = async (req, res, next) => {
     ], { allowSensitive: true });
 
     if (!user) {
-      return res.status(404).json({
-        status: 'error',
-        message: 'User not found',
-      });
+      return next(new AppError('USER_NOT_FOUND', 'User not found', 404));
     }
 
     if (!user.isDeleted) {
-      return res.status(400).json({
-        status: 'error',
-        message: 'User is not deleted',
-      });
+      return next(new AppError('USER_NOT_DELETED', 'User is not deleted', 400));
     }
 
     // Restore the user using repository function
@@ -465,10 +415,7 @@ export const restoreUser = async (req, res, next) => {
     });
   } catch (error) {
     if (error.code === 'P2025') {
-      return res.status(409).json({
-        status: 'error',
-        message: 'This user was modified by another user. Please refresh and try again.',
-      });
+      return next(new AppError('CONFLICT', 'This user was modified by another user. Please refresh and try again.', 409));
     }
 
     logger.error('Restore user error:', {
@@ -499,10 +446,7 @@ export const uploadProfilePicture = async (req, res, next) => {
     const user = await findUserByIdPrisma(actorId, ['profilePicture'], { allowSensitive: false });
 
     if (!user) {
-      return res.status(404).json({
-        status: 'error',
-        message: 'User not found',
-      });
+      return next(new AppError('USER_NOT_FOUND', 'User not found', 404));
     }
 
     // Delete old profile picture if exists
@@ -555,17 +499,11 @@ export const deleteProfilePicture = async (req, res, next) => {
     const user = await findUserByIdPrisma(actorId, ['profilePicture'], { allowSensitive: false });
 
     if (!user) {
-      return res.status(404).json({
-        status: 'error',
-        message: 'User not found',
-      });
+      return next(new AppError('USER_NOT_FOUND', 'User not found', 404));
     }
 
     if (!user.profilePicture?.publicId) {
-      return res.status(400).json({
-        success: false,
-        message: 'No profile picture to delete',
-      });
+      return next(new AppError('NO_PROFILE_PICTURE', 'No profile picture to delete', 400));
     }
 
     // Delete from Cloudinary
@@ -612,18 +550,12 @@ export const updateUser = async (req, res, next) => {
       Object.keys(updateData).length === 0 ||
       Object.values(updateData).every(v => v === '' || v === null || v === undefined)
     ) {
-      return res.status(400).json({
-        status: 'fail',
-        message: 'No data provided for update.',
-      });
+      return next(new AppError('NO_UPDATE_DATA', 'No data provided for update.', 400));
     }
 
     // Ensure request has a valid user object (from protect middleware)
     if (!req.user?.id) {
-      return res.status(401).json({
-        status: 'error',
-        message: 'Authentication required',
-      });
+      return next(new AppError('AUTHENTICATION_REQUIRED', 'Authentication required', 401));
     }
 
     // Find the user and include the password hash for verification
@@ -640,56 +572,38 @@ export const updateUser = async (req, res, next) => {
       { allowSensitive: true });
 
     if (!user) {
-      return res.status(404).json({
-        status: 'error',
-        message: 'User not found',
-      });
+      return next(new AppError('USER_NOT_FOUND', 'User not found', 404));
     }
 
     // Check if the user is updating their own profile or is an admin
     const actorId = req.user.id.toString();
     if (user.id.toString() !== actorId && req.user.role !== 'admin') {
-      return res.status(403).json({
-        status: 'error',
-        message: 'Not authorized to update this user',
-      });
+      return next(new AppError('USER_UPDATE_FORBIDDEN', 'Not authorized to update this user', 403));
     }
 
     // Prevent role modification by non-admins
     if (updateData.role && updateData.role !== user.role && req.user.role !== 'admin') {
-      return res.status(403).json({
-        status: 'error',
-        message: 'Not authorized to modify user role',
-      });
+      return next(new AppError('ROLE_MODIFICATION_FORBIDDEN', 'Not authorized to modify user role', 403));
     }
 
     // Handle password update with enhanced validation
     if (updateData.password) {
       if (!updateData.currentPassword) {
-        return res.status(400).json({
-          status: 'error',
-          message: 'Current password is required to update password',
-        });
+        return next(new AppError('CURRENT_PASSWORD_REQUIRED', 'Current password is required to update password', 400));
       }
 
       const isPasswordValid = user.passwordHash
         ? await bcrypt.compare(updateData.currentPassword, user.passwordHash)
         : false;
       if (!isPasswordValid) {
-        return res.status(400).json({
-          status: 'error',
-          message: 'Current password is incorrect',
-        });
+        return next(new AppError('CURRENT_PASSWORD_INCORRECT', 'Current password is incorrect', 400));
       }
 
       const isSamePassword = user.passwordHash
         ? await bcrypt.compare(updateData.password, user.passwordHash)
         : false;
       if (isSamePassword) {
-        return res.status(400).json({
-          status: 'error',
-          message: 'New password must be different from current password',
-        });
+        return next(new AppError('PASSWORD_SAME', 'New password must be different from current password', 400));
       }
 
       // Hash the new password
@@ -704,18 +618,12 @@ export const updateUser = async (req, res, next) => {
 
       // Check if email exists and belongs to a different active user
       if (existingUser && existingUser.id !== user.id && !existingUser.isDeleted) {
-        return res.status(400).json({
-          status: 'error',
-          message: 'Email is already in use by another user',
-        });
+        return next(new AppError('EMAIL_IN_USE', 'Email is already in use by another user', 400));
       }
 
       // Also check if the email belongs to a deleted user
       if (existingUser && existingUser.id !== user.id && existingUser.isDeleted) {
-        return res.status(400).json({
-          status: 'error',
-          message: 'This email was previously used by another account',
-        });
+        return next(new AppError('EMAIL_PREVIOUSLY_USED', 'This email was previously used by another account', 400));
       }
     }
 
@@ -725,18 +633,12 @@ export const updateUser = async (req, res, next) => {
 
       // Check if username exists and belongs to a different active user
       if (usernameExists && usernameExists.id !== user.id && !usernameExists.isDeleted) {
-        return res.status(400).json({
-          status: 'error',
-          message: 'Username is already in use by another user',
-        });
+        return next(new AppError('USERNAME_IN_USE', 'Username is already in use by another user', 400));
       }
 
       // Also check if the username belongs to a deleted user
       if (usernameExists && usernameExists.id !== user.id && usernameExists.isDeleted) {
-        return res.status(400).json({
-          status: 'error',
-          message: 'This username was previously used by another account',
-        });
+        return next(new AppError('USERNAME_PREVIOUSLY_USED', 'This username was previously used by another account', 400));
       }
     }
 
@@ -746,28 +648,19 @@ export const updateUser = async (req, res, next) => {
       const normalizedPhone = normalizeToE164(updateData.phone);
 
       if (!normalizedPhone) {
-        return res.status(400).json({
-          status: 'error',
-          message: 'Invalid phone number format. Please provide a valid phone number',
-        });
+        return next(new AppError('INVALID_PHONE_NUMBER', 'Invalid phone number format. Please provide a valid phone number', 400));
       }
       // Check if normalized phone already exists
       const phoneExists = await findUserByPhonePrisma(normalizedPhone, ['id', 'isDeleted'], { allowSensitive: false });
 
       // Check if phone exists and belongs to a different active user
       if (phoneExists && phoneExists.id !== user.id && !phoneExists.isDeleted) {
-        return res.status(400).json({
-          status: 'error',
-          message: 'Phone number is already in use by another user',
-        });
+        return next(new AppError('PHONE_IN_USE', 'Phone number is already in use by another user', 400));
       }
 
       // Also check if the phone belongs to a deleted user
       if (phoneExists && phoneExists.id !== user.id && phoneExists.isDeleted) {
-        return res.status(400).json({
-          status: 'error',
-          message: 'This phone number was previously used by another account',
-        });
+        return next(new AppError('PHONE_PREVIOUSLY_USED', 'This phone number was previously used by another account', 400));
       }
 
       // Update the phone number
@@ -783,10 +676,7 @@ export const updateUser = async (req, res, next) => {
 
     // If no valid fields remain after cleanup
     if (Object.keys(updateData).length === 0) {
-      return res.status(400).json({
-        status: 'fail',
-        message: 'No data provided for update.',
-      });
+      return next(new AppError('NO_UPDATE_DATA', 'No data provided for update.', 400));
     }
 
     // Add version increment for optimistic concurrency
@@ -828,10 +718,7 @@ export const updateUser = async (req, res, next) => {
     });
 
     if (error.code === 'P2025') {
-      return res.status(409).json({
-        status: 'error',
-        message: 'This user was modified by another user. Please refresh and try again.',
-      });
+      return next(new AppError('CONFLICT', 'This user was modified by another user. Please refresh and try again.', 409));
     }
 
     next(error);
