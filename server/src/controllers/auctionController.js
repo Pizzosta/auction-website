@@ -117,11 +117,11 @@ export const getAuctions = async (req, res, next) => {
 
     // Only admins can see soft-deleted auctions
     if ((status === 'cancelled' || status === 'all') && !isAdmin) {
-      return next(new AppError('ONLY_ADMINS_CAN_VIEW_DELETED_AUCTIONS', 'Only admins can view deleted auctions', 403));
+      throw new AppError('ONLY_ADMINS_CAN_VIEW_DELETED_AUCTIONS', 'Only admins can view deleted auctions', 403);
     }
 
     if ((status === 'completed') && !isAdmin) {
-      return next(new AppError('ONLY_ADMINS_CAN_VIEW_COMPLETED_AUCTIONS', 'Only admins can view completed auctions', 403));
+      throw new AppError('ONLY_ADMINS_CAN_VIEW_COMPLETED_AUCTIONS', 'Only admins can view completed auctions', 403);
     }
 
     // Use the repository to get paginated and filtered auctions
@@ -191,7 +191,7 @@ export const getAuctions = async (req, res, next) => {
 export const getPublicAuctions = async (req, res, next) => {
   // If user is trying to access admin-only statuses without being an admin
   if (['cancelled', 'all'].includes(req.query.status)) {
-    return next(new AppError('AUTHENTICATION_REQUIRED', 'Authentication required to view these auctions', 401));
+    throw new AppError('AUTHENTICATION_REQUIRED', 'Authentication required to view these auctions', 401);
   }
 
   // If no restricted status is being accessed, continue with normal auction fetching
@@ -208,7 +208,7 @@ export const getAuctionById = async (req, res, next) => {
     });
 
     if (!auction) {
-      return next(new AppError('AUCTION_NOT_FOUND', 'Auction not found', 404));
+      throw new AppError('AUCTION_NOT_FOUND', 'Auction not found', 404);
     }
 
     if (auction) {
@@ -241,23 +241,23 @@ export const updateAuction = async (req, res, next) => {
     // Find the auction
     const auction = await findAuctionById(auctionId);
     if (!auction) {
-      return next(new AppError('AUCTION_NOT_FOUND', 'Auction not found', 404));
+      throw new AppError('AUCTION_NOT_FOUND', 'Auction not found', 404);
     }
 
     // Check if user is the owner or admin
     const actorId = req.user?.id;
     if (auction.sellerId !== actorId && req.user.role !== 'admin') {
-      return next(new AppError('NOT_AUTHORIZED_TO_UPDATE_AUCTION', 'Not authorized to update this auction', 403));
+      throw new AppError('NOT_AUTHORIZED_TO_UPDATE_AUCTION', 'Not authorized to update this auction', 403);
     }
 
     // Check if auction has started
     if (new Date(auction.startDate) <= new Date()) {
-      return next(new AppError('CANNOT_UPDATE_STARTED_AUCTION', 'Cannot update an auction that has already started', 400));
+      throw new AppError('CANNOT_UPDATE_STARTED_AUCTION', 'Cannot update an auction that has already started', 400);
     }
 
     // Check if auction has ended
     if (new Date(auction.endDate) < new Date()) {
-      return next(new AppError('CANNOT_UPDATE_ENDED_AUCTION', 'Cannot update an auction that has already ended', 400));
+      throw new AppError('CANNOT_UPDATE_ENDED_AUCTION', 'Cannot update an auction that has already ended', 400);
     }
 
     // Update fields if provided
@@ -307,7 +307,7 @@ export const updateAuction = async (req, res, next) => {
     });
   } catch (error) {
     if (error.code === 'P2025') {
-      return next(new AppError('CONFLICT', 'This auction was modified by another user. Please refresh and try again.', 409));
+      throw new AppError('CONFLICT', 'This auction was modified by another user. Please refresh and try again.', 409);
     }
     logger.error('Update auction error:', {
       error: error.message,
@@ -341,22 +341,22 @@ export const deleteAuction = async (req, res, next) => {
     const auction = await findAuctionPrisma(auctionId);
 
     if (!auction) {
-      return next(new AppError('AUCTION_NOT_FOUND', 'Auction not found', 404));
+      throw new AppError('AUCTION_NOT_FOUND', 'Auction not found', 404);
     }
 
     // Check if user is the owner or admin
     if (auction.sellerId !== actorId && req.user.role !== 'admin') {
-      return next(new AppError('NOT_AUTHORIZED_TO_DELETE_AUCTION', 'Not authorized to delete this auction', 403));
+      throw new AppError('NOT_AUTHORIZED_TO_DELETE_AUCTION', 'Not authorized to delete this auction', 403);
     }
 
     // Only admins can perform permanent deletion
     if (permanent && req.user.role !== 'admin') {
-      return next(new AppError('ONLY_ADMINS_CAN_PERMANENTLY_DELETE_AUCTIONS', 'Only admins can permanently delete auctions', 403));
+      throw new AppError('ONLY_ADMINS_CAN_PERMANENTLY_DELETE_AUCTIONS', 'Only admins can permanently delete auctions', 403);
     }
 
     // Check if auction has started (for non-admin users)
     if (new Date(auction.startDate) <= new Date() && req.user.role !== 'admin') {
-      return next(new AppError('CANNOT_DELETE_STARTED_AUCTION', 'Cannot delete an auction that has already started', 400));
+      throw new AppError('CANNOT_DELETE_STARTED_AUCTION', 'Cannot delete an auction that has already started', 400);
     }
 
     if (permanent) {
@@ -389,7 +389,7 @@ export const deleteAuction = async (req, res, next) => {
       const updatedAuction = await softDeleteAuction(auctionId, actorId, auction.version);
 
       if (!updatedAuction) {
-        throw new Error('Failed to soft delete auction - version mismatch');
+        throw new AppError('CONFLICT', 'Failed to soft delete auction - version mismatch', 409);
       }
     }
 
@@ -402,7 +402,7 @@ export const deleteAuction = async (req, res, next) => {
     });
   } catch (error) {
     if (error.code === 'P2025') {
-      return next(new AppError('CONFLICT', 'This auction was modified by another user. Please refresh and try again.', 409));
+      throw new AppError('CONFLICT', 'This auction was modified by another user. Please refresh and try again.', 409);
     }
 
     logger.error('Delete auction error:', {
@@ -427,26 +427,26 @@ export const restoreAuction = async (req, res, next) => {
 
     // Only admins can restore auctions
     if (role !== 'admin') {
-      return next(new AppError('ONLY_ADMINS_CAN_RESTORE_AUCTIONS', 'Only admins can restore auctions', 403));
+      throw new AppError('ONLY_ADMINS_CAN_RESTORE_AUCTIONS', 'Only admins can restore auctions', 403);
     }
 
     // Find the auction including soft-deleted ones
     const auction = await findAuctionPrisma(auctionId);
 
     if (!auction) {
-      return next(new AppError('AUCTION_NOT_FOUND', 'Auction not found', 404));
+      throw new AppError('AUCTION_NOT_FOUND', 'Auction not found', 404);
     }
 
     // Check if auction is not soft-deleted (we need to fetch it again with isDeleted field)
     const auctionWithDeletedStatus = await findDeletedAuction(auctionId);
 
     if (!auctionWithDeletedStatus.isDeleted) {
-      return next(new AppError('AUCTION_NOT_DELETED', 'Auction is not deleted', 400));
+      throw new AppError('AUCTION_NOT_DELETED', 'Auction is not deleted', 400);
     }
 
     // Check if auction has already ended
     if (new Date(auctionWithDeletedStatus.endDate) < new Date()) {
-      return next(new AppError('CANNOT_RESTORE_ENDED_AUCTION', 'Cannot restore an auction that has already ended', 400));
+      throw new AppError('CANNOT_RESTORE_ENDED_AUCTION', 'Cannot restore an auction that has already ended', 400);
     }
 
     // Restore the auction
@@ -459,7 +459,7 @@ export const restoreAuction = async (req, res, next) => {
     });
   } catch (error) {
     if (error.code === 'P2025') {
-      return next(new AppError('CONFLICT', 'This auction was modified by another user. Please refresh and try again.', 409));
+      throw new AppError('CONFLICT', 'This auction was modified by another user. Please refresh and try again.', 409);
     }
 
     logger.error('Restore auction error:', {
@@ -485,7 +485,7 @@ export const confirmPayment = async (req, res, next) => {
     const user = await findUserByIdPrisma(userId, ['id', 'role'], { allowSensitive: false });
 
     if (!user) {
-      return next(new AppError('USER_NOT_FOUND', 'User not found', 404));
+      throw new AppError('USER_NOT_FOUND', 'User not found', 404);
     }
 
     const auction = await findAuctionById(auctionId, {
@@ -494,21 +494,21 @@ export const confirmPayment = async (req, res, next) => {
     });
 
     if (!auction) {
-      return next(new AppError('AUCTION_NOT_FOUND', 'Auction not found', 404));
+      throw new AppError('AUCTION_NOT_FOUND', 'Auction not found', 404);
     }
 
     // Only the seller or admin can confirm payment
     if (auction.sellerId !== userId && user.role !== 'admin') {
-      return next(new AppError('NOT_AUTHORIZED_TO_CONFIRM_PAYMENT', 'Not authorized to confirm payment for this auction', 403));
+      throw new AppError('NOT_AUTHORIZED_TO_CONFIRM_PAYMENT', 'Not authorized to confirm payment for this auction', 403);
     }
 
     // Check if auction has ended
     if (new Date(auction.endDate) > new Date()) {
-      return next(new AppError('CANNOT_CONFIRM_PAYMENT_FOR_NOT_ENDED_AUCTION', 'Cannot confirm payment for an auction that has not ended', 400));
+      throw new AppError('CANNOT_CONFIRM_PAYMENT_FOR_NOT_ENDED_AUCTION', 'Cannot confirm payment for an auction that has not ended', 400);
     }
 
     if (auction.isPaymentConfirmed) {
-      return next(new AppError('PAYMENT_ALREADY_CONFIRMED', 'Payment is already confirmed', 400));
+      throw new AppError('PAYMENT_ALREADY_CONFIRMED', 'Payment is already confirmed', 400);
     }
 
     // Confirm payment
@@ -521,7 +521,7 @@ export const confirmPayment = async (req, res, next) => {
     });
   } catch (error) {
     if (error.code === 'P2025') {
-      return next(new AppError('CONFLICT', 'This auction was modified by another user. Please refresh and try again.', 409));
+      throw new AppError('CONFLICT', 'This auction was modified by another user. Please refresh and try again.', 409);
     }
     logger.error('Confirm payment error:', {
       error: error.message,
@@ -545,7 +545,7 @@ export const confirmDelivery = async (req, res, next) => {
     const user = await findUserByIdPrisma(userId, ['id', 'role'], { allowSensitive: false });
 
     if (!user) {
-      return next(new AppError('USER_NOT_FOUND', 'User not found', 404));
+      throw new AppError('USER_NOT_FOUND', 'User not found', 404);
     }
 
     const auction = await findAuctionById(auctionId, {
@@ -554,29 +554,29 @@ export const confirmDelivery = async (req, res, next) => {
     });
 
     if (!auction) {
-      return next(new AppError('AUCTION_NOT_FOUND', 'Auction not found', 404));
+      throw new AppError('AUCTION_NOT_FOUND', 'Auction not found', 404);
     }
 
     if (auction.status !== 'sold') {
-      return next(new AppError('AUCTION_NOT_SOLD', 'Auction is not sold yet', 400));
+      throw new AppError('AUCTION_NOT_SOLD', 'Auction is not sold yet', 400);
     }
 
     if (!auction.isPaymentConfirmed) {
-      return next(new AppError('PAYMENT_NOT_CONFIRMED', 'Payment must be confirmed before delivery can be confirmed', 400));
+      throw new AppError('PAYMENT_NOT_CONFIRMED', 'Payment must be confirmed before delivery can be confirmed', 400);
     }
 
     if (auction.isDeliveryConfirmed) {
-      return next(new AppError('DELIVERY_ALREADY_CONFIRMED', 'Delivery is already confirmed', 400));
+      throw new AppError('DELIVERY_ALREADY_CONFIRMED', 'Delivery is already confirmed', 400);
     }
 
     // Only the winner or admin can confirm delivery
     if (auction.winnerId !== userId && user.role !== 'admin') {
-      return next(new AppError('NOT_AUTHORIZED_TO_CONFIRM_DELIVERY', 'Not authorized to confirm delivery for this auction', 403));
+      throw new AppError('NOT_AUTHORIZED_TO_CONFIRM_DELIVERY', 'Not authorized to confirm delivery for this auction', 403);
     }
 
     // Check if auction has ended
     if (new Date(auction.endDate) > new Date()) {
-      return next(new AppError('CANNOT_CONFIRM_DELIVERY_FOR_NOT_ENDED_AUCTION', 'Cannot confirm delivery for an auction that has not ended', 400));
+      throw new AppError('CANNOT_CONFIRM_DELIVERY_FOR_NOT_ENDED_AUCTION', 'Cannot confirm delivery for an auction that has not ended', 400);
     }
 
     // Confirm delivery
@@ -586,7 +586,7 @@ export const confirmDelivery = async (req, res, next) => {
     const confirmationStatus = await checkAuctionConfirmationStatusPrisma(auctionId);
 
     if (!confirmationStatus) {
-      return next(new AppError('AUCTION_NOT_FOUND', 'Auction not found after delivery confirmation', 404));
+      throw new AppError('AUCTION_NOT_FOUND', 'Auction not found after delivery confirmation', 404);
     }
 
     // Update status to completed if both payment and delivery are confirmed
@@ -601,7 +601,7 @@ export const confirmDelivery = async (req, res, next) => {
     });
   } catch (error) {
     if (error.code === 'P2025') {
-      return next(new AppError('CONFLICT', 'This auction was modified by another user. Please refresh and try again.', 409));
+      throw new AppError('CONFLICT', 'This auction was modified by another user. Please refresh and try again.', 409);
     }
     logger.error('Confirm delivery error:', {
       error: error.message,

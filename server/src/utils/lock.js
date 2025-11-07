@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { getRedisClient } from '../config/redis.js';
+import { AppError } from '../middleware/errorHandler.js';
 
 // Acquire a distributed lock using Redis SET NX PX
 // Returns { token, release: () => Promise<void> }
@@ -27,16 +28,17 @@ export async function acquireLock(key, ttlMs = 5000, options = {}) {
     await new Promise(r => setTimeout(r, delay));
   }
 
-  const err = new Error('AUCTION_LOCK_TIMEOUT');
-  err.details = {
-    key,
-    ttlMs,
-    retries,
-    waitTimeMs: Date.now() - start,
-    message: `Unable to acquire lock for auction after ${retries} attempts (${Math.round((Date.now() - start) / 1000)}s). This auction is experiencing high bid activity.`
-  };
-  err.statusCode = 429; // Too Many Requests
-  throw err;
+  throw new AppError(
+    'LOCK_TIMEOUT',
+    `Unable to acquire lock for auction after ${retries} attempts. This auction is experiencing high bid activity.`,
+    429, // Too Many Requests
+    {
+      key,
+      ttlMs,
+      retries,
+      waitTimeMs: Date.now() - start
+    }
+  );
 }
 
 // Release lock using a Lua script to ensure we only delete if token matches

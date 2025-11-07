@@ -7,6 +7,7 @@ import {
 import { findUserByIdPrisma } from '../repositories/userRepo.prisma.js';
 import logger from '../utils/logger.js';
 import { env } from '../config/env.js';
+import { AppError } from '../middleware/errorHandler.js';
 
 /**
  * Refresh access token using a valid refresh token
@@ -26,10 +27,7 @@ export const refreshToken = async (req, res, next) => {
     ]);
 
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'User not found',
-      });
+      throw new AppError('USER_NOT_FOUND', 'User not found', 404);
     }
 
     // Generate new access token

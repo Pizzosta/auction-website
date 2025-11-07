@@ -209,7 +209,7 @@ export const placeBidCore = async ({ auctionId, amount, actorId, io, socket }) =
   let result;
   // Input validation
   if (!auctionId || !amount) {
-    throw new Error('Missing required fields');
+    throw new AppError('MISSING_FIELDS', 'Missing required fields', 400);
   }
   // Acquire a distributed lock per auction to serialize concurrent bids
   const lockKey = `lock:auction:${auctionId}`;
@@ -217,9 +217,7 @@ export const placeBidCore = async ({ auctionId, amount, actorId, io, socket }) =
   try {
     lock = await acquireLock(lockKey, 5000, { retries: 20, retryDelay: 25, jitter: 25 });
   } catch (error) {
-    if (error.message === 'AUCTION_LOCK_TIMEOUT') {
-      throw new Error('Bid lock acquisition failed (contention)');
-    }
+    // Lock errors are already AppError instances, just rethrow
     throw error;
   }
   try {
@@ -240,15 +238,18 @@ export const placeBidCore = async ({ auctionId, amount, actorId, io, socket }) =
               },
             });
 
-            if (!auction) throw new Error('AUCTION_NOT_FOUND');
-            const minAllowedBid = Number(auction.currentPrice) + Number(auction.bidIncrement);
-            if (Number(amount) < minAllowedBid) {
-              const err = new Error('BID_TOO_LOW');
-              err.details = { minAllowedBid, bidIncrement: Number(auction.bidIncrement) };
-              throw err;
+            if (!auction) {
+              throw new AppError('AUCTION_NOT_FOUND', 'Auction not found', 404);
             }
 
-            if (auction.status !== 'active') throw new Error('NOT_ACTIVE');
+            const minAllowedBid = Number(auction.currentPrice) + Number(auction.bidIncrement);
+            if (Number(amount) < minAllowedBid) {
+              throw new AppError('BID_TOO_LOW', `Bid must be at least ${auction.bidIncrement} higher than current price (${auction.currentPrice})`, 400, { currentPrice: auction.currentPrice, bidIncrement: auction.bidIncrement, minAllowedBid });
+            }
+
+            if (auction.status !== 'active') {
+              throw new AppError('AUCTION_NOT_ACTIVE', 'Auction is not active', 400);
+            }
 
             const now = new Date();
             if (new Date(auction.endDate) < now) {
@@ -256,10 +257,12 @@ export const placeBidCore = async ({ auctionId, amount, actorId, io, socket }) =
                 where: { id: auctionId, version: auction.version },
                 data: { status: 'ended', version: { increment: 1 } },
               });
-              throw new Error('ALREADY_ENDED');
+              throw new AppError('AUCTION_ENDED', 'Auction has already ended', 400);
             }
 
-            if (auction.sellerId.toString() === actorId) throw new Error('BID_ON_OWN_AUCTION');
+            if (auction.sellerId.toString() === actorId) {
+              throw new AppError('BID_ON_OWN_AUCTION', 'You cannot bid on your own auction', 400);
+            }
 
             const bid = await tx.bid.create({
               data: {
@@ -317,16 +320,11 @@ export const placeBidCore = async ({ auctionId, amount, actorId, io, socket }) =
         break;
       } catch (error) {
         if (
-          error.code === 'P2025' ||
-          error.message.includes('version') ||
-          error.message.includes('concurrent') ||
-          error.message.includes('optimistic')
+          error.code === 'P2025'
         ) {
           retries++;
           if (retries === MAX_RETRIES)
-            throw new Error(
-              'Failed to place bid due to concurrent modifications. Please try again.'
-            );
+            throw new AppError('CONCURRENT_MODIFICATION', 'Failed to place bid due to concurrent modifications. Please try again.', 409);
           await new Promise(resolve => setTimeout(resolve, 100 * Math.pow(2, retries)));
           continue;
         }
@@ -385,10 +383,7 @@ export const deleteBid = async (req, res, next) => {
     });
 
     if (!bid) {
-      return res.status(404).json({
-        success: false,
-        message: 'Bid not found',
-      });
+      throw new AppError('BID_NOT_FOUND', 'Bid not found', 404);
     }
 
     // Check user permissions
@@ -396,26 +391,17 @@ export const deleteBid = async (req, res, next) => {
     const isBidder = bid.bidderId.toString() === actorId;
 
     if (!isAdmin && !isBidder) {
-      return res.status(403).json({
-        success: false,
-        message: 'Not authorized to delete this bid',
-      });
+      throw new AppError('UNAUTHORIZED', 'Not authorized to delete this bid', 403);
     }
 
     // Only admins can permanently delete
     if (permanent && !isAdmin) {
-      return res.status(403).json({
-        success: false,
-        message: 'Only admins can permanently delete bids',
-      });
+      throw new AppError('UNAUTHORIZED', 'Only admins can permanently delete bids', 403);
     }
 
     // Check if auction is ended or sold
     if (['ended', 'sold'].includes(bid.auction.status)) {
-      return res.status(400).json({
-        success: false,
-        message: `Cannot delete bids on ${bid.auction.status} auctions`,
-      });
+      throw new AppError('UNAUTHORIZED', `Cannot delete bids on ${bid.auction.status} auctions`, 400);
     }
 
     // Check if we're in the last 15 minutes of the auction
@@ -424,10 +410,7 @@ export const deleteBid = async (req, res, next) => {
     const fifteenMinutesInMs = 15 * 60 * 1000; // 15 minutes in milliseconds
 
     if (now >= new Date(endTime - fifteenMinutesInMs) && bid.auction.status === 'active') {
-      return res.status(400).json({
-        success: false,
-        message: 'Cannot delete bids in the last 15 minutes of an auction',
-      });
+      throw new AppError('UNAUTHORIZED', 'Cannot delete bids in the last 15 minutes of an auction', 400);
     }
 
     // Check cancellation limit: Max 2 cancellations per user per auction
@@ -442,10 +425,7 @@ export const deleteBid = async (req, res, next) => {
       });
 
       if (userCancellations >= 2) {
-        return res.status(400).json({
-          success: false,
-          message: 'Maximum of 2 bid cancellations allowed per auction',
-        });
+        throw new AppError('UNAUTHORIZED', 'Maximum of 2 bid cancellations allowed per auction', 400);
       }
     }
 
@@ -466,7 +446,7 @@ export const deleteBid = async (req, res, next) => {
             });
 
             if (!currentBid) {
-              throw new Error('Bid not found');
+              throw new AppError('BID_NOT_FOUND', 'Bid not found', 404);
             }
 
             // 2. Find the highest active bid (excluding the one being deleted)
@@ -586,7 +566,7 @@ export const deleteBid = async (req, res, next) => {
         });
 
         // If it's a version conflict, retry
-        if (error.code === 'P2025' || error.message.includes('version')) {
+        if (error.code === 'P2025' || error.message.includes('version') || error.message.includes('concurrent') || error.message.includes('optimistic')) {
           retries++;
           if (retries === MAX_RETRIES) {
             logger.error('Bid deletion failed after max retries', {
@@ -595,9 +575,7 @@ export const deleteBid = async (req, res, next) => {
               errorCode: error.code,
               errorMessage: error.message,
             });
-            throw new Error(
-              'Failed to process bid cancellation due to concurrent modifications. Please try again.'
-            );
+            throw new AppError('CONCURRENT_MODIFICATION', 'Failed to process bid cancellation due to concurrent modifications. Please try again.', 409);
           }
           // Add exponential backoff with jitter to reduce thundering herd
           const baseDelay = 100 * Math.pow(2, retries);
@@ -643,26 +621,17 @@ export const restoreBid = async (req, res, next) => {
 
     // Only admins can restore bids
     if (req.user.role !== 'admin') {
-      return res.status(403).json({
-        success: false,
-        message: 'Only admins can restore deleted bids',
-      });
+      throw new AppError('UNAUTHORIZED', 'Only admins can restore deleted bids', 403);
     }
 
     const bid = await prisma.bid.findUnique({ where: { id: bidId } });
 
     if (!bid) {
-      return res.status(404).json({
-        success: false,
-        message: 'Bid not found',
-      });
+      throw new AppError('BID_NOT_FOUND', 'Bid not found', 404);
     }
 
     if (!bid.isDeleted) {
-      return res.status(400).json({
-        success: false,
-        message: 'Bid is not deleted',
-      });
+      throw new AppError('BID_NOT_DELETED', 'Bid is not deleted', 400);
     }
 
     await prisma.bid.update({
@@ -694,29 +663,9 @@ export const placeBid = async (req, res, next) => {
     const actorId = req.user?.id?.toString();
     const io = req?.app?.get('io');
     const result = await placeBidCore({ auctionId, amount, actorId, io });
+
     res.status(201).json(result);
   } catch (error) {
-    if (error.message === 'AUCTION_NOT_FOUND') {
-      return res.status(404).json({ success: false, message: 'Auction not found' });
-    }
-    if (error.message === 'Bid lock acquisition failed (contention)') {
-      return res.status(429).json({ success: false, message: 'Too many concurrent bids. Please try again.' });
-    }
-    if (error.message === 'BID_TOO_LOW') {
-      const { minAllowedBid, bidIncrement } = error.details || {};
-      return res.status(400).json({ success: false, message: `Bid must be at least ${bidIncrement} higher than current price (${minAllowedBid})` });
-    }
-    if (error.message === 'NOT_ACTIVE') {
-      return res.status(400).json({ message: 'This auction is not active' });
-    }
-    if (error.message === 'ALREADY_ENDED') {
-      return res.status(400).json({ message: 'This auction has already ended' });
-    }
-    if (error.message === 'BID_ON_OWN_AUCTION') {
-      return res.status(400).json({ message: 'You cannot bid on your own auction' });
-    }
-    logger.error('Place bid error:', { error: error.message, stack: error.stack });
-
     next(error);
   }
 };
@@ -736,18 +685,12 @@ export const getBidsByAuction = async (req, res, next) => {
     });
 
     if (!auctionExists) {
-      return res.status(404).json({
-        status: 'error',
-        message: 'Auction not found',
-      });
+      throw new AppError('AUCTION_NOT_FOUND', 'Auction not found', 404);
     }
 
     // Check if user has permission to see deleted bids
     if ((status === 'cancelled' || status === 'all') && (!req.user || req.user.role !== 'admin')) {
-      return res.status(403).json({
-        status: 'error',
-        message: 'Not authorized to view deleted bids',
-      });
+      throw new AppError('NOT_AUTHORIZED', 'Not authorized to view deleted bids', 403);
     }
 
     // Use the repository to get paginated and filtered bids
@@ -788,27 +731,24 @@ export const getBidsByAuction = async (req, res, next) => {
 // @access  Private
 export const getMyBids = async (req, res, next) => {
   try {
-    const { 
-      status, 
-      page = 1, 
-      limit = 10, 
+    const {
+      status,
+      page = 1,
+      limit = 10,
       sort = 'createdAt:desc',
       highestBidderOnly = 'false',
       winningBidsOnly = 'false'
     } = req.query;
-    
+
     const { id: userId } = req.user;
 
     // Check if user has permission to view cancelled bids
     if ((status === 'cancelled' || status === 'all') && req.user.role !== 'admin') {
-      return res.status(403).json({
-        status: 'error',
-        message: 'Not authorized to view cancelled bids',
-      });
+      throw new AppError('NOT_AUTHORIZED', 'Not authorized to view cancelled bids', 403);
     }
 
     // First, get all the user's bids
-    let { bids, count, pageNum, take } = await listBidsPrisma({
+    const { bids, count, pageNum, take } = await listBidsPrisma({
       bidderId: userId,
       status,
       page: parseInt(page),
@@ -820,7 +760,7 @@ export const getMyBids = async (req, res, next) => {
     if (highestBidderOnly === 'true' || winningBidsOnly === 'true') {
       // Get all auctions where the user has bids
       const auctionIds = [...new Set(bids.map(bid => bid.auctionId))];
-      
+
       // Build the where clause based on filter type
       const where = {
         id: { in: auctionIds },
@@ -837,7 +777,7 @@ export const getMyBids = async (req, res, next) => {
           { winnerId: userId }
         ];
       }
-      
+
       // Find matching auctions
       const matchingAuctions = await prisma.auction.findMany({
         where,
@@ -863,7 +803,7 @@ export const getMyBids = async (req, res, next) => {
         );
         bids = bids.filter(bid => winningBidIds.has(bid.id));
       }
-      
+
       // Update count and pagination
       count = bids.length;
       const totalPages = Math.ceil(count / take);
@@ -890,12 +830,12 @@ export const getMyBids = async (req, res, next) => {
           }),
           // Get the highest bid for this auction
           prisma.bid.findFirst({
-            where: { 
-              auctionId: bid.auctionId, 
-              isDeleted: false 
+            where: {
+              auctionId: bid.auctionId,
+              isDeleted: false
             },
             orderBy: { amount: 'desc' },
-            select: { 
+            select: {
               id: true,
               bidderId: true,
               amount: true
@@ -905,11 +845,11 @@ export const getMyBids = async (req, res, next) => {
 
         const isActive = auction?.status === 'active' && new Date(auction?.endDate) > new Date();
         const isEnded = auction ? ['ended', 'sold'].includes(auction.status) : false;
-        
+
         // User is winning if:
         // 1. Auction is active AND they have the highest bid, OR
         // 2. Auction has ended AND they are the winner
-        const isWinning = isActive 
+        const isWinning = isActive
           ? highestBid?.bidderId === bid.bidderId
           : auction?.winnerId === bid.bidderId;
 

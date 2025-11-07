@@ -19,34 +19,6 @@ const __dirname = dirname(__filename);
 // Validate required environment variables once at startup
 const missingVars = validateEnv();
 
-// Configure global HTTP/HTTPS agents for outgoing requests
-const http = await import('http');
-const https = await import('https');
-
-// Set global agent timeouts (applies to all requests)
-const httpAgent = new http.Agent({ 
-  keepAlive: true,
-  timeout: 10000, // 10 seconds
-  maxSockets: 100
-});
-
-const httpsAgent = new https.Agent({ 
-  keepAlive: true,
-  timeout: 10000, // 10 seconds
-  maxSockets: 100,
-  rejectUnauthorized: env.isProd // Verify SSL in production
-});
-
-// Set as global agents
-http.globalAgent = httpAgent;
-https.globalAgent = httpsAgent;
-
-logger.info('Global HTTP/HTTPS agents configured', {
-  httpTimeout: httpAgent.options.timeout,
-  httpsTimeout: httpsAgent.options.timeout,
-  maxSockets: httpAgent.maxSockets,
-  rejectUnauthorized: httpsAgent.options.rejectUnauthorized
-});
 if (missingVars.length > 0) {
   logger.error(`Missing required environment variables: ${missingVars.join(', ')}`);
   process.exit(1);

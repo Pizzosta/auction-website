@@ -20,19 +20,19 @@ export const createFeedback = async (req, res, next) => {
 
         // Validate rating
         if (rating < 1 || rating > 5) {
-            return next(new AppError('INVALID_RATING', 'Rating must be between 1 and 5', 400));
+            throw new AppError('INVALID_RATING', 'Rating must be between 1 and 5', 400);
         }
 
         // Get auction with related data using repository
         const auction = await getAuctionForFeedback(auctionId);
 
         if (!auction) {
-            return next(new AppError('AUCTION_NOT_FOUND', 'Auction not found', 404));
+            throw new AppError('AUCTION_NOT_FOUND', 'Auction not found', 404);
         }
 
         // Validate auction status
         if (auction.status !== 'sold') {
-            return next(new AppError('AUCTION_NOT_SOLD', 'Feedback can only be left for sold auctions', 400));
+            throw new AppError('AUCTION_NOT_SOLD', 'Feedback can only be left for sold auctions', 400);
         }
 
         // Determine who is giving feedback to whom
@@ -40,22 +40,22 @@ export const createFeedback = async (req, res, next) => {
         if (type === 'seller') {
             toUserId = auction.sellerId;
             if (auction.winnerId !== fromUserId) {
-                return next(new AppError('ONLY_WINNING_BIDDER_CAN_LEAVE_SELLER_FEEDBACK', 'Only the winning bidder can leave seller feedback', 403));
+                throw new AppError('ONLY_WINNING_BIDDER_CAN_LEAVE_SELLER_FEEDBACK', 'Only the winning bidder can leave seller feedback', 403);
             }
         } else if (type === 'buyer') {
             toUserId = auction.winnerId;
             if (auction.sellerId !== fromUserId) {
-                return next(new AppError('ONLY_SELLER_CAN_LEAVE_BUYER_FEEDBACK', 'Only the seller can leave buyer feedback', 403));
+                throw new AppError('ONLY_SELLER_CAN_LEAVE_BUYER_FEEDBACK', 'Only the seller can leave buyer feedback', 403);
             }
         } else {
-            return next(new AppError('INVALID_FEEDBACK_TYPE', 'Invalid feedback type', 400));
+            throw new AppError('INVALID_FEEDBACK_TYPE', 'Invalid feedback type', 400);
         }
 
         // Check if feedback already exists using repository
         const existingFeedback = await getExistingFeedback(auctionId, fromUserId, type);
 
         if (existingFeedback) {
-            return next(new AppError('FEEDBACK_ALREADY_SUBMITTED', 'Feedback already submitted for this auction', 400));
+            throw new AppError('FEEDBACK_ALREADY_SUBMITTED', 'Feedback already submitted for this auction', 400);
         }
 
         // Create feedback using repository
@@ -139,12 +139,12 @@ export const respondToFeedback = async (req, res, next) => {
         const feedback = await getFeedbackByIdPrisma(feedbackId);
 
         if (!feedback) {
-            return next(new AppError('FEEDBACK_NOT_FOUND', 'Feedback not found', 404));
+            throw new AppError('FEEDBACK_NOT_FOUND', 'Feedback not found', 404);
         }
 
         // Only the user who received the feedback can respond
         if (feedback.toUserId !== userId) {
-            return next(new AppError('NOT_AUTHORIZED', 'Not authorized to respond to this feedback', 403));
+            throw new AppError('NOT_AUTHORIZED', 'Not authorized to respond to this feedback', 403);
         }
 
         const updatedFeedback = await respondToFeedbackPrisma(feedbackId, response);

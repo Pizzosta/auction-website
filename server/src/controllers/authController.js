@@ -23,18 +23,18 @@ export const register = async (req, res, next) => {
 
     // Check password match
     if (password !== confirmPassword) {
-      return next(new AppError('PASSWORDS_DO_NOT_MATCH', 'Passwords do not match', 400));
+      throw new AppError('PASSWORDS_DO_NOT_MATCH', 'Passwords do not match', 400);
     }
 
     // Check password strength
     const passwordCheck = checkPasswordStrength(password);
     if (!passwordCheck.isValid) {
-      return next(new AppError('PASSWORD_DOES_NOT_MEET_REQUIREMENTS', 'Password does not meet requirements', 400, { issues: Object.values(passwordCheck.issues).filter(Boolean) }));
+      throw new AppError('PASSWORD_DOES_NOT_MEET_REQUIREMENTS', 'Password does not meet requirements', 400, { issues: Object.values(passwordCheck.issues).filter(Boolean) });
     }
 
     const strength = zxcvbn(password);
     if (strength.score < 3) {
-      return next(new AppError('PASSWORD_IS_TOO_WEAK', 'Password is too weak', 400, { suggestions: strength.feedback?.suggestions || [] }));
+      throw new AppError('PASSWORD_IS_TOO_WEAK', 'Password is too weak', 400, { suggestions: strength.feedback?.suggestions || [] });
     }
 
     const normalizedEmail = email?.trim().toLowerCase();
@@ -42,32 +42,32 @@ export const register = async (req, res, next) => {
     const normalizedPhone = normalizeToE164(phone?.trim());
 
     if (!normalizedPhone) {
-      return next(new AppError('INVALID_PHONE_NUMBER_FORMAT', 'Invalid phone number format', 400));
+      throw new AppError('INVALID_PHONE_NUMBER_FORMAT', 'Invalid phone number format', 400);
     }
 
     // Check if user exists
     const userByEmail = await findUserByEmailPrisma(normalizedEmail, ['id', 'isDeleted']);
     if (userByEmail && !userByEmail.isDeleted) {
-      return next(new AppError('EMAIL_ALREADY_IN_USE', 'Email is already in use by another user.', 400));
+      throw new AppError('EMAIL_ALREADY_IN_USE', 'Email is already in use by another user.', 400);
     }
     if (userByEmail && userByEmail.isDeleted) {
-      return next(new AppError('EMAIL_PREVIOUSLY_USED', 'This email was previously used by another account', 400));
+      throw new AppError('EMAIL_PREVIOUSLY_USED', 'This email was previously used by another account', 400);
     }
 
     const userByUsername = await findUserByUsernamePrisma(normalizedUsername, ['id', 'isDeleted']);
     if (userByUsername && !userByUsername.isDeleted) {
-      return next(new AppError('USERNAME_ALREADY_IN_USE', 'Username is already in use by another user.', 400));
+      throw new AppError('USERNAME_ALREADY_IN_USE', 'Username is already in use by another user.', 400);
     }
     if (userByUsername && userByUsername.isDeleted) {
-      return next(new AppError('USERNAME_PREVIOUSLY_USED', 'This username was previously used by another account', 400));
+      throw new AppError('USERNAME_PREVIOUSLY_USED', 'This username was previously used by another account', 400);
     }
 
     const userByPhone = await findUserByPhonePrisma(normalizedPhone, ['id', 'isDeleted']);
     if (userByPhone && !userByPhone.isDeleted) {
-      return next(new AppError('PHONE_NUMBER_ALREADY_IN_USE', 'Phone number is already in use by another user.', 400));
+      throw new AppError('PHONE_NUMBER_ALREADY_IN_USE', 'Phone number is already in use by another user.', 400);
     }
     if (userByPhone && userByPhone.isDeleted) {
-      return next(new AppError('PHONE_NUMBER_PREVIOUSLY_USED', 'This phone number was previously used by another account', 400));
+      throw new AppError('PHONE_NUMBER_PREVIOUSLY_USED', 'This phone number was previously used by another account', 400);
     }
 
     // Create user (hash password)
@@ -145,12 +145,12 @@ export const login = async (req, res, next) => {
     // Check if user exists
     const user = await findUserByCredentials(email, password);
     if (!user) {
-      return next(new AppError('INVALID_CREDENTIALS', 'Invalid credentials', 400));
+      throw new AppError('INVALID_CREDENTIALS', 'Invalid User credentials', 400);
     }
 
     // Check if user is soft-deleted
     if (user.isDeleted) {
-      return next(new AppError('USER_DEACTIVATED', 'User account has been deactivated', 403));
+      throw new AppError('USER_DEACTIVATED', 'User account has been deactivated', 403);
     }
 
     // Update lastActiveAt timestamp
@@ -196,7 +196,7 @@ export const forgotPassword = async (req, res, next) => {
     const { email } = req.body;
 
     if (!email) {
-      return next(new AppError('EMAIL_REQUIRED', 'Email is required', 400));
+      throw new AppError('EMAIL_REQUIRED', 'Email is required', 400);
     }
 
     const normalizedEmail = email.trim().toLowerCase();
@@ -206,7 +206,7 @@ export const forgotPassword = async (req, res, next) => {
 
     // Don't reveal if user doesn't exist (security best practice)
     if (!user) {
-      return next(new AppError('USER_NOT_FOUND', 'If an account with that email exists, a password reset link has been sent.', 404));
+      throw new AppError('USER_NOT_FOUND', 'If an account with that email exists, a password reset link has been sent.', 404);
     }
 
     // Generate reset token and save hashed version to database
@@ -259,7 +259,7 @@ export const resetPassword = async (req, res, next) => {
     const { password, confirmPassword } = req.body;
 
     if (!token) {
-      return next(new AppError('TOKEN_REQUIRED', 'Verification token is required', 400));
+      throw new AppError('TOKEN_REQUIRED', 'Verification token is required', 400);
     }
 
     // Check if token is valid
@@ -288,25 +288,25 @@ export const resetPassword = async (req, res, next) => {
 
     // Check if passwords match
     if (password !== confirmPassword) {
-      return next(new AppError('PASSWORDS_DO_NOT_MATCH', 'Passwords do not match', 400));
+      throw new AppError('PASSWORDS_DO_NOT_MATCH', 'Passwords do not match', 400);
     }
 
     // Check password strength
     const passwordCheck = checkPasswordStrength(password);
     if (!passwordCheck.isValid) {
-      return next(new AppError('PASSWORD_DOES_NOT_MEET_REQUIREMENTS', 'Password does not meet requirements', 400, { issues: Object.values(passwordCheck.issues).filter(Boolean) }));
+      throw new AppError('PASSWORD_DOES_NOT_MEET_REQUIREMENTS', 'Password does not meet requirements', 400, { issues: Object.values(passwordCheck.issues).filter(Boolean) });
     }
 
     const strength = zxcvbn(password);
     if (strength.score < 3) {
-      return next(new AppError('PASSWORD_IS_TOO_WEAK', 'Password is too weak', 400, { suggestions: strength.feedback?.suggestions || [] }));
+      throw new AppError('PASSWORD_IS_TOO_WEAK', 'Password is too weak', 400, { suggestions: strength.feedback?.suggestions || [] });
     }
 
     // Reset password using repository
     const user = await resetUserPassword(token, password);
 
     if (!user) {
-      return next(new AppError('INVALID_OR_EXPIRED_RESET_TOKEN', 'Invalid or expired reset token', 400));
+      throw new AppError('INVALID_OR_EXPIRED_RESET_TOKEN', 'Invalid or expired reset token', 400);
     }
 
     // Send confirmation email
@@ -347,7 +347,7 @@ export const resetPassword = async (req, res, next) => {
     });
   } catch (error) {
     if (error.code === 'SAME_PASSWORD') {
-      return next(new AppError('SAME_PASSWORD', 'New password must be different from old password', 400));
+      throw new AppError('SAME_PASSWORD', 'New password must be different from old password', 400);
     };
     logger.error('Reset password error:', {
       error: error.message,
@@ -367,7 +367,7 @@ export const requestVerification = async (req, res, next) => {
     const { email } = req.body;
 
     if (!email) {
-      return next(new AppError('EMAIL_REQUIRED', 'Email is required', 400));
+      throw new AppError('EMAIL_REQUIRED', 'Email is required', 400);
     }
 
     const normalizedEmail = email.trim().toLowerCase();
@@ -378,13 +378,13 @@ export const requestVerification = async (req, res, next) => {
     ]);
 
     if (!user) {
-      return next(new AppError('USER_NOT_FOUND', 'User not found', 404));
+      throw new AppError('USER_NOT_FOUND', 'User not found', 404);
     }
     if (user.isVerified) {
-      return next(new AppError('EMAIL_ALREADY_VERIFIED', 'Email is already verified', 400));
+      throw new AppError('EMAIL_ALREADY_VERIFIED', 'Email is already verified', 400);
     }
     if (user.isDeleted) {
-      return next(new AppError('USER_DELETED', 'User is deleted', 400));
+      throw new AppError('USER_DELETED', 'User is deleted', 400);
     }
 
     // Generate verification token using repository
@@ -440,7 +440,7 @@ export const verifyEmail = async (req, res, next) => {
   try {
     const { token } = req.params;
     if (!token) {
-      return next(new AppError('TOKEN_REQUIRED', 'Verification token is required', 400));
+      throw new AppError('TOKEN_REQUIRED', 'Verification token is required', 400);
     }
 
     // Check if token is valid
@@ -454,10 +454,10 @@ export const verifyEmail = async (req, res, next) => {
         timestamp: new Date().toISOString(),
       });
 
-      return next(new AppError('INVALID_RESET_TOKEN', 'Invalid reset token format', 400, {
+      throw new AppError('INVALID_RESET_TOKEN', 'Invalid reset token format', 400, {
         expected: '64-character hex string',
         received: typeof token === 'string' ? token.length : 'N/A',
-      }));
+      });
     }
 
     // Log token details for debugging
@@ -471,7 +471,7 @@ export const verifyEmail = async (req, res, next) => {
     const user = await verifyUserEmail(token);
 
     if (!user) {
-      return next(new AppError('INVALID_OR_EXPIRED_VERIFICATION_TOKEN', 'Invalid or expired verification token', 400));
+      throw new AppError('INVALID_OR_EXPIRED_VERIFICATION_TOKEN', 'Invalid or expired verification token', 400);
     }
 
     return res.status(200).json({
