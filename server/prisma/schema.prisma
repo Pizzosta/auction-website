@@ -126,6 +126,9 @@ model Auction {
   @@index([deliveryConfirmedByUserId])
 }
 
+// Partial unique index on (auctionId, bidderId, amount) where isDeleted = false
+// This enforces uniqueness of active bids ignoring soft-deleted bids.
+// Managed as raw SQL/index in the database, not by Prisma migrations.
 model Bid {
   id          String    @id @default(uuid())
   createdAt   DateTime  @default(now())
@@ -146,7 +149,6 @@ model Bid {
   deletedBy     User?    @relation("BidDeletedBy", fields: [deletedById], references: [id], onDelete: NoAction)
   highestBidFor Auction? @relation("AuctionHighestBid")
 
-  @@unique([auctionId, bidderId, amount])
   @@index([auctionId, createdAt])
   @@index([bidderId])
   @@index([amount])
