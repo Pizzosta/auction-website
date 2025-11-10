@@ -905,7 +905,7 @@
       }
     },
     "/api/bids/{bidId}/restore": {
-      "post": {
+      "patch": {
         "description": "",
         "parameters": [
           {

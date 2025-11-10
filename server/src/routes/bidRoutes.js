@@ -69,7 +69,7 @@ router.delete(
 );
 
 /**
- * @route POST /api/bids/{bidId}/restore
+ * @route PATCH /api/bids/{bidId}/restore
  * @group Bids - bid management
  * @description Restore a soft-deleted bid (admin only)
  * @param {string} bidId.path.required - The ID of the bid to restore
@@ -78,7 +78,7 @@ router.delete(
  * @returns {Error} 404 - Bid not found or not deleted
  * @returns {Error} default - Unexpected error
  */
-router.post('/:bidId/restore', protect, admin, validate(idSchema('bidId'), 'params'), restoreBid);
+router.patch('/:bidId/restore', protect, admin, validate(idSchema('bidId'), 'params'), restoreBid);
 
 /**
  * @route GET /api/bids

@@ -259,7 +259,7 @@ export const placeBidCore = async ({ auctionId, amount, actorId, io, socket }) =
             });
 
             if (existingActiveBid) {
-              throw new AppError('BID_ALREADY_EXISTS', 'You already have an active highest bid for this amount.', 400);
+              throw new AppError('BID_ALREADY_EXISTS', 'You are currently the highest bidder at this amount. To confirm your bid, please increase your amount.', 400);
             }
 
             const minAllowedBid = Number(auction.currentPrice) + Number(auction.bidIncrement);
@@ -285,7 +285,7 @@ export const placeBidCore = async ({ auctionId, amount, actorId, io, socket }) =
                 amount: new Prisma.Decimal(amount),
                 auctionId: auction.id,
                 bidderId: actorId,
-                version: { increment: 1 },
+                version: 1,
                 isOutbid: false,
               },
               select: {
@@ -412,7 +412,7 @@ export const deleteBid = async (req, res, next) => {
     // Find the bid with auction
     const bid = await prisma.bid.findUnique({
       where: { id: bidId },
-      include: { auction: true },
+      include: { auction: { select: { status: true, endDate: true } } },
     });
 
     if (!bid) {
@@ -433,7 +433,7 @@ export const deleteBid = async (req, res, next) => {
     }
 
     // Check if auction is ended or sold
-    if (['ended', 'sold'].includes(bid.auction.status)) {
+    if (['ended', 'sold', 'completed', 'cancelled'].includes(bid.auction.status)) {
       throw new AppError('UNAUTHORIZED', `Cannot delete bids on ${bid.auction.status} auctions`, 400);
     }
 
@@ -475,11 +475,15 @@ export const deleteBid = async (req, res, next) => {
             // Reload the bid with current version
             const currentBid = await tx.bid.findUnique({
               where: { id: bidId },
-              select: { version: true, amount: true },
+              select: { version: true, amount: true, isDeleted: true, deletedById: true },
             });
 
             if (!currentBid) {
               throw new AppError('BID_NOT_FOUND', 'Bid not found', 404);
+            }
+
+            if (currentBid.isDeleted && !permanent) {
+              throw new AppError('BID_ALREADY_CANCELLED', 'This bid has already been cancelled', 400);
             }
 
             // Get current auction state
@@ -614,13 +618,13 @@ export const deleteBid = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      message: `Bid ${permanent ? 'permanently' : 'soft'} deleted successfully`,
+      message: `Bid ${permanent ? 'permanently deleted' : 'cancelled'} successfully`,
     });
   } catch (error) {
     logger.error('Delete bid error:', {
       error: error.message,
       bidId: req.params.bidId,
-      userId: actorId, // Now actorId is accessible here
+      deletedById: req.user.id,
     });
 
     next(error);
@@ -639,30 +643,75 @@ export const restoreBid = async (req, res, next) => {
       throw new AppError('UNAUTHORIZED', 'Only admins can restore deleted bids', 403);
     }
 
-    const bid = await prisma.bid.findUnique({ where: { id: bidId } });
+    const bid = await prisma.bid.findUnique({
+      where: { id: bidId },
+      include: {
+        auction: {
+          select: {
+            status: true,
+            endDate: true,
+          }
+        }
+      }
+    });
 
     if (!bid) {
       throw new AppError('BID_NOT_FOUND', 'Bid not found', 404);
     }
 
     if (!bid.isDeleted) {
-      throw new AppError('BID_NOT_DELETED', 'Bid is not deleted', 400);
+      throw new AppError('BID_NOT_CANCELLED', 'Bid is not cancelled', 400);
     }
 
-    await prisma.bid.update({
-      where: { id: bidId },
-      data: { isDeleted: false, deletedAt: null, deletedById: null },
+    if (bid.auction.status !== 'active' || bid.auction.endDate < new Date()) {
+      throw new AppError('AUCTION_NOT_ACTIVE', 'Cannot restore bid on inactive auction', 400);
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      // Restore the bid
+      await tx.bid.update({
+        where: { id: bidId },
+        data: { isDeleted: false, deletedAt: null, deletedById: null, version: { increment: 1 } },
+      });
+
+      // Find the new highest bid
+      const newHighestBid = await tx.bid.findFirst({
+        where: { auctionId: bid.auctionId, isDeleted: false, isOutbid: false },
+        orderBy: [{ amount: 'desc' }, { createdAt: 'asc' }],
+        take: 1,
+        select: { id: true, amount: true },
+      });
+
+      // Update auction if this bid is now the highest
+      if (newHighestBid?.id === bidId) {
+        await tx.auction.update({
+          where: { id: bid.auctionId },
+          data: {
+            currentPrice: newHighestBid.amount,
+            highestBidId: bidId,
+            version: { increment: 1 },
+          },
+        });
+      }
+
+      return newHighestBid;
+    });
+
+    logger.info('Bid restored successfully', {
+      bidId: bidId,
+      restoredById: req.user?.id,
     });
 
     res.status(200).json({
       success: true,
       message: 'Bid restored successfully',
+      ...(result ? { newHighestBid: result.id } : {}),
     });
   } catch (error) {
     logger.error('Restore bid error:', {
       error: error.message,
       bidId: req.params.bidId,
-      userId: req.user?.id,
+      restoredById: req.user?.id,
     });
 
     next(error);

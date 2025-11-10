@@ -11,3 +11,9 @@ for i in {1..20}; do
        --data "$PAYLOAD" &
 done
 wait
+
+
+curl -X POST /api/auctions/create-auction \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Test","description":"Test","startingPrice":10,"bidIncrement":1,"startDate":"2025-10-23T22:27:00.000Z","endDate":"2025-10-23T22:57:00.000Z","category":"Toys","images":[{"url":"https://example.com/img.jpg","publicId":"test"}]}'
