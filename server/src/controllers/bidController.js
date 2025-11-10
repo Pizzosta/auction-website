@@ -10,6 +10,7 @@ import {
 import { addToQueue } from '../services/emailQueue.js';
 import { formatCurrency, formatDateTime } from '../utils/format.js';
 import { env, validateEnv } from '../config/env.js';
+import { AppError } from '../middleware/errorHandler.js';
 
 // Validate required environment variables
 const missingVars = validateEnv();
@@ -242,6 +243,25 @@ export const placeBidCore = async ({ auctionId, amount, actorId, io, socket }) =
               throw new AppError('AUCTION_NOT_FOUND', 'Auction not found', 404);
             }
 
+            if (auction.sellerId.toString() === actorId) {
+              throw new AppError('BID_ON_OWN_AUCTION', 'You cannot bid on your own auction', 400);
+            }
+
+            // Check if the user already has an active bid for this amount
+            const existingActiveBid = await tx.bid.findFirst({
+              where: {
+                auctionId: auction.id,
+                bidderId: actorId,
+                amount: new Prisma.Decimal(amount),
+                isDeleted: false,
+                isOutbid: false,
+              },
+            });
+
+            if (existingActiveBid) {
+              throw new AppError('BID_ALREADY_EXISTS', 'You already have an active highest bid for this amount.', 400);
+            }
+
             const minAllowedBid = Number(auction.currentPrice) + Number(auction.bidIncrement);
             if (Number(amount) < minAllowedBid) {
               throw new AppError('BID_TOO_LOW', `Bid must be at least ${auction.bidIncrement} higher than current price (${auction.currentPrice})`, 400, { currentPrice: auction.currentPrice, bidIncrement: auction.bidIncrement, minAllowedBid });
@@ -260,16 +280,13 @@ export const placeBidCore = async ({ auctionId, amount, actorId, io, socket }) =
               throw new AppError('AUCTION_ENDED', 'Auction has already ended', 400);
             }
 
-            if (auction.sellerId.toString() === actorId) {
-              throw new AppError('BID_ON_OWN_AUCTION', 'You cannot bid on your own auction', 400);
-            }
-
             const bid = await tx.bid.create({
               data: {
                 amount: new Prisma.Decimal(amount),
                 auctionId: auction.id,
                 bidderId: actorId,
-                version: 1,
+                version: { increment: 1 },
+                isOutbid: false,
               },
               select: {
                 id: true,
@@ -359,6 +376,22 @@ export const placeBidCore = async ({ auctionId, amount, actorId, io, socket }) =
   }
 };
 
+// @desc    Place a bid on an auction
+// @route   POST /api/bids
+// @access  Private
+export const placeBid = async (req, res, next) => {
+  try {
+    const { auctionId, amount } = req.body;
+    const actorId = req.user?.id?.toString();
+    const io = req?.app?.get('io');
+    const result = await placeBidCore({ auctionId, amount, actorId, io });
+
+    res.status(201).json(result);
+  } catch (error) {
+    next(error);
+  }
+};
+
 // @desc    Delete a bid (with support for soft and permanent delete)
 // @route   DELETE /api/bids/:bidId
 // @access  Private (Admin for permanent delete)
@@ -439,7 +472,7 @@ export const deleteBid = async (req, res, next) => {
         // Use a transaction with FOR UPDATE to lock the rows
         result = await prisma.$transaction(
           async tx => {
-            // 1. Reload the bid with current version
+            // Reload the bid with current version
             const currentBid = await tx.bid.findUnique({
               where: { id: bidId },
               select: { version: true, amount: true },
@@ -449,31 +482,13 @@ export const deleteBid = async (req, res, next) => {
               throw new AppError('BID_NOT_FOUND', 'Bid not found', 404);
             }
 
-            // 2. Find the highest active bid (excluding the one being deleted)
-            const highestBid = await tx.bid.findFirst({
-              where: {
-                auctionId: bid.auctionId,
-                isDeleted: false,
-                id: { not: bidId }, // Exclude the current bid we're about to delete
-              },
-              orderBy: [
-                { amount: 'desc' },
-                { createdAt: 'asc' }, // For tie-breaking
-              ],
-              take: 1,
-              select: {
-                id: true,
-                amount: true,
-              },
-            });
-
-            // 3. Get current auction state
+            // Get current auction state
             const currentAuction = await tx.auction.findUnique({
               where: { id: bid.auctionId },
               select: { version: true, status: true, startingPrice: true },
             });
 
-            // 4. Delete the bid (soft or hard)
+            // Delete the bid (soft or hard)
             if (permanent) {
               await tx.bid.delete({
                 where: {
@@ -496,7 +511,7 @@ export const deleteBid = async (req, res, next) => {
               });
             }
 
-            // 5. Update auction price if the deleted bid was the highest
+            // Update auction price if the deleted bid was the highest
             // Find the new highest bid after deletion
             const newHighestBid = await tx.bid.findFirst({
               where: {
@@ -590,7 +605,7 @@ export const deleteBid = async (req, res, next) => {
     // Note: Cache invalidation would happen here if cache was configured
     // For now, the database will be the source of truth
     if (result?.newPrice !== null) {
-      logger.info('Bid deletion completed - cache would be invalidated here', {
+      logger.info('Bid deletion completed', {
         auctionId: bid.auctionId,
         oldPrice: bid.auction.currentPrice,
         newPrice: result.newPrice,
@@ -650,22 +665,6 @@ export const restoreBid = async (req, res, next) => {
       userId: req.user?.id,
     });
 
-    next(error);
-  }
-};
-
-// @desc    Place a bid on an auction
-// @route   POST /api/bids
-// @access  Private
-export const placeBid = async (req, res, next) => {
-  try {
-    const { auctionId, amount } = req.body;
-    const actorId = req.user?.id?.toString();
-    const io = req?.app?.get('io');
-    const result = await placeBidCore({ auctionId, amount, actorId, io });
-
-    res.status(201).json(result);
-  } catch (error) {
     next(error);
   }
 };

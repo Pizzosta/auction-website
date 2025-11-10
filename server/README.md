@@ -143,6 +143,31 @@ Standard error response format:
 }
 ```
 
+### Error Logging
+
+All errors are logged with a structured format that includes:
+
+- Error code
+- Error message
+- Error details
+- Request context (URL, method, IP, user)
+- Stack trace (development environment only)
+- Original error object (development environment only)
+
+### Error Handling
+
+All errors are handled by the global error handler middleware, which:
+
+- Logs the error with a structured format
+- Sends a JSON response with the error details
+- Includes the original error object in development environment
+
+### Database Constraints
+
+| Constraint     | Type     | Condition                     | Business Rule |
+|----------------|----------|-------------------------------|---------------|
+| Bid_auctionId_bidderId_amount_active_key | Partial UNIQUE | isDeleted = false | One active bid per amount per bidder per auction |
+
 ## Development
 
 ### Project Structure
