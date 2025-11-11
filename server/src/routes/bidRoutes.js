@@ -5,7 +5,7 @@ import {
   getMyBids,
   getAllBids,
   deleteBid,
-  restoreBid,
+  //restoreBid,
 } from '../controllers/bidController.js';
 import { protect, admin } from '../middleware/authMiddleware.js';
 import { bidSchema, idSchema, bidQuerySchema } from '../utils/validators.js';
@@ -77,8 +77,8 @@ router.delete(
  * @returns {Error} 403 - Not authorized
  * @returns {Error} 404 - Bid not found or not deleted
  * @returns {Error} default - Unexpected error
- */
-router.patch('/:bidId/restore', protect, admin, validate(idSchema('bidId'), 'params'), restoreBid);
+ *
+*router.patch('/:bidId/restore', protect, admin, validate(idSchema('bidId'), 'params'), restoreBid);*/
 
 /**
  * @route GET /api/bids

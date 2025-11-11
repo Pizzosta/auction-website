@@ -440,10 +440,10 @@ export const deleteBid = async (req, res, next) => {
     // Check if we're in the last 15 minutes of the auction
     const now = new Date();
     const endTime = new Date(bid.auction.endDate);
-    const fifteenMinutesInMs = 15 * 60 * 1000; // 15 minutes in milliseconds
+    const OneHourInMs = 60 * 60 * 1000; // 1 hour in milliseconds
 
-    if (now >= new Date(endTime - fifteenMinutesInMs) && bid.auction.status === 'active') {
-      throw new AppError('UNAUTHORIZED', 'Cannot delete bids in the last 15 minutes of an auction', 400);
+    if (now >= new Date(endTime - OneHourInMs) && bid.auction.status === 'active') {
+      throw new AppError('CANCELLATION_WINDOW_CLOSED', 'Bids cannot be canceled within the final hour of the auction.', 400);
     }
 
     // Check cancellation limit: Max 2 cancellations per user per auction
@@ -457,8 +457,8 @@ export const deleteBid = async (req, res, next) => {
         },
       });
 
-      if (userCancellations >= 2) {
-        throw new AppError('UNAUTHORIZED', 'Maximum of 2 bid cancellations allowed per auction', 400);
+      if (userCancellations >= 1) {
+        throw new AppError('UNAUTHORIZED', 'Maximum of 1 bid cancellation allowed per auction', 400);
       }
     }
 
@@ -631,6 +631,7 @@ export const deleteBid = async (req, res, next) => {
   }
 };
 
+/*
 // @desc    Restore a soft-deleted bid
 // @route   POST /api/bids/:bidId/restore
 // @access  Private (Admin only)
@@ -717,6 +718,7 @@ export const restoreBid = async (req, res, next) => {
     next(error);
   }
 };
+*/
 
 // @desc    Get bids by auction
 // @route   GET /api/bids/auction/:auctionId

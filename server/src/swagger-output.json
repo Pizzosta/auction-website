@@ -904,38 +904,6 @@
         }
       }
     },
-    "/api/bids/{bidId}/restore": {
-      "patch": {
-        "description": "",
-        "parameters": [
-          {
-            "name": "bidId",
-            "in": "path",
-            "required": true,
-            "type": "string"
-          },
-          {
-            "name": "authorization",
-            "in": "header",
-            "type": "string"
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          },
-          "400": {
-            "description": "Bad Request"
-          },
-          "401": {
-            "description": "Unauthorized"
-          },
-          "500": {
-            "description": "Internal Server Error"
-          }
-        }
-      }
-    },
     "/api/users/": {
       "get": {
         "description": "",
