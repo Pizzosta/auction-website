@@ -58,10 +58,15 @@ router.get('/', protect, validate(watchlistQuerySchema, 'query'), getWatchlist);
  * @route GET /api/watchlist/check/:auctionId
  * @group Watchlist - watchlist management
  * @description Check if an auction is in the user's watchlist. Requires authentication.
- * @param {string} auctionId.params.required - ID of the auction to check
+ * @param {string} auctionId.path.required - ID of the auction to check
  * @returns {object} 200 - Auction status in the user's watchlist
  * @returns {Error}  default - Unexpected error
  */
-router.get('/check/:auctionId', protect, validate(idSchema('auctionId'), 'params'), checkWatchlistStatus);
+router.get(
+  '/check/:auctionId',
+  protect,
+  validate(idSchema('auctionId'), 'params'),
+  checkWatchlistStatus
+);
 
 export default router;

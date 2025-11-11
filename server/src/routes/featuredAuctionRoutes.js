@@ -20,10 +20,16 @@ const router = express.Router();
  * @returns {object} 201 - Auction added to featured list
  * @returns {Error}  default - Unexpected error
  */
-router.post('/add', protect, admin, validate(featuredAuctionSchema.add), addFeaturedAuction);
+router.post(
+  '/add',
+  protect,
+  admin,
+  validate(featuredAuctionSchema.add, 'body'),
+  addFeaturedAuction
+);
 
 /**
- * @route POST /api/featured-auctions/remove
+ * @route DELETE /api/featured-auctions/remove
  * @group FeaturedAuctions - featured auction management
  * @description Remove an auction from the featured list. Requires admin privileges.
  *              Soft delete by default. Add `?permanent=true` (admin only) to permanently delete.
@@ -48,7 +54,13 @@ router.delete(
  * @returns {object} 200 - List of featured auctions
  * @returns {Error}  default - Unexpected error
  */
-router.get('/admin', protect, admin, validate(featuredAuctionQuerySchema.search, 'query'), getFeaturedAuctions);
+router.get(
+  '/admin',
+  protect,
+  admin,
+  validate(featuredAuctionQuerySchema.search, 'query'),
+  getFeaturedAuctions
+);
 
 /**
  * @route GET /api/featured-auctions

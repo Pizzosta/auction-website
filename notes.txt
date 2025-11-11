@@ -115,3 +115,4 @@ add versioning to the featured auction
 add cleanup jobs for orphaned images, profile picture, featured auction, watchlist, feedback, bid, auction, user 
 
 Block account deletion if the user has won any auctions that haven't been completed (not yet paid or delivered)
+
