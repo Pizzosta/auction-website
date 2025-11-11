@@ -1,6 +1,13 @@
 import express from 'express';
 import { protect, admin } from '../middleware/authMiddleware.js';
-import { getSystemStats, getAuctionStats, getUserStats, getBidStats, getSocketStatsController, getSocketRoomsController } from '../controllers/statsController.js';
+import {
+  getSystemStats,
+  getAuctionStats,
+  getUserStats,
+  getBidStats,
+  getSocketStatsController,
+  getSocketRoomsController,
+} from '../controllers/statsController.js';
 import { validate } from '../middleware/validationMiddleware.js';
 import { statsQuerySchema } from '../utils/validators.js';
 

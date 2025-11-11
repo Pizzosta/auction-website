@@ -78,7 +78,7 @@ router.delete(
  * @returns {Error} 404 - Bid not found or not deleted
  * @returns {Error} default - Unexpected error
  *
-*router.patch('/:bidId/restore', protect, admin, validate(idSchema('bidId'), 'params'), restoreBid);*/
+ *router.patch('/:bidId/restore', protect, admin, validate(idSchema('bidId'), 'params'), restoreBid);*/
 
 /**
  * @route GET /api/bids
@@ -97,12 +97,6 @@ router.delete(
  * @returns {object} 200 - Paginated list of bids
  * @returns {Error}  default - Unexpected error
  */
-router.get(
-  '/',
-  protect,
-  admin,
-  validate(bidQuerySchema.adminBidSort, 'query'),
-  getAllBids
-);
+router.get('/', protect, admin, validate(bidQuerySchema.adminBidSort, 'query'), getAllBids);
 
 export default router;

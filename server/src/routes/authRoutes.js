@@ -93,7 +93,13 @@ router.post('/logout-all', protect, logoutAllDevices);
  * @returns {object} 200 - OK
  * @returns {Error} default - Unexpected error
  */
-router.post('/request-verification', protect, verificationEmailLimiter, validate(authSchema.verifyEmail, 'body'), requestVerification);
+router.post(
+  '/request-verification',
+  protect,
+  verificationEmailLimiter,
+  validate(authSchema.verifyEmail, 'body'),
+  requestVerification
+);
 
 /**
  * @route GET /api/auth/verify-email/:token

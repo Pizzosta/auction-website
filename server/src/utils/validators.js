@@ -18,6 +18,7 @@ export const userQuerySchema = {
     status: Joi.string().valid('active', 'deleted', 'all').default('active').lowercase(),
     lastActiveAfter: Joi.date().iso().optional(),
     lastActiveBefore: Joi.date().iso().optional(),
+    isVerified: Joi.boolean().optional(),
   }),
 
   delete: Joi.object({
@@ -67,7 +68,7 @@ export const auctionQuerySchema = {
       'boolean.base': 'permanent must be a boolean',
     }),
   }),
-}
+};
 
 // Bid query schema validation
 export const bidQuerySchema = {
@@ -114,7 +115,7 @@ export const bidQuerySchema = {
     permanent: Joi.boolean().default(false).messages({
       'boolean.base': 'permanent must be a boolean',
     }),
-  })
+  }),
 };
 
 // Feedback query schema validation
@@ -142,14 +143,8 @@ export const feedbackQuerySchema = Joi.object({
 export const watchlistQuerySchema = Joi.object({
   page: Joi.number().integer().min(1).default(1),
   limit: Joi.number().integer().min(1).max(100).default(10),
-  sort: Joi.string()
-    .valid('newest', 'oldest')
-    .default('newest')
-    .optional(),
-  status: Joi.string()
-    .valid('upcoming', 'active', 'ended', 'sold')
-    .lowercase()
-    .optional(),
+  sort: Joi.string().valid('newest', 'oldest').default('newest').optional(),
+  status: Joi.string().valid('upcoming', 'active', 'ended', 'sold').lowercase().optional(),
 });
 
 // Featured auction delete query schema (for ?permanent=true)
@@ -157,14 +152,8 @@ export const featuredAuctionQuerySchema = {
   search: Joi.object({
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(100).default(10),
-    sort: Joi.string()
-      .valid('newest', 'oldest')
-      .default('newest')
-      .optional(),
-    status: Joi.string()
-      .valid('active', 'deleted', 'all')
-      .lowercase()
-      .optional(),
+    sort: Joi.string().valid('newest', 'oldest').default('newest').optional(),
+    status: Joi.string().valid('active', 'deleted', 'all').lowercase().optional(),
   }),
 
   delete: Joi.object({
@@ -176,20 +165,21 @@ export const featuredAuctionQuerySchema = {
 
 // Stats query schema validation
 export const statsQuerySchema = Joi.object({
-  timeFrame: Joi.string()
-    .valid('day', 'week', 'month', 'year', 'all')
-    .default('month')
-    .optional(),
+  timeFrame: Joi.string().valid('day', 'week', 'month', 'year', 'all').default('month').optional(),
 });
 
 // ID schema validation (for any ID parameter)
-export const idSchema = (key = 'id') => Joi.object({
-  [key]: Joi.string().uuid({ version: 'uuidv4' }).required().messages({
-    'string.uuid': `${key} must be a valid UUID`,
-    'string.length': `${key} must be 36 characters long`,
-    'any.required': `${key} is required`,
-  }),
-});
+export const idSchema = (key = 'id') =>
+  Joi.object({
+    [key]: Joi.string()
+      .uuid({ version: 'uuidv4' })
+      .required()
+      .messages({
+        'string.uuid': `${key} must be a valid UUID`,
+        'string.length': `${key} must be 36 characters long`,
+        'any.required': `${key} is required`,
+      }),
+  });
 
 // Token schema validation
 export const tokenSchema = Joi.object({
@@ -598,13 +588,10 @@ export const userSchema = {
   }),
 };
 
-const uuid = Joi.string()
-  .uuid({ version: 'uuidv4' })
-  .required()
-  .messages({
-    'string.uuid': 'Invalid Auction ID format',
-    'any.required': 'Auction ID is required',
-  });
+const uuid = Joi.string().uuid({ version: 'uuidv4' }).required().messages({
+  'string.uuid': 'Invalid Auction ID format',
+  'any.required': 'Auction ID is required',
+});
 
 // Watchlist schema validation
 export const watchlistSchema = {

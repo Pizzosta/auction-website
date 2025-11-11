@@ -48,6 +48,16 @@ router.post('/toggle', protect, validate(watchlistSchema.toggle, 'body'), toggle
 /**
  * @route GET /api/watchlist
  * @group Watchlist - watchlist management
+ * @description Get the authenticated user's watchlist with optional filters.
+ * @header {string} Authorization - Bearer token for authentication
+ * @param {string} status.query - Filter by auction status (active, upcoming, ended)
+ * @param {string} sort.query - Sort field (addedAt, endDate, currentPrice)
+ * @param {string} order.query - Sort order (asc, desc)
+ * @param {number} page.query - Page number for pagination
+ * @param {number} limit.query - Number of items per page
+ * @returns {object} 200 - User's watchlist with auctions
+ * @returns {Error} 401 - Unauthorized
+ * @returns {Error}  default - Unexpected error
  * @description Get the authenticated user's watchlist. Requires authentication.
  * @returns {object} 200 - List of auctions in the user's watchlist
  * @returns {Error}  default - Unexpected error
@@ -55,11 +65,18 @@ router.post('/toggle', protect, validate(watchlistSchema.toggle, 'body'), toggle
 router.get('/', protect, validate(watchlistQuerySchema, 'query'), getWatchlist);
 
 /**
- * @route GET /api/watchlist/check/:auctionId
+ * @route GET /api/watchlist/check/{auctionId}
  * @group Watchlist - watchlist management
- * @description Check if an auction is in the user's watchlist. Requires authentication.
+ * @description Check if an auction is in the user's watchlist.
+ * @header {string} Authorization - Bearer token for authentication
  * @param {string} auctionId.path.required - ID of the auction to check
- * @returns {object} 200 - Auction status in the user's watchlist
+ * @returns {object} 200 - Watchlist status
+ * @property {boolean} isInWatchlist - Whether the auction is in the user's watchlist
+ * @property {string} auctionId - The auction ID that was checked
+ * @property {string} userId - The ID of the user who owns the watchlist
+ * @returns {Error} 400 - Invalid auction ID
+ * @returns {Error} 401 - Unauthorized
+ * @returns {Error} 404 - Auction not found
  * @returns {Error}  default - Unexpected error
  */
 router.get(

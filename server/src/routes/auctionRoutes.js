@@ -21,6 +21,13 @@ const router = express.Router();
  * @route GET /api/auctions
  * @group Auctions - auction management
  * @description Retrieve a list of all auctions with optional filters.
+ * @param {string} status.query - Filter by status (active, upcoming, ended, cancelled, all)
+ * @param {string} category.query - Filter by category ID
+ * @param {string} search.query - Search query for title or description
+ * @param {string} sort.query - Sort field (createdAt, endDate, currentPrice)
+ * @param {string} order.query - Sort order (asc, desc)
+ * @param {number} page.query - Page number for pagination
+ * @param {number} limit.query - Number of items per page
  * @returns {object} 200 - List of auctions
  * @returns {Error}  default - Unexpected error
  */
@@ -30,6 +37,14 @@ router.get('/', validate(auctionQuerySchema.search, 'query'), getPublicAuctions)
  * @route GET /api/auctions/admin
  * @group Auctions - auction management
  * @description Retrieve a list of all auctions with optional filters. Requires authentication and admin role.
+ * @param {string} status.query - Filter by status (active, upcoming, ended, cancelled, all)
+ * @param {string} category.query - Filter by category ID
+ * @param {string} search.query - Search query for title or description
+ * @param {string} sort.query - Sort field (createdAt, endDate, currentPrice)
+ * @param {string} order.query - Sort order (asc, desc)
+ * @param {number} page.query - Page number for pagination
+ * @param {number} limit.query - Number of items per page
+ * @param {boolean} includeDeleted.query - Include deleted auctions (admin only)
  * @returns {object} 200 - List of auctions
  * @returns {Error}  default - Unexpected error
  */
@@ -100,7 +115,13 @@ router.patch(
  * @returns {object} 200 - Auction deleted
  * @returns {Error}  default - Unexpected error
  */
-router.delete('/:auctionId', protect, validate(idSchema('auctionId'), 'params'), validate(auctionQuerySchema.delete, 'query'), deleteAuction);
+router.delete(
+  '/:auctionId',
+  protect,
+  validate(idSchema('auctionId'), 'params'),
+  validate(auctionQuerySchema.delete, 'query'),
+  deleteAuction
+);
 
 /**
  * @route PATCH /api/auctions/{auctionId}/restore
@@ -110,7 +131,13 @@ router.delete('/:auctionId', protect, validate(idSchema('auctionId'), 'params'),
  * @returns {object} 200 - Auction restored
  * @returns {Error}  default - Unexpected error
  */
-router.patch('/:auctionId/restore', protect, admin, validate(idSchema('auctionId'), 'params'), restoreAuction);
+router.patch(
+  '/:auctionId/restore',
+  protect,
+  admin,
+  validate(idSchema('auctionId'), 'params'),
+  restoreAuction
+);
 
 /**
  * @route PATCH /api/auctions/{auctionId}/confirm-payment
@@ -120,7 +147,12 @@ router.patch('/:auctionId/restore', protect, admin, validate(idSchema('auctionId
  * @returns {object} 200 - Payment confirmed
  * @returns {Error}  default - Unexpected error
  */
-router.patch('/:auctionId/confirm-payment', protect, validate(idSchema('auctionId'), 'params'), confirmPayment);
+router.patch(
+  '/:auctionId/confirm-payment',
+  protect,
+  validate(idSchema('auctionId'), 'params'),
+  confirmPayment
+);
 
 /**
  * @route PATCH /api/auctions/{auctionId}/confirm-delivery
@@ -130,6 +162,11 @@ router.patch('/:auctionId/confirm-payment', protect, validate(idSchema('auctionI
  * @returns {object} 200 - Delivery confirmed
  * @returns {Error}  default - Unexpected error
  */
-router.patch('/:auctionId/confirm-delivery', protect, validate(idSchema('auctionId'), 'params'), confirmDelivery);
+router.patch(
+  '/:auctionId/confirm-delivery',
+  protect,
+  validate(idSchema('auctionId'), 'params'),
+  confirmDelivery
+);
 
 export default router;
