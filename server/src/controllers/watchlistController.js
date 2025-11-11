@@ -5,7 +5,7 @@ import {
   restoreWatchlist,
   softDeleteWatchlist,
   getUserWatchlist,
-  checkWatchlist
+  checkWatchlist,
 } from '../repositories/watchlistRepo.prisma.js';
 import logger from '../utils/logger.js';
 import { AppError } from '../middleware/errorHandler.js';
@@ -21,7 +21,7 @@ export const addToWatchlist = async (req, res, next) => {
     }
 
     // Check if auction exists and is active
-    const auction = await findAuction(auctionId)
+    const auction = await findAuction(auctionId);
 
     if (!auction) {
       throw new AppError('AUCTION_NOT_FOUND', 'Auction not found', 404);
@@ -32,7 +32,11 @@ export const addToWatchlist = async (req, res, next) => {
 
     if (existingItem) {
       if (!existingItem.isDeleted) {
-        throw new AppError('AUCTION_ALREADY_IN_WATCHLIST', 'Auction is already in your watchlist', 409);
+        throw new AppError(
+          'AUCTION_ALREADY_IN_WATCHLIST',
+          'Auction is already in your watchlist',
+          409
+        );
       }
 
       // Restore if previously soft-deleted
@@ -43,8 +47,8 @@ export const addToWatchlist = async (req, res, next) => {
         status: 'success',
         message: 'Auction added to watchlist',
         data: {
-          watchlistItem: restoredItem
-        }
+          watchlistItem: restoredItem,
+        },
       });
     }
 
@@ -56,15 +60,15 @@ export const addToWatchlist = async (req, res, next) => {
       status: 'success',
       message: 'Auction added to watchlist',
       data: {
-        watchlistItem: newItem
-      }
+        watchlistItem: newItem,
+      },
     });
   } catch (error) {
     logger.error('Add to watchlist error', {
       error: error.message,
       stack: error.stack,
       userId: req.user?.id,
-      auctionId: req.body?.auctionId
+      auctionId: req.body?.auctionId,
     });
     next(error);
   }
@@ -83,7 +87,11 @@ export const removeFromWatchlist = async (req, res, next) => {
     // Find the watchlist entry
     const watchlistItem = await findWatchlist(userId, auctionId);
     if (!watchlistItem) {
-      throw new AppError('AUCTION_NOT_FOUND_IN_WATCHLIST', 'Auction not found in your watchlist', 404);
+      throw new AppError(
+        'AUCTION_NOT_FOUND_IN_WATCHLIST',
+        'Auction not found in your watchlist',
+        404
+      );
     }
 
     // Soft delete the watchlist entry
@@ -92,7 +100,12 @@ export const removeFromWatchlist = async (req, res, next) => {
     logger.info('Removed from watchlist', { userId, auctionId });
     return res.status(200).json({ status: 'success', message: 'Removed from watchlist' });
   } catch (error) {
-    logger.error('Remove from watchlist error', { error: error.message, stack: error.stack, userId: req.user.id, auctionId: req.body.auctionId });
+    logger.error('Remove from watchlist error', {
+      error: error.message,
+      stack: error.stack,
+      userId: req.user.id,
+      auctionId: req.body.auctionId,
+    });
     next(error);
   }
 };
@@ -101,10 +114,7 @@ export const removeFromWatchlist = async (req, res, next) => {
 export const getWatchlist = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const { page = 1,
-      limit = 10,
-      status,
-      sort = 'newest' } = req.query;
+    const { page = 1, limit = 10, status, sort = 'newest' } = req.query;
 
     const result = await getUserWatchlist(userId, { page, limit, status, sort });
 
@@ -113,14 +123,13 @@ export const getWatchlist = async (req, res, next) => {
       data: {
         pagination: result.pagination,
         items: result.data,
-      }
+      },
     });
-
   } catch (error) {
     logger.error('Get watchlist error', {
       error: error.message,
       stack: error.stack,
-      userId: req.user?.id
+      userId: req.user?.id,
     });
     next(error);
   }
@@ -143,16 +152,15 @@ export const checkWatchlistStatus = async (req, res, next) => {
       data: {
         isWatching: !!watchlistItem,
         createdAt: watchlistItem?.createdAt || null,
-        auction: watchlistItem?.auction || null
-      }
+        auction: watchlistItem?.auction || null,
+      },
     });
-
   } catch (error) {
     logger.error('Check watchlist status error', {
       error: error.message,
       stack: error.stack,
       userId: req.user?.id,
-      auctionId: req.params.auctionId
+      auctionId: req.params.auctionId,
     });
     next(error);
   }
@@ -176,11 +184,12 @@ export const toggleWatchlist = async (req, res, next) => {
     }
 
     // Check current status (include soft-deleted to check for restoration)
-    const existingItem = await findWatchlist(userId, auctionId, { 
-      includeDeleted: true 
+    const existingItem = await findWatchlist(userId, auctionId, {
+      includeDeleted: true,
     });
 
-    let action, result;
+    let action;
+    let result;
 
     if (existingItem && !existingItem.isDeleted) {
       // Remove from watchlist - item exists and is not deleted
@@ -191,40 +200,41 @@ export const toggleWatchlist = async (req, res, next) => {
       // Restore soft-deleted item
       const restoredItem = await restoreWatchlist(existingItem.id);
       action = 'added';
-      result = { 
-        isWatching: true, 
-        watchlistItem: restoredItem 
+      result = {
+        isWatching: true,
+        watchlistItem: restoredItem,
       };
     } else {
       // Create new watchlist item
       const newItem = await createWatchlist(userId, auctionId);
       action = 'added';
-      result = { 
-        isWatching: true, 
-        watchlistItem: newItem 
+      result = {
+        isWatching: true,
+        watchlistItem: newItem,
       };
     }
 
-    logger.info('Toggled watchlist', { 
-      userId, 
-      auctionId, 
-      action 
+    logger.info('Toggled watchlist', {
+      userId,
+      auctionId,
+      action,
     });
 
+    const message =
+      action === 'added' ? 'Auction added to watchlist' : 'Auction removed from watchlist';
     return res.status(200).json({
       status: 'success',
-      message: `Auction ${action} from watchlist`,
-      data: result
+      message,
+      data: result,
     });
-
   } catch (error) {
     logger.error('Toggle watchlist error', {
       error: error.message,
       stack: error.stack,
       userId: req.user?.id,
-      auctionId: req.body?.auctionId
+      auctionId: req.body?.auctionId,
     });
-    
+
     next(error);
   }
 };

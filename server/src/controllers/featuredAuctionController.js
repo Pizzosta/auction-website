@@ -34,7 +34,11 @@ export const addFeaturedAuction = async (req, res, next) => {
     const exists = await findFeaturedAuctionByIdPrisma(auctionId, { includeAuction: false });
     if (exists) {
       if (exists.isDeleted) {
-        throw new AppError('AUCTION_ALREADY_FEATURED', 'Auction was previously featured and is soft deleted. Please restore it instead.', 409);
+        throw new AppError(
+          'AUCTION_ALREADY_FEATURED',
+          'Auction was previously featured and is soft deleted. Please restore it instead.',
+          409
+        );
       }
       throw new AppError('AUCTION_ALREADY_FEATURED', 'Auction is already featured', 409);
     }
@@ -42,7 +46,11 @@ export const addFeaturedAuction = async (req, res, next) => {
     // Verify auction exists and is in a valid state
     const auction = await findAuctionById(auctionId);
     if (!auction || !['upcoming', 'active'].includes(auction.status)) {
-      throw new AppError('INVALID_AUCTION_STATUS', 'Only upcoming or active auctions can be featured', 400);
+      throw new AppError(
+        'INVALID_AUCTION_STATUS',
+        'Only upcoming or active auctions can be featured',
+        400
+      );
     }
 
     // Create the featured auction
@@ -51,19 +59,19 @@ export const addFeaturedAuction = async (req, res, next) => {
     logger.info('Added featured auction', {
       auctionId,
       addedBy: actorId,
-      featuredId: featured.id
+      featuredId: featured.id,
     });
 
     return res.status(201).json({
       status: 'success',
-      data: featured
+      data: featured,
     });
   } catch (error) {
     logger.error('Error adding featured auction', {
       error: error.message,
       stack: error.stack,
       auctionId: req.body?.auctionId,
-      userId: actorId
+      userId: req.user?.id,
     });
     next(error);
   }
@@ -103,7 +111,7 @@ export const removeFeaturedAuction = async (req, res, next) => {
     // Check if featured auction exists
     const featured = await findFeaturedAuctionByIdPrisma(auctionId, {
       includeAuction: false,
-      includeDeletedBy: true
+      includeDeletedBy: true,
     });
 
     if (!featured) {
@@ -111,7 +119,11 @@ export const removeFeaturedAuction = async (req, res, next) => {
     }
 
     if (featured.isDeleted && !permanent) {
-      throw new AppError('FEATURED_AUCTION_ALREADY_DELETED', 'Featured auction is already soft deleted. Use permanent=true to delete permanently.', 400);
+      throw new AppError(
+        'FEATURED_AUCTION_ALREADY_DELETED',
+        'Featured auction is already soft deleted. Use permanent=true to delete permanently.',
+        400
+      );
     }
 
     // Perform deletion based on type
@@ -125,7 +137,7 @@ export const removeFeaturedAuction = async (req, res, next) => {
       auctionId,
       permanent,
       deletedById: actorId,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
 
     res.status(200).json({
@@ -137,8 +149,8 @@ export const removeFeaturedAuction = async (req, res, next) => {
         auctionId,
         deletedAt: permanent ? new Date().toISOString() : undefined,
         deletedBy: permanent ? actorId : undefined,
-        isPermanent: permanent
-      }
+        isPermanent: permanent,
+      },
     });
   } catch (error) {
     logger.error('Error removing featured auction', {
@@ -146,7 +158,7 @@ export const removeFeaturedAuction = async (req, res, next) => {
       stack: error.stack,
       auctionId: req.body?.auctionId,
       permanent: req.query?.permanent,
-      userId: req.user?.id
+      userId: req.user?.id,
     });
     next(error);
   }
@@ -163,12 +175,7 @@ export const removeFeaturedAuction = async (req, res, next) => {
  */
 export const getFeaturedAuctions = async (req, res, next) => {
   try {
-    const {
-      page = 1,
-      limit = 10,
-      sort = 'newest',
-      status,
-    } = req.query;
+    const { page = 1, limit = 10, sort = 'newest', status } = req.query;
 
     const isAdmin = req.user?.role === 'admin';
 
@@ -184,7 +191,7 @@ export const getFeaturedAuctions = async (req, res, next) => {
       sort,
       status,
       includeAuction: true,
-      includeAddedBy: true
+      includeAddedBy: true,
     });
 
     // Format response
@@ -206,7 +213,7 @@ export const getFeaturedAuctions = async (req, res, next) => {
       error: error.message,
       stack: error.stack,
       query: req.query,
-      userId: req.user?.id
+      userId: req.user?.id,
     });
     next(error);
   }
@@ -250,13 +257,17 @@ export const restoreFeaturedAuction = async (req, res, next) => {
     // Verify auction is in a valid state to be featured
     const auction = await findAuctionById(auctionId);
     if (!auction || !['upcoming', 'active'].includes(auction.status)) {
-      throw new AppError('INVALID_AUCTION_STATUS', 'Only upcoming or active auctions can be restored to featured list', 400);
+      throw new AppError(
+        'INVALID_AUCTION_STATUS',
+        'Only upcoming or active auctions can be restored to featured list',
+        400
+      );
     }
 
     // Check if featured auction exists and is soft-deleted
     const featured = await findFeaturedAuctionByIdPrisma(auctionId, {
       includeAuction: false,
-      includeDeletedBy: true
+      includeDeletedBy: true,
     });
 
     if (!featured) {
@@ -274,7 +285,7 @@ export const restoreFeaturedAuction = async (req, res, next) => {
     logger.info('Restored featured auction', {
       auctionId,
       restoredBy: actorId,
-      restoredAt: new Date().toISOString()
+      restoredAt: new Date().toISOString(),
     });
 
     // Return success response
@@ -283,15 +294,15 @@ export const restoreFeaturedAuction = async (req, res, next) => {
       message: 'Featured auction restored successfully',
       data: {
         auctionId,
-        restoredAt: new Date().toISOString()
-      }
+        restoredAt: new Date().toISOString(),
+      },
     });
   } catch (error) {
     logger.error('Error restoring featured auction', {
       error: error.message,
       stack: error.stack,
       auctionId: req.body?.auctionId,
-      userId: actorId
+      userId: req.user?.id,
     });
     next(error);
   }
