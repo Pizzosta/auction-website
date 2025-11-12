@@ -3,21 +3,78 @@
   "info": {
     "title": "Kawodze Auction Website API",
     "version": "1.0.0",
-    "description": "API documentation for the Kawodze Auction Website"
+    "description": "Comprehensive API documentation",
+    "contact": {
+      "name": "API Support",
+      "url": "https://kawodze.com/support ",
+      "email": "support@kawodze.com"
+    },
+    "license": {
+      "name": "Apache 2.0",
+      "url": "https://www.apache.org/licenses/LICENSE-2.0.html "
+    }
   },
   "host": "localhost:5001",
   "basePath": "/",
+  "tags": [
+    {
+      "name": "Feedback",
+      "description": "Operations related to feedback and ratings"
+    },
+    {
+      "name": "User",
+      "description": "User management endpoints"
+    },
+    {
+      "name": "Auction",
+      "description": "Auction listing and bidding endpoints"
+    },
+    {
+      "name": "Admin",
+      "description": "Admin management endpoints"
+    },
+    {
+      "name": "Stats",
+      "description": "Stats management endpoints"
+    },
+    {
+      "name": "Webhook",
+      "description": "Webhook management endpoints"
+    },
+    {
+      "name": "Watchlist",
+      "description": "Watchlist management endpoints"
+    },
+    {
+      "name": "Featured Auction",
+      "description": "Featured Auction management endpoints"
+    },
+    {
+      "name": "Auth",
+      "description": "Authentication endpoints"
+    },
+    {
+      "name": "Bid",
+      "description": "Bid management endpoints"
+    }
+  ],
   "schemes": [
-    "http",
-    "https"
+    "http"
   ],
   "securityDefinitions": {
     "bearerAuth": {
       "type": "http",
       "scheme": "bearer",
-      "bearerFormat": "JWT"
+      "bearerFormat": "JWT",
+      "description": "JWT Authorization header using the Bearer scheme. Example: \"Authorization: Bearer {token}\""
     }
   },
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
   "paths": {
     "/health": {
       "get": {
@@ -2001,5 +2058,10 @@
         }
       }
     }
-  }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ]
 }

@@ -55,6 +55,7 @@ router.get('/me', protect, getMe);
  * @param {string} username.body - New username (must be unique)
  * @param {string} email.body - New email (must be unique)
  * @param {string} firstName.body - User's first name
+ * @param {string} middlename.body - User's middle name
  * @param {string} lastName.body - User's last name
  * @param {string} phone.body - User's phone number (must be unique)
  * @param {string} currentPassword.body - Required when changing password
@@ -109,7 +110,12 @@ router.post('/:id/restore', protect, admin, validate(idSchema('id'), 'params'), 
  * @route POST /api/users/me/upload-picture
  * @group Users - user management
  * @description Upload a profile picture for the authenticated user.
- * @returns {object} 200 - Profile picture uploaded
+ * @header {string} Authorization - Bearer token for authentication
+ * @param {file} file.formData - The image file to upload (max 2MB, jpg/jpeg/png)
+ * @returns {object} 200 - Profile picture uploaded successfully
+ * @returns {Error} 400 - Invalid file format or validation error
+ * @returns {Error} 401 - Unauthorized
+ * @returns {Error} 413 - File too large
  * @returns {Error}  default - Unexpected error
  */
 router.post(
@@ -124,7 +130,10 @@ router.post(
  * @route DELETE /api/users/me/remove-picture
  * @group Users - user management
  * @description Remove the profile picture of the authenticated user.
- * @returns {object} 200 - Profile picture removed
+ * @header {string} Authorization - Bearer token for authentication
+ * @returns {object} 200 - Profile picture removed successfully
+ * @returns {Error} 401 - Unauthorized
+ * @returns {Error} 404 - No profile picture found
  * @returns {Error}  default - Unexpected error
  */
 router.delete(
@@ -138,8 +147,12 @@ router.delete(
  * @route GET /api/users/{id}
  * @group Users - user management
  * @description Get user details by user ID. Requires admin privileges.
- * @param {string} id.path.required
+ * @header {string} Authorization - Bearer token for authentication
+ * @param {string} id.path.required - The ID of the user to retrieve
  * @returns {object} 200 - User details
+ * @returns {Error} 401 - Unauthorized
+ * @returns {Error} 403 - Forbidden (not an admin)
+ * @returns {Error} 404 - User not found
  * @returns {Error}  default - Unexpected error
  */
 router.get('/:id', protect, admin, validate(idSchema('id'), 'params'), getUserById);

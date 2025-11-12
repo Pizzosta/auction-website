@@ -1,0 +1,30 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Kawodze Auction Website API",
+    "version": "1.0.0",
+    "description": "Comprehensive API documentation for the Kawodze Auction Website"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:5001",
+      "description": "API Server"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "paths": {},
+  "tags": []
+}
