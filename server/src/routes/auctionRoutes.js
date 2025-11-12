@@ -6,7 +6,6 @@ import {
   getAuctionById,
   updateAuction,
   deleteAuction,
-  restoreAuction,
   confirmPayment,
   confirmDelivery,
 } from '../controllers/auctionController.js';
@@ -121,22 +120,6 @@ router.delete(
   validate(idSchema('auctionId'), 'params'),
   validate(auctionQuerySchema.delete, 'query'),
   deleteAuction
-);
-
-/**
- * @route PATCH /api/auctions/{auctionId}/restore
- * @group Auctions - auction management
- * @description Restore a soft-deleted auction. Requires authentication and admin role.
- * @param {string} auctionId.path.required
- * @returns {object} 200 - Auction restored
- * @returns {Error}  default - Unexpected error
- */
-router.patch(
-  '/:auctionId/restore',
-  protect,
-  admin,
-  validate(idSchema('auctionId'), 'params'),
-  restoreAuction
 );
 
 /**
