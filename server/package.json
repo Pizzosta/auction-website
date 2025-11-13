@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "prestart": "npm-check --skip-unused --quiet || echo 'npm-check failed, continuing...'",
-    "start": "node src/server.js",
-    "swagger": "node src/swagger.js",
-    "dev": "npm run prestart && npm run swagger && nodemon --signal SIGTERM src/server.js",
+    "start": "NODE_OPTIONS='--max-old-space-size=4096' node src/server.js",
+    "swagger": "NODE_OPTIONS='--max-old-space-size=4096' node src/swagger.js",
+    "dev": "npm run prestart && NODE_OPTIONS='--max-old-space-size=4096' npm run swagger && NODE_OPTIONS='--max-old-space-size=4096' nodemon --signal SIGTERM src/server.js",
     "test": "cross-env NODE_OPTIONS='--experimental-vm-modules --no-warnings' NODE_ENV=test mocha",
     "test:watch": "cross-env NODE_OPTIONS='--experimental-vm-modules --no-warnings' NODE_ENV=test mocha --watch",
     "test:coverage": "cross-env NODE_OPTIONS='--experimental-vm-modules --no-warnings' NODE_ENV=test nyc mocha",
