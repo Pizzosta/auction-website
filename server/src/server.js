@@ -38,6 +38,20 @@ try {
   }
 }
 
+// Log initial memory usage
+const logMemoryUsage = (label = 'Memory usage') => {
+  const { rss, heapTotal, heapUsed, external } = process.memoryUsage();
+  logger.info(`${label}:`, {
+    rss: `${(rss / 1024 / 1024).toFixed(2)} MB`,
+    heapTotal: `${(heapTotal / 1024 / 1024).toFixed(2)} MB`,
+    heapUsed: `${(heapUsed / 1024 / 1024).toFixed(2)} MB`,
+    external: `${(external / 1024 / 1024).toFixed(2)} MB`,
+  });
+};
+
+// Log initial memory usage
+logMemoryUsage('Initial memory usage');
+
 // Eagerly connect Redis (used by rate limiting and queues) BEFORE middleware/routes
 try {
   await getRedisClient();
@@ -120,10 +134,8 @@ app.use('/api/watchlist', watchlistRoutes);
 app.use('/api/featured-auctions', featuredAuctionRoutes);
 app.use('/api/feedback', feedbackRoutes);
 
-// Create HTTP server
+// Create HTTP server and initialize Socket.IO
 const server = http.createServer(app);
-
-// Initialize Socket.IO with the server
 const io = initSocketIO(server);
 
 // Make io available in app locals
@@ -181,9 +193,11 @@ try {
 
 // Start server
 const PORT = env.port || 5001;
-server.listen(PORT, () => {
+const HOST = env.host || 'localhost';
+server.listen(PORT, HOST, () => {
   logger.info(`Server running in ${env.nodeEnv} mode on port ${PORT}`);
-  logger.info(`API Documentation available at: http://localhost:${PORT}/api-docs`);
+  logger.info(`API Documentation available at: http://${HOST}:${PORT}/api-docs`);
+  logMemoryUsage('After server start');
 });
 
 // Graceful shutdown
