@@ -65,11 +65,11 @@ const router = express.Router();
  *                 example: Doe
  *               phone:
  *                 type: string
- *                 example: +1234567890
- *                 description: Phone number in valid international format
+ *                 example: +233240179999
+ *                 description: Phone number in valid international or local format
  *     responses:
  *       201:
- *         description: User registered successfully. Check email for verification.
+ *         description: User registered successfully.
  *       400:
  *         description: Invalid input data or validation error
  *       409:
@@ -82,52 +82,77 @@ const router = express.Router();
 router.post('/register', validate(authSchema.register, 'body'), register);
 
 /**
- * @route POST /api/auth/register
- * @group Authentication - User Registration & Login
- * @description Register a new user account with email, username, and password.
- * @param {string} username.formData.required - Username (3-30 characters, alphanumeric with underscores)
- * @param {string} email.formData.required - Valid email address
- * @param {string} password.formData.required - Password (min 8 characters, must include uppercase, lowercase, number, and special character)
- * @param {string} confirmPassword.formData.required - Must match password
- * @param {string} firstName.formData.required - User's first name (2-50 characters)
- * @param {string} middlename.formData.optional - User's middle name (2-50 characters)
- * @param {string} lastName.formData.required - User's last name (2-50 characters)
- * @param {string} phone.formData.required - User's phone number (valid international format)
- * @returns {object} 201 - User registered successfully. Check email for verification.
- * @returns {Error} 400 - Invalid input data or validation error
- * @returns {Error} 409 - Email or username already exists
- * @returns {Error} 429 - Too many registration attempts
- * @returns {Error} 500 - Internal server error
- */
-router.post('/register', validate(authSchema.register, 'body'), register);
-
-/**
- * @route POST /api/auth/login
- * @group Authentication - User Registration & Login
- * @description Authenticate user with email/username and password to receive access and refresh tokens.
- * @param {string} email.formData.required - User's email or username
- * @param {string} password.formData.required - User's password
- * @returns {object} 200 - Authentication successful
- * @property {string} accessToken - JWT access token (expires in 15m)
- * @property {string} refreshToken - JWT refresh token (expires in 7d)
- * @property {object} user - User profile information
- * @returns {Error} 400 - Missing or invalid credentials
- * @returns {Error} 401 - Invalid email/username or password
- * @returns {Error} 403 - Account not verified or suspended
- * @returns {Error} 429 - Too many login attempts
- * @returns {Error} 500 - Internal server error
+ * @swagger
+ * /api/auth/login:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Authenticate user
+ *     description: Authenticate user with email/username and password to receive access and refresh tokens.
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *               - password
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: user@example.com
+ *                 description: User's email or username
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 example: StrongP@ss123
+ *     responses:
+ *       200:
+ *         description: Authentication successful
+ *       400:
+ *         description: Missing or invalid credentials
+ *       401:
+ *         description: Invalid email/username or password
+ *       403:
+ *         description: Account not verified or suspended
+ *       429:
+ *         description: Too many login attempts
+ *       500:
+ *         description: Internal server error
  */
 router.post('/login', loginLimiter, validate(authSchema.login, 'body'), login);
 
 /**
- * @route POST /api/auth/forgot-password
- * @group Authentication - Password Management
- * @description Request a password reset link to be sent to the user's email.
- * @param {string} email.formData.required - The email address associated with the account
- * @returns {object} 200 - If the email exists, a reset link has been sent (for security, we don't reveal if the email exists)
- * @returns {Error} 400 - Invalid email format
- * @returns {Error} 429 - Too many password reset attempts
- * @returns {Error} 500 - Failed to send reset email
+ * @swagger
+ * /api/auth/forgot-password:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Request password reset
+ *     description: Request a password reset link to be sent to the user's email.
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: user@example.com
+ *     responses:
+ *       200:
+ *         description: If the email exists, a reset link has been sent
+ *       400:
+ *         description: Invalid email format
+ *       429:
+ *         description: Too many password reset attempts
+ *       500:
+ *         description: Failed to send reset email
  */
 router.post(
   '/forgot-password',
@@ -137,17 +162,48 @@ router.post(
 );
 
 /**
- * @route POST /api/auth/reset-password/{token}
- * @group Authentication - Password Management
- * @description Reset user password using a valid reset token from email.
- * @param {string} token.path.required - The reset token sent to user's email
- * @param {string} password.formData.required - New password (min 8 characters, must include uppercase, lowercase, number, and special character)
- * @param {string} confirmPassword.formData.required - Must match the new password
- * @returns {object} 200 - Password successfully reset
- * @returns {Error} 400 - Invalid or expired token
- * @returns {Error} 400 - Passwords do not match
- * @returns {Error} 410 - Token has expired or already been used
- * @returns {Error} 500 - Failed to update password
+ * @swagger
+ * /api/auth/reset-password/{token}:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Reset password
+ *     description: Reset user password using a valid reset token from email.
+ *     security: []
+ *     parameters:
+ *       - in: path
+ *         name: token
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The reset token sent to user's email
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - password
+ *               - confirmPassword
+ *             properties:
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 minLength: 8
+ *                 example: NewP@ss123
+ *               confirmPassword:
+ *                 type: string
+ *                 format: password
+ *                 example: NewP@ss123
+ *     responses:
+ *       200:
+ *         description: Password successfully reset
+ *       400:
+ *         description: Invalid or expired token or passwords do not match
+ *       410:
+ *         description: Token has expired or already been used
+ *       500:
+ *         description: Failed to update password
  */
 router.post(
   '/reset-password/:token',
@@ -157,61 +213,130 @@ router.post(
 );
 
 /**
- * @route POST /api/auth/refresh-token
- * @group Authentication - Token Management
- * @description Get a new access token using a valid refresh token.
- * @header {string} Authorization - Bearer token (refresh token)
- * @returns {object} 200 - New tokens generated successfully
- * @property {string} accessToken - New JWT access token (expires in 15m)
- * @property {string} refreshToken - New JWT refresh token (expires in 7d)
- * @returns {Error} 401 - Invalid or expired refresh token
- * @returns {Error} 403 - Refresh token not found or invalidated
- * @returns {Error} 500 - Failed to generate new tokens
+ * @swagger
+ * /api/auth/refresh-token:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Refresh access token
+ *     description: Get a new access token using a valid refresh token
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - refreshToken
+ *             properties:
+ *               refreshToken:
+ *                 type: string
+ *                 description: Valid refresh token
+ *     responses:
+ *       200:
+ *         description: New tokens generated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 accessToken:
+ *                   type: string
+ *                   description: New JWT access token (expires in 15m)
+ *                 refreshToken:
+ *                   type: string
+ *                   description: New JWT refresh token (expires in 7d)
+ *       401:
+ *         description: Invalid or expired refresh token
+ *       403:
+ *         description: Refresh token not found or invalidated
+ *       500:
+ *         description: Failed to generate new tokens
  */
 router.post('/refresh-token', verifyRefreshToken, refreshToken);
 
 /**
- * @route POST /api/auth/logout
- * @group Authentication - Token Management
- * @description Log out the current user and invalidate the refresh token.
- * @header {string} Authorization - Bearer token (refresh token)
- * @returns {object} 200 - Successfully logged out
- * @returns {Error} 401 - Invalid or missing refresh token
- * @returns {Error} 500 - Failed to process logout
- */
-
-/**
- * @route POST /api/auth/logout-all
- * @group Authentication - Token Management
- * @description Log out from all devices by invalidating all refresh tokens for the user.
- * @header {string} Authorization - Bearer token (access token)
- * @returns {object} 200 - Successfully logged out from all devices
- * @returns {Error} 401 - Unauthorized
- * @returns {Error} 500 - Failed to process logout
+ * @swagger
+ * /api/auth/logout:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Log out current session
+ *     description: Log out the current user and invalidate the refresh token
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - refreshToken
+ *             properties:
+ *               refreshToken:
+ *                 type: string
+ *                 description: The refresh token to invalidate
+ *     responses:
+ *       200:
+ *         description: Successfully logged out
+ *       401:
+ *         description: Invalid or missing refresh token
+ *       500:
+ *         description: Failed to process logout
  */
 router.post('/logout', verifyRefreshToken, logout);
+
+/**
+ * @swagger
+ * /api/auth/logout-all:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Log out from all devices
+ *     description: Invalidate all refresh tokens for the authenticated user
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Successfully logged out from all devices
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Failed to process logout
+ */
 router.post('/logout-all', protect, logoutAllDevices);
 
 /**
- * @route POST /api/auth/request-verification
- * @group Authentication - Email Verification
- * @description Request a new email verification link to be sent to the user's email.
- * @header {string} Authorization - Bearer token (access token)
- * @param {string} email.formData.required - The email address to verify
- * @returns {object} 200 - Verification email sent successfully
- * @returns {Error} 400 - Invalid email or already verified
- * @returns {Error} 401 - Unauthorized
- * @returns {Error} 429 - Too many verification requests
- * @returns {Error} 500 - Failed to send verification email
- *
- * @route GET /api/auth/verify-email/{token}
- * @group Authentication - Email Verification
- * @description Verify user's email using the verification token.
- * @param {string} token.path.required - The verification token sent to user's email
- * @returns {object} 200 - Email verified successfully
- * @returns {Error} 400 - Invalid or expired verification token
- * @returns {Error} 410 - Token has expired or already been used
- * @returns {Error} 500 - Failed to verify email
+ * @swagger
+ * /api/auth/request-verification:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Request email verification
+ *     description: Request a new email verification link
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: user@example.com
+ *     responses:
+ *       200:
+ *         description: Verification email sent successfully
+ *       400:
+ *         description: Invalid email or already verified
+ *       401:
+ *         description: Unauthorized
+ *       429:
+ *         description: Too many verification requests
+ *       500:
+ *         description: Failed to send verification email
  */
 router.post(
   '/request-verification',
@@ -222,12 +347,29 @@ router.post(
 );
 
 /**
- * @route GET /api/auth/verify-email/:token
- * @group Auth - authentication
- * @description Verify user's email address with token.
- * @param {string} token.path.required - Verification token
- * @returns {object} 200 - OK
- * @returns {Error} default - Unexpected error
+ * @swagger
+ * /api/auth/verify-email/{token}:
+ *   get:
+ *     tags: [Auth]
+ *     summary: Verify email
+ *     description: Verify user's email using the verification token
+ *     security: []
+ *     parameters:
+ *       - in: path
+ *         name: token
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The verification token sent to user's email
+ *     responses:
+ *       200:
+ *         description: Email verified successfully
+ *       400:
+ *         description: Invalid or expired verification token
+ *       410:
+ *         description: Token has expired or already been used
+ *       500:
+ *         description: Failed to verify email
  */
 router.get('/verify-email/:token', validate(tokenSchema, 'params', { key: 'token' }), verifyEmail);
 
