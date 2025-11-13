@@ -13,71 +13,209 @@ import { idSchema, watchlistSchema, watchlistQuerySchema } from '../utils/valida
 const router = express.Router();
 
 /**
- * @route POST /api/watchlist/add
- * @group Watchlist - watchlist management
- * @description Add an auction to the user's watchlist. Requires authentication.
- * @param {AddToWatchlist.model} body.body.required
- * @param {string} auctionId.body.required - ID of the auction to add
- * @returns {object} 200 - Auction added to watchlist
- * @returns {Error}  default - Unexpected error
+ * @swagger
+ * /api/watchlist/add:
+ *   post:
+ *     tags: [Watchlist]
+ *     summary: Add an auction to watchlist
+ *     description: Add an auction to the authenticated user's watchlist
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - auctionId
+ *             properties:
+ *               auctionId:
+ *                 type: string
+ *                 format: uuid
+ *                 description: ID of the auction to add to watchlist
+ *                 example: "123e4567-e89b-12d3-a456-426614174000"
+ *     responses:
+ *       200:
+ *         description: Auction successfully added to watchlist
+ *       400:
+ *         description: Invalid input or auction already in watchlist
+ *       401:
+ *         description: Unauthorized - Authentication required
+ *       404:
+ *         description: Auction not found
+ *       409:
+ *         description: Auction already in watchlist
  */
 router.post('/add', protect, validate(watchlistSchema.add, 'body'), addToWatchlist);
 
 /**
- * @route DELETE /api/watchlist/remove
- * @group Watchlist - watchlist management
- * @description Remove an auction from the user's watchlist. Requires authentication.
- * @param {RemoveFromWatchlist.model} body.body.required
- * @param {string} auctionId.body.required - ID of the auction to remove
- * @returns {object} 200 - Auction removed from watchlist
- * @returns {Error}  default - Unexpected error
+ * @swagger
+ * /api/watchlist/remove:
+ *   delete:
+ *     tags: [Watchlist]
+ *     summary: Remove an auction from watchlist
+ *     description: Remove an auction from the authenticated user's watchlist
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - auctionId
+ *             properties:
+ *               auctionId:
+ *                 type: string
+ *                 format: uuid
+ *                 description: ID of the auction to remove from watchlist
+ *                 example: "123e4567-e89b-12d3-a456-426614174000"
+ *     responses:
+ *       200:
+ *         description: Auction successfully removed from watchlist
+ *       400:
+ *         description: Invalid input
+ *       401:
+ *         description: Unauthorized - Authentication required
+ *       404:
+ *         description: Watchlist item not found
  */
 router.delete('/remove', protect, validate(watchlistSchema.remove, 'body'), removeFromWatchlist);
 
 /**
- * @route POST /api/watchlist/toggle
- * @group Watchlist - watchlist management
- * @description Toggle an auction's status in the user's watchlist. Requires authentication.
- * @param {ToggleWatchlist.model} body.body.required
- * @param {string} auctionId.body.required - ID of the auction to toggle
- * @returns {object} 200 - Auction status toggled in the user's watchlist
- * @returns {Error}  default - Unexpected error
+ * @swagger
+ * /api/watchlist/toggle:
+ *   post:
+ *     tags: [Watchlist]
+ *     summary: Toggle auction in watchlist
+ *     description: Add to watchlist if not present, remove if already in watchlist
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - auctionId
+ *             properties:
+ *               auctionId:
+ *                 type: string
+ *                 format: uuid
+ *                 description: ID of the auction to toggle in watchlist
+ *                 example: "123e4567-e89b-12d3-a456-426614174000"
+ *     responses:
+ *       200:
+ *         description: Watchlist status toggled successfully
+ *       400:
+ *         description: Invalid input
+ *       401:
+ *         description: Unauthorized - Authentication required
+ *       404:
+ *         description: Auction not found
  */
 router.post('/toggle', protect, validate(watchlistSchema.toggle, 'body'), toggleWatchlist);
 
 /**
- * @route GET /api/watchlist
- * @group Watchlist - watchlist management
- * @description Get the authenticated user's watchlist with optional filters.
- * @header {string} Authorization - Bearer token for authentication
- * @param {string} status.query - Filter by auction status (active, upcoming, ended)
- * @param {string} sort.query - Sort field (addedAt, endDate, currentPrice)
- * @param {string} order.query - Sort order (asc, desc)
- * @param {number} page.query - Page number for pagination
- * @param {number} limit.query - Number of items per page
- * @returns {object} 200 - User's watchlist with auctions
- * @returns {Error} 401 - Unauthorized
- * @returns {Error}  default - Unexpected error
- * @description Get the authenticated user's watchlist. Requires authentication.
- * @returns {object} 200 - List of auctions in the user's watchlist
- * @returns {Error}  default - Unexpected error
+ * @swagger
+ * /api/watchlist:
+ *   get:
+ *     tags: [Watchlist]
+ *     summary: Get user's watchlist
+ *     description: Retrieve paginated list of auctions in the authenticated user's watchlist
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [active, upcoming, ended, sold]
+ *           default: active
+ *         description: Filter auctions by status
+ *       - in: query
+ *         name: sort
+ *         schema:
+ *           type: string
+ *           enum: [newest, oldest]
+ *           default: newest
+ *         description: Sort order for results
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *         description: Page number for pagination
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 10
+ *         description: Number of items per page
+ *     responses:
+ *       200:
+ *         description: Successfully retrieved watchlist
+ *       400:
+ *         description: Invalid query parameters
+ *       401:
+ *         description: Unauthorized - Authentication required
  */
 router.get('/', protect, validate(watchlistQuerySchema, 'query'), getWatchlist);
 
 /**
- * @route GET /api/watchlist/check/{auctionId}
- * @group Watchlist - watchlist management
- * @description Check if an auction is in the user's watchlist.
- * @header {string} Authorization - Bearer token for authentication
- * @param {string} auctionId.path.required - ID of the auction to check
- * @returns {object} 200 - Watchlist status
- * @property {boolean} isInWatchlist - Whether the auction is in the user's watchlist
- * @property {string} auctionId - The auction ID that was checked
- * @property {string} userId - The ID of the user who owns the watchlist
- * @returns {Error} 400 - Invalid auction ID
- * @returns {Error} 401 - Unauthorized
- * @returns {Error} 404 - Auction not found
- * @returns {Error}  default - Unexpected error
+ * @swagger
+ * /api/watchlist/check/{auctionId}:
+ *   get:
+ *     tags: [Watchlist]
+ *     summary: Check auction watchlist status
+ *     description: Check if an auction is in the authenticated user's watchlist
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: auctionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: ID of the auction to check
+ *     responses:
+ *       200:
+ *         description: Successfully checked watchlist status
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 isWatching:
+ *                   type: boolean
+ *                   description: Whether the auction is in the user's watchlist
+ *                   example: true
+ *                 createdAt:
+ *                   type: string
+ *                   format: date-time
+ *                   description: The date and time when the watchlist item was created
+ *                   example: "2025-01-01T00:00:00.000Z"
+ *                 auctionId:
+ *                   type: string
+ *                   format: uuid
+ *                   description: The auction ID that was checked
+ *                   example: "123e4567-e89b-12d3-a456-426614174000"
+ *       400:
+ *         description: Invalid auction ID format
+ *       401:
+ *         description: Unauthorized - Authentication required
+ *       404:
+ *         description: Auction not found
  */
 router.get(
   '/check/:auctionId',
