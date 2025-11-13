@@ -34,16 +34,41 @@ export const auctionQuerySchema = {
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(100).default(10),
     sort: Joi.string()
-      .pattern(
-        /^(title|description|startingPrice|currentPrice|endDate|createdAt|bidCount):(asc|desc)$/
+      .valid(
+        'title',
+        'description',
+        'startingPrice',
+        'currentPrice',
+        'endDate',
+        'createdAt',
+        'bidCount'
       )
-      .default('createdAt:desc')
+      .default('createdAt')
+      .optional(),
+    order: Joi.string()
+      .valid('asc', 'desc')
+      .default('desc')
       .optional(),
     status: Joi.string()
       .valid('upcoming', 'active', 'ended', 'sold', 'completed', 'cancelled', 'all')
       .lowercase()
       .optional(),
-    category: Joi.string().optional(),
+    category: Joi.string()
+      .valid(
+        ...[
+          'Electronics',
+          'Fashion',
+          'Home & Garden',
+          'Collectibles',
+          'Sports',
+          'Automotive',
+          'Art',
+          'Books',
+          'Jewelry',
+          'Toys',
+        ]
+      )
+      .optional(),
     search: Joi.string().optional(),
     endingSoon: Joi.boolean()
       .optional()
@@ -334,9 +359,11 @@ export const auctionSchema = {
         })
       )
       .min(1)
+      .max(5)
       .required()
       .messages({
         'array.min': 'At least one image is required',
+        'array.max': 'Maximum of 5 images allowed',
         'array.base': 'Images must be an array',
         'any.required': 'Images are required',
       }),
@@ -377,9 +404,11 @@ export const auctionSchema = {
         })
       )
       .min(1)
+      .max(5)
       .optional()
       .messages({
         'array.min': 'At least one image is required',
+        'array.max': 'Maximum of 5 images allowed',
         'array.base': 'Images must be an array',
         'any.required': 'Images are required',
       }),

@@ -1,4 +1,6 @@
 import express from 'express';
+import { protect, admin } from '../middleware/authMiddleware.js';
+import { uploadAuctionImagesMiddleware } from '../middleware/uploadMiddleware.js';
 import {
   createAuction,
   getPublicAuctions,
@@ -9,71 +11,278 @@ import {
   confirmPayment,
   confirmDelivery,
 } from '../controllers/auctionController.js';
-import { protect, admin } from '../middleware/authMiddleware.js';
 import { validate } from '../middleware/validationMiddleware.js';
 import { auctionSchema, idSchema, auctionQuerySchema } from '../utils/validators.js';
-import { uploadAuctionImagesMiddleware } from '../middleware/uploadMiddleware.js';
 
 const router = express.Router();
 
 /**
- * @route GET /api/auctions
- * @group Auctions - Auction Management
- * @description Retrieve a paginated list of auctions with optional filtering and sorting.
- * @header {string} Accept - application/json
- * @param {string} status.query.optional - Filter by status (active, upcoming, ended, cancelled, all)
- * @param {string} category.query.optional - Filter by category ID
- * @param {string} search.query.optional - Search query for title or description
- * @param {string} sort.query.optional - Sort field (createdAt, endDate, currentPrice)
- * @param {string} order.query.optional - Sort order (asc, desc). Default: desc
- * @param {number} page.query.optional - Page number for pagination. Default: 1
- * @param {number} limit.query.optional - Number of items per page. Default: 10, Max: 100
- * @returns {object} 200 - Paginated list of auctions
- * @returns {Error} 400 - Invalid query parameters
- * @returns {Error} 500 - Internal server error
+ * @swagger
+ * /api/auctions:
+ *   get:
+ *     tags: [Auctions]
+ *     summary: Retrieve a paginated list of public auctions
+ *     description: Fetch auctions with optional filters (no auth needed)
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [upcoming, active, ended, sold]
+ *         description: Filter auctions by status
+ *       - in: query
+ *         name: category
+ *         schema:
+ *           type: string
+ *           enum: [Electronics, Fashion, Home & Garden, Collectibles, Sports, Automotive, Art, Books, Jewelry, Toys]
+ *         description: Filter auctions by category ID
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search title or description
+ *       - in: query
+ *         name: sort
+ *         schema:
+ *           type: string
+ *           enum: [title, description, startingPrice, currentPrice, endDate, createdAt, bidCount]
+ *         description: Field to sort by
+ *       - in: query
+ *         name: order
+ *         schema:
+ *           type: string
+ *           enum: [asc, desc]
+ *           default: desc
+ *         description: Sort order
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *           minimum: 1
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *           maximum: 100
+ *         description: Items per page
+ *       - in: query
+ *         name: minPrice
+ *         schema:
+ *           type: number
+ *           minimum: 0
+ *         description: Minimum price filter
+ *       - in: query
+ *         name: maxPrice
+ *         schema:
+ *           type: number
+ *           minimum: 0
+ *         description: Maximum price filter
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *           example: 2025-01-01T00:00:00.000Z
+ *         description: Filter auctions starting on or after this date
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *           example: 2030-01-01T00:00:00.000Z
+ *         description: Filter auctions ending on or before this date
+ *     responses:
+ *       200:
+ *         description: List of auctions
+ *       400:
+ *         description: Invalid query parameters
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden (non-admin users)
  */
 router.get('/', validate(auctionQuerySchema.search, 'query'), getPublicAuctions);
 
 /**
- * @route GET /api/auctions/admin
- * @group Auctions - Auction Management [Admin]
- * @description Retrieve a paginated list of all auctions with optional filters. Requires admin privileges.
- * @header {string} Authorization - Bearer token for authentication
- * @param {string} status.query.optional - Filter by status (active, upcoming, ended, cancelled, all)
- * @param {string} category.query.optional - Filter by category ID
- * @param {string} search.query.optional - Search query for title or description
- * @param {string} sort.query.optional - Sort field (createdAt, endDate, currentPrice)
- * @param {string} order.query.optional - Sort order (asc, desc). Default: desc
- * @param {number} page.query.optional - Page number for pagination. Default: 1
- * @param {number} limit.query.optional - Number of items per page. Default: 10, Max: 100
- * @param {boolean} includeDeleted.query.optional - Include deleted auctions. Default: false
- * @returns {object} 200 - Paginated list of auctions including deleted ones if requested
- * @returns {Error} 401 - Unauthorized
- * @returns {Error} 403 - Forbidden (not an admin)
- * @returns {Error} 500 - Internal server error
+ * @swagger
+ * /api/auctions/admin:
+ *   get:
+ *     tags: [Auctions]
+ *     summary: Retrieve a paginated list of auctions (admin view)
+ *     security:
+ *       - bearerAuth: []
+ *     description: Fetch all auctions with optional filters (admin access required)
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [upcoming, active, ended, sold, completed, cancelled, all]
+ *         description: Filter auctions by status
+ *       - in: query
+ *         name: category
+ *         schema:
+ *           type: string
+ *           enum: [Electronics, Fashion, Home & Garden, Collectibles, Sports, Automotive, Art, Books, Jewelry, Toys]
+ *         description: Filter auctions by Category
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search title or description
+ *       - in: query
+ *         name: sort
+ *         schema:
+ *           type: string
+ *           enum: [title, description, startingPrice, currentPrice, endDate, createdAt, bidCount]
+ *         description: Field to sort by
+ *       - in: query
+ *         name: order
+ *         schema:
+ *           type: string
+ *           enum: [asc, desc]
+ *           default: desc
+ *         description: Sort order
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *           minimum: 1
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *           maximum: 100
+ *         description: Items per page
+ *       - in: query
+ *         name: minPrice
+ *         schema:
+ *           type: number
+ *           minimum: 0
+ *         description: Minimum price filter
+ *       - in: query
+ *         name: maxPrice
+ *         schema:
+ *           type: number
+ *           minimum: 0
+ *         description: Maximum price filter
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *           example: 2025-01-01T00:00:00.000Z
+ *         description: Filter auctions starting on or after this date
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *           example: 2030-01-01T00:00:00.000Z
+ *         description: Filter auctions ending on or before this date
+ *     responses:
+ *       200:
+ *         description: List of auctions (including soft-deleted)
+ *       400:
+ *         description: Invalid query parameters
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden (non-admin users)
  */
-router.get('/admin', protect, admin, validate(auctionQuerySchema.search, 'query'), getAuctions);
+router.get(
+  '/admin',
+  protect,
+  admin,
+  validate(auctionQuerySchema.search, 'query'),
+  getAuctions
+);
 
 /**
- * @route POST /api/auctions/create-auction
- * @group Auctions - Auction Management
- * @description Create a new auction with uploaded images. Requires authentication.
- * @header {string} Authorization - Bearer token for authentication
- * @header {string} Content-Type - multipart/form-data
- * @param {string} title.formData.required - Title of the auction (3-100 characters)
- * @param {string} description.formData.required - Detailed description of the auction (10-5000 characters)
- * @param {number} startingPrice.formData.required - Starting price (minimum 1)
- * @param {number} bidIncrement.formData.required - Bid increment (minimum 0.01)
- * @param {string} startDate.formData.required - ISO 8601 date string for auction start (future date)
- * @param {string} endDate.formData.required - ISO 8601 date string for auction end (must be after start date)
- * @param {string} category.formData.required - Category this auction belongs to
- * @param {file[]} images.formData.required - Auction images (1-5 images, JPG/JPEG/PNG/WEBP, max 5MB each)
- * @returns {object} 201 - Auction created successfully
- * @returns {Error} 400 - Invalid input data or validation error
- * @returns {Error} 401 - Unauthorized
- * @returns {Error} 413 - File size too large
- * @returns {Error} 415 - Unsupported media type
- * @returns {Error} 500 - Failed to process upload
+ * @swagger
+ * /api/auctions/create-auction:
+ *   post:
+ *     tags: [Auctions]
+ *     summary: Create a new auction
+ *     security:
+ *       - bearerAuth: []
+ *     description: Create a new auction with images (authentication required)
+ *     consumes:
+ *       - multipart/form-data
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - title
+ *               - description
+ *               - startingPrice
+ *               - bidIncrement
+ *               - startDate
+ *               - endDate
+ *               - category
+ *               - images
+ *             properties:
+ *               title:
+ *                 type: string
+ *                 minLength: 3
+ *                 maxLength: 100
+ *                 example: "Premium Smart Watch"
+ *               description:
+ *                 type: string
+ *                 minLength: 10
+ *                 maxLength: 5000
+ *                 example: "Brand new smart watch with all the latest features..."
+ *               startingPrice:
+ *                 type: number
+ *                 minimum: 1
+ *                 example: 100
+ *               bidIncrement:
+ *                 type: number
+ *                 minimum: 0.01
+ *                 example: 5
+ *               startDate:
+ *                 type: string
+ *                 format: date-time
+ *                 example: "2025-11-15T10:00:00Z"
+ *                 description: Must be in the future
+ *               endDate:
+ *                 type: string
+ *                 format: date-time
+ *                 example: "2025-11-20T10:00:00Z"
+ *                 description: Must be after startDate
+ *               category:
+ *                 type: string
+ *                 enum: [Electronics, Fashion, Home & Garden, Collectibles, Sports, Automotive, Art, Books, Jewelry, Toys]
+ *               images:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: binary
+ *                 minItems: 1
+ *                 maxItems: 5
+ *                 description: Images for the auction
+ *     responses:
+ *       201:
+ *         description: Auction created successfully
+ *       400:
+ *         description: Validation failed (invalid data)
+ *       401:
+ *         description: Unauthorized
+ *       413:
+ *         description: File too large
+ *       415:
+ *         description: Unsupported media type
+ *       500:
+ *         description: Server error
  */
 router.post(
   '/create-auction',
@@ -84,43 +293,95 @@ router.post(
 );
 
 /**
- * @route GET /api/auctions/{auctionId}
- * @group Auctions - Auction Management
- * @description Get detailed information about a specific auction by its ID.
- * @param {string} auctionId.path.required - The unique identifier of the auction
- * @returns {object} 200 - Auction details including images, bids, and seller information
- * @returns {Error} 400 - Invalid auction ID format
- * @returns {Error} 404 - Auction not found or not available
- * @returns {Error} 410 - Auction has been deleted
- * @returns {Error} 500 - Internal server error
+ * @swagger
+ * /api/auctions/{auctionId}:
+ *   get:
+ *     tags: [Auctions]
+ *     summary: Get an auction by ID
+ *     parameters:
+ *       - in: path
+ *         name: auctionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Unique auction ID
+ *     responses:
+ *       200:
+ *         description: Auction details
+ *       404:
+ *         description: Auction not found
+ *       410:
+ *         description: Auction deleted
  */
-router.get('/:auctionId', validate(idSchema('auctionId'), 'params'), getAuctionById);
+router.get(
+  '/:auctionId',
+  validate(idSchema('auctionId'), 'params'),
+  getAuctionById
+);
 
 /**
- * @route PATCH /api/auctions/{auctionId}
- * @group Auctions - Auction Management
- * @description Update an existing auction. Only the auction creator or admin can update.
- * @header {string} Authorization - Bearer token for authentication
- * @header {string} Content-Type - application/json or multipart/form-data
- * @param {string} auctionId.path.required - The ID of the auction to update
- * @param {string} title.formData.optional - Updated title (3-100 characters)
- * @param {string} description.formData.optional - Updated description (10-5000 characters)
- * @param {number} startingPrice.formData.optional - Updated starting price (minimum 1)
- * @param {number} bidIncrement.formData.optional - Updated bid increment (minimum 0.01)
- * @param {string} startDate.formData.optional - New start date (ISO 8601, future date)
- * @param {string} endDate.formData.optional - New end date (must be after start date)
- * @param {string} category.formData.optional - New category
- * @param {string} status.formData.optional - New status (draft, active, cancelled)
- * @param {file[]} images.formData.optional - New images to add (JPG/JPEG/PNG/WEBP, max 5MB each)
- * @param {string[]} imagesToRemove.formData.optional - Array of image IDs to remove
- * @returns {object} 200 - Auction updated successfully
- * @returns {Error} 400 - Invalid input data or validation error
- * @returns {Error} 401 - Unauthorized
- * @returns {Error} 403 - Forbidden (not the auction owner or admin)
- * @returns {Error} 404 - Auction not found
- * @returns {Error} 409 - Auction cannot be modified (already started/ended)
- * @returns {Error} 413 - File size too large
- * @returns {Error} 500 - Internal server error
+ * @swagger
+ * /api/auctions/{auctionId}:
+ *   patch:
+ *     tags: [Auctions]
+ *     security:
+ *       - bearerAuth: []
+ *     summary: Update an auction
+ *     description: Modify an existing auction (seller or admin only)
+ *     parameters:
+ *       - in: path
+ *         name: auctionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Unique auction ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               title:
+ *                 type: string
+ *               description:
+ *                 type: string
+ *               startingPrice:
+ *                 type: number
+ *               bidIncrement:
+ *                 type: number
+ *               startDate:
+ *                 type: string
+ *                 format: date-time
+ *               endDate:
+ *                 type: string
+ *                 format: date-time
+ *               category:
+ *                 type: string
+ *               images:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: binary
+ *               imagesToRemove:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *     responses:
+ *       200:
+ *         description: Auction updated
+ *       403:
+ *         description: Forbidden (non-owner/non-admin)
+ *       404:
+ *         description: Auction not found
+ *       409:
+ *         description: Auction already started/ended
+ *       413:
+ *         description: File too large
+ *       415:
+ *         description: Unsupported media type
+ *       500:
+ *         description: Server error
  */
 router.patch(
   '/:auctionId',
@@ -131,19 +392,33 @@ router.patch(
 );
 
 /**
- * @route DELETE /api/auctions/{auctionId}
- * @group Auctions - Auction Management
- * @description Delete an auction by ID. Soft delete by default, or permanently if specified.
- * @header {string} Authorization - Bearer token for authentication
- * @param {string} auctionId.path.required - The ID of the auction to delete
- * @param {boolean} permanent.query.optional - If true, permanently deletes the auction (admin only)
- * @returns {object} 200 - Auction deleted successfully
- * @returns {Error} 400 - Invalid auction ID
- * @returns {Error} 401 - Unauthorized
- * @returns {Error} 403 - Forbidden (not the auction owner or admin)
- * @returns {Error} 404 - Auction not found
- * @returns {Error} 409 - Cannot delete auction with active bids
- * @returns {Error} 500 - Internal server error
+ * @swagger
+ * /api/auctions/{auctionId}:
+ *   delete:
+ *     tags: [Auctions]
+ *     security:
+ *       - bearerAuth: []
+ *     summary: Delete an auction
+ *     description: Soft-delete an auction by default; add `permanent=true` to hard-delete (admin only)
+ *     parameters:
+ *       - in: path
+ *         name: auctionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Unique auction ID
+ *       - in: query
+ *         name: permanent
+ *         schema:
+ *           type: boolean
+ *         description: Set to `true` for permanent deletion
+ *     responses:
+ *       200:
+ *         description: Auction deleted
+ *       403:
+ *         description: Forbidden (non-owner/non-admin)
+ *       404:
+ *         description: Auction not found
  */
 router.delete(
   '/:auctionId',
@@ -154,21 +429,30 @@ router.delete(
 );
 
 /**
- * @route PATCH /api/auctions/{auctionId}/confirm-payment
- * @group Auctions - Payment Management
- * @description Confirm payment for a winning auction bid. Only the auction winner can confirm payment.
- * @header {string} Authorization - Bearer token for authentication
- * @param {string} auctionId.path.required - The ID of the auction to confirm payment for
- * @param {string} paymentMethod.body.required - Payment method used (e.g., 'credit_card', 'paypal')
- * @param {string} transactionId.body.required - External transaction ID from payment processor
- * @param {number} amount.body.required - Amount paid (must match winning bid amount)
- * @returns {object} 200 - Payment confirmed successfully
- * @returns {Error} 400 - Invalid payment details
- * @returns {Error} 401 - Unauthorized
- * @returns {Error} 403 - Not the auction winner
- * @returns {Error} 404 - Auction not found or not won
- * @returns {Error} 409 - Payment already confirmed
- * @returns {Error} 500 - Payment processing error
+ * @swagger
+ * /api/auctions/{auctionId}/confirm-payment:
+ *   patch:
+ *     tags: [Auctions]
+ *     security:
+ *       - bearerAuth: []
+ *     summary: Confirm payment for an auction
+ *     description: Mark the auction as paid (winner only)
+ *     parameters:
+ *       - in: path
+ *         name: auctionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Unique auction ID
+ *     responses:
+ *       200:
+ *         description: Payment confirmed
+ *       403:
+ *         description: Forbidden (non-winner)
+ *       404:
+ *         description: Auction not found or not won
+ *       409:
+ *         description: Payment already confirmed
  */
 router.patch(
   '/:auctionId/confirm-payment',
@@ -178,22 +462,30 @@ router.patch(
 );
 
 /**
- * @route PATCH /api/auctions/{auctionId}/confirm-delivery
- * @group Auctions - Delivery Management
- * @description Confirm delivery of the auction item. Only the buyer can confirm delivery.
- * @header {string} Authorization - Bearer token for authentication
- * @param {string} auctionId.path.required - The ID of the auction to confirm delivery for
- * @param {string} trackingNumber.body.optional - Delivery tracking number
- * @param {string} receivedDate.body.required - ISO 8601 date when the item was received
- * @param {string} condition.body.required - Condition of received item (e.g., 'as_described', 'damaged')
- * @param {string} notes.body.optional - Additional notes about the delivery
- * @returns {object} 200 - Delivery confirmed successfully
- * @returns {Error} 400 - Invalid delivery details
- * @returns {Error} 401 - Unauthorized
- * @returns {Error} 403 - Not the buyer of this auction
- * @returns {Error} 404 - Auction not found or not eligible
- * @returns {Error} 409 - Delivery already confirmed
- * @returns {Error} 500 - Internal server error
+ * @swagger
+ * /api/auctions/{auctionId}/confirm-delivery:
+ *   patch:
+ *     tags: [Auctions]
+ *     security:
+ *       - bearerAuth: []
+ *     summary: Confirm delivery for an auction
+ *     description: Mark the auction as delivered (buyer only)
+ *     parameters:
+ *       - in: path
+ *         name: auctionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Unique auction ID
+ *     responses:
+ *       200:
+ *         description: Delivery confirmed
+ *       403:
+ *         description: Forbidden (non-buyer)
+ *       404:
+ *         description: Auction not found or not eligible
+ *       409:
+ *         description: Delivery already confirmed
  */
 router.patch(
   '/:auctionId/confirm-delivery',

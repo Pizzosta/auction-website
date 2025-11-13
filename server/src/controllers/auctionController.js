@@ -110,7 +110,8 @@ export const getAuctions = async (req, res, next) => {
       fields,
       page = 1,
       limit = 10,
-      sort = 'createdAt:desc',
+      sort = 'createdAt',
+      order = 'desc',
     } = req.query;
 
     const isAdmin = req.user?.role === 'admin';
@@ -140,6 +141,7 @@ export const getAuctions = async (req, res, next) => {
       page,
       limit,
       sort,
+      order,
     });
 
     // Field selection

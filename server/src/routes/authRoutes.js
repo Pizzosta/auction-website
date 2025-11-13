@@ -16,6 +16,72 @@ import { verifyRefreshToken, protect } from '../middleware/authMiddleware.js';
 const router = express.Router();
 
 /**
+ * @swagger
+ * /api/auth/register:
+ *   post:
+ *     tags: [Auth]
+ *     summary: Register a new user account
+ *     description: Create a new user with email, username, and password
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - username
+ *               - email
+ *               - password
+ *               - confirmPassword
+ *               - firstName
+ *               - lastName
+ *               - phone
+ *             properties:
+ *               username:
+ *                 type: string
+ *                 example: john_doe
+ *                 description: Username (3-30 characters, alphanumeric with underscores)
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: john@example.com
+ *               password:
+ *                 type: string
+ *                 example: StrongP@ss123
+ *                 description: Password (min 8 characters, must include uppercase, lowercase, number, and special character)
+ *               confirmPassword:
+ *                 type: string
+ *                 example: StrongP@ss123
+ *               firstName:
+ *                 type: string
+ *                 example: John
+ *               middlename:
+ *                 type: string
+ *                 nullable: true
+ *                 example: Michael
+ *               lastName:
+ *                 type: string
+ *                 example: Doe
+ *               phone:
+ *                 type: string
+ *                 example: +1234567890
+ *                 description: Phone number in valid international format
+ *     responses:
+ *       201:
+ *         description: User registered successfully. Check email for verification.
+ *       400:
+ *         description: Invalid input data or validation error
+ *       409:
+ *         description: Email or username already exists
+ *       429:
+ *         description: Too many registration attempts
+ *       500:
+ *         description: Internal server error
+ */
+router.post('/register', validate(authSchema.register, 'body'), register);
+
+/**
  * @route POST /api/auth/register
  * @group Authentication - User Registration & Login
  * @description Register a new user account with email, username, and password.
