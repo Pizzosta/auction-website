@@ -1,3 +1,4 @@
+
 import swaggerJSDoc from 'swagger-jsdoc';
 import swaggerUi from 'swagger-ui-express';
 import { dirname, join } from 'path';
@@ -58,8 +59,23 @@ const options = {
     ]
 };
 
-// Initialize swagger-jsdoc
-const swaggerSpec = swaggerJSDoc(options);
+// Initialize swagger-jsdoc with error handling
+let swaggerSpec;
+try {
+    swaggerSpec = swaggerJSDoc(options);
+    logger.info('Swagger specification generated successfully');
+} catch (error) {
+    logger.error('Failed to generate Swagger specification:', error);
+    // Provide a minimal swagger spec if generation fails
+    swaggerSpec = {
+        openapi: '3.0.0',
+        info: {
+            title: 'Kawodze API',
+            version: '1.0.0',
+            description: 'API documentation is currently unavailable due to generation error.'
+        }
+    };
+}
 
 // Configure Swagger UI options
 const swaggerUiOptions = {
