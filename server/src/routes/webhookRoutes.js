@@ -8,11 +8,75 @@ const router = express.Router();
 router.use(rawBodyParser);
 
 /**
- * @route POST /api/v1/webhook
- * @group Webhook - webhook events
- * @description Process incoming webhook events from external services.
- * @returns {object} 200 - Webhook processed
- * @returns {Error}  default - Unexpected error
+ * @swagger
+ * /api/v1/webhook:
+ *   post:
+ *     tags: [Webhooks]
+ *     summary: Process incoming webhook events
+ *     description: |
+ *       This endpoint processes various webhook events from external payment and subscription services.
+ *       It verifies the webhook signature and routes the event to the appropriate handler.
+ *     security: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [event, payload]
+ *             properties:
+ *               event:
+ *                 type: string
+ *                 enum: [payment.succeeded, payment.failed, subscription.updated, test.event]
+ *                 description: Type of webhook event
+ *                 example: "payment.succeeded"
+ *               payload:
+ *                 type: object
+ *                 description: Event payload specific to the event type
+ *                 example: {"id": "evt_123456789", "object": "event", "data": {"object": {"id": "pm_123456789"}}}
+ *     responses:
+ *       200:
+ *         description: Webhook processed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   enum: [success, error]
+ *                   example: "success"
+ *                 message:
+ *                   type: string
+ *                   example: "Webhook processed successfully"
+ *       400:
+ *         description: Invalid webhook signature or missing required fields
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: "error"
+ *                 message:
+ *                   type: string
+ *                   example: "Invalid webhook signature"
+ *       401:
+ *         description: Unauthorized - Invalid or missing webhook secret
+ *       500:
+ *         description: Internal server error while processing webhook
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: "error"
+ *                 message:
+ *                   type: string
+ *                   example: "Failed to process webhook"
  */
 
 // Webhook endpoint for processing events
@@ -71,29 +135,91 @@ router.post(
   }
 );
 
-// Webhook event handlers
+/**
+ * Handle successful payment webhook event
+ * @param {Object} payload - Payment success payload
+ * @param {string} payload.id - Payment intent ID
+ * @param {string} payload.amount - Amount in smallest currency unit
+ * @param {string} payload.currency - Currency code (e.g., 'usd')
+ * @param {Object} payload.metadata - Additional payment metadata
+ * @returns {Promise<void>}
+ */
 async function handlePaymentSucceeded(payload) {
-  // Implement payment success logic
-  logger.info('Payment succeeded', { paymentId: payload.id });
-  // Example: Update order status in database
+  try {
+    logger.info('Payment succeeded', { 
+      paymentId: payload.id,
+      amount: payload.amount,
+      currency: payload.currency 
+    });
+    // Implementation: Update order status in database, send confirmation email, etc.
+  } catch (error) {
+    logger.error('Error handling payment succeeded webhook', {
+      error: error.message,
+      paymentId: payload?.id,
+      stack: error.stack
+    });
+    throw error;
+  }
 }
 
+/**
+ * Handle failed payment webhook event
+ * @param {Object} payload - Payment failure payload
+ * @param {string} payload.id - Payment intent ID
+ * @param {string} payload.failure_code - Error code for the failure
+ * @param {string} payload.failure_message - Human-readable failure message
+ * @param {string} payload.payment_method - Payment method ID that failed
+ * @returns {Promise<void>}
+ */
 async function handlePaymentFailed(payload) {
-  // Implement payment failure logic
-  logger.warn('Payment failed', {
-    paymentId: payload.id,
-    reason: payload.failure_message,
-  });
-  // Example: Notify user of payment failure
+  try {
+    logger.warn('Payment failed', {
+      paymentId: payload.id,
+      code: payload.failure_code,
+      reason: payload.failure_message,
+      method: payload.payment_method
+    });
+    // Implementation: Update order status, notify user of payment failure, etc.
+  } catch (error) {
+    logger.error('Error handling payment failed webhook', {
+      error: error.message,
+      paymentId: payload?.id,
+      stack: error.stack
+    });
+    throw error;
+  }
 }
 
+/**
+ * Handle subscription update webhook event
+ * @param {Object} payload - Subscription update payload
+ * @param {string} payload.id - Subscription ID
+ * @param {string} payload.status - New subscription status
+ * @param {string} payload.customer - Customer ID
+ * @param {string} payload.plan.id - Plan ID
+ * @param {number} payload.current_period_end - Timestamp of current period end
+ * @returns {Promise<void>}
+ */
 async function handleSubscriptionUpdated(payload) {
-  // Implement subscription update logic
-  logger.info('Subscription updated', {
-    subscriptionId: payload.id,
-    status: payload.status,
-  });
-  // Example: Update subscription status in database
+  try {
+    logger.info('Subscription updated', {
+      subscriptionId: payload.id,
+      status: payload.status,
+      customerId: payload.customer,
+      planId: payload.plan?.id,
+      currentPeriodEnd: payload.current_period_end
+        ? new Date(payload.current_period_end * 1000).toISOString()
+        : null
+    });
+    // Implementation: Update subscription in database, notify user, etc.
+  } catch (error) {
+    logger.error('Error handling subscription updated webhook', {
+      error: error.message,
+      subscriptionId: payload?.id,
+      stack: error.stack
+    });
+    throw error;
+  }
 }
 
 export default router;
