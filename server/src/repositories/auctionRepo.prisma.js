@@ -15,7 +15,8 @@ export async function listAuctionsPrisma({
   endingSoon,
   page = 1,
   limit = 10,
-  sort = 'createdAt:desc',
+  sort = 'createdAt',
+  order = 'desc',
 }) {
   const pageNum = Math.max(1, parseInt(page));
   const take = Math.min(Math.max(1, parseInt(limit)), 100);
