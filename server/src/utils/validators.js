@@ -158,8 +158,8 @@ export const feedbackQuerySchema = Joi.object({
   fields: Joi.string()
     .pattern(/^[a-zA-Z0-9_, ]*$/)
     .optional(),
-  minRating: Joi.number().min(1).optional(),
-  maxRating: Joi.number().min(1).optional(),
+  minRating: Joi.number().integer().min(1).max(5).optional(),
+  maxRating: Joi.number().integer().min(1).max(5).optional(),
   startDate: Joi.date().iso().optional(),
   endDate: Joi.date().iso().optional(),
 });

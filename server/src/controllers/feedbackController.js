@@ -91,7 +91,8 @@ export const getUserFeedback = async (req, res, next) => {
             type,
             page = 1,
             limit = 10,
-            sort = 'createdAt:desc',
+            sort = 'createdAt',
+            order = 'desc',
             minRating,
             maxRating,
             startDate,
@@ -102,9 +103,10 @@ export const getUserFeedback = async (req, res, next) => {
         const result = await listFeedbackPrisma({
             userId,
             type,
-            page: parseInt(page),
-            limit: parseInt(limit),
+            page,
+            limit,
             sort,
+            order,
             minRating: minRating ? parseInt(minRating) : undefined,
             maxRating: maxRating ? parseInt(maxRating) : undefined,
             startDate,
@@ -173,12 +175,6 @@ export const getFeedbackSummary = async (req, res, next) => {
     }
 };
 
-/**
- * Get all feedback sent by a specific user
- * @param {Object} req - Express request object
- * @param {Object} res - Express response object
- * @param {Object} next - Express next middleware function
- */
 export const getFeedbackSentByUser = async (req, res, next) => {
     try {
         const { userId } = req.params;
@@ -186,7 +182,8 @@ export const getFeedbackSentByUser = async (req, res, next) => {
             type,
             page = 1,
             limit = 10,
-            sort = 'createdAt:desc',
+            sort = 'createdAt',
+            order = 'desc',
             minRating,
             maxRating,
             startDate,
@@ -197,9 +194,10 @@ export const getFeedbackSentByUser = async (req, res, next) => {
         const result = await listFeedbackPrisma({
             fromUserId: userId,  // Filter by user who sent the feedback
             type,
-            page: parseInt(page),
-            limit: parseInt(limit),
+            page,
+            limit,
             sort,
+            order,
             minRating: minRating ? parseInt(minRating) : undefined,
             maxRating: maxRating ? parseInt(maxRating) : undefined,
             startDate,

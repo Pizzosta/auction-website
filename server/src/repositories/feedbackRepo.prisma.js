@@ -74,7 +74,8 @@ export async function listFeedbackPrisma({
     type,
     page = 1,
     limit = 10,
-    sort = 'createdAt:desc',
+    sort = 'createdAt',
+    order = 'desc',
     minRating,
     maxRating,
     startDate,
@@ -84,7 +85,6 @@ export async function listFeedbackPrisma({
     const pageNum = Math.max(1, parseInt(page));
     const take = Math.min(Math.max(1, parseInt(limit)), 100);
     const skip = (pageNum - 1) * take;
-    const [sortField, sortOrder] = sort.split(':');
 
     // Build where clause
     const where = {};
@@ -108,6 +108,21 @@ export async function listFeedbackPrisma({
         if (startDate) where.createdAt.gte = new Date(startDate);
         if (endDate) where.createdAt.lte = new Date(endDate);
     }
+
+    // Sort configuration
+    const allowedSortFields = new Set([
+        'rating',
+        'createdAt',
+        'updatedAt'
+    ]);
+    
+    // Validate and set default sort field
+    const sortField = allowedSortFields.has(sort) ? sort : 'createdAt';
+    
+    // Validate and set default order direction
+    const orderDirection = order === 'asc' ? 'asc' : 'desc';
+    
+    const orderBy = { [sortField]: orderDirection };
 
     // Build select object for fields
     const select = {
@@ -177,7 +192,7 @@ export async function listFeedbackPrisma({
                     }
                 }
             },
-            orderBy: { [sortField]: sortOrder || 'desc' },
+            orderBy,
             skip,
             take,
         }),
