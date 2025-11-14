@@ -100,7 +100,8 @@ export async function listFeedbackPrisma({
     }
 
     if (maxRating !== undefined) {
-        where.rating = { ...where.rating, lte: parseInt(maxRating) };
+        // If rating filter already exists, merge; otherwise, create new.
+        where.rating = where.rating ? { ...where.rating, lte: parseInt(maxRating) } : { lte: parseInt(maxRating) };
     }
 
     if (startDate || endDate) {
@@ -109,7 +110,7 @@ export async function listFeedbackPrisma({
         if (endDate) where.createdAt.lte = new Date(endDate);
     }
 
-    // Sort configuration
+    // Sort
     const allowedSortFields = new Set([
         'rating',
         'createdAt',
@@ -131,6 +132,7 @@ export async function listFeedbackPrisma({
                 id: true,
                 username: true,
                 profilePicture: true,
+                isDeleted: true,
             },
         },
         auction: {
@@ -282,12 +284,14 @@ export async function createFeedbackPrisma(data) {
                     id: true,
                     username: true,
                     profilePicture: true,
+                    isDeleted: true,
                 },
             },
             auction: {
                 select: {
                     id: true,
                     title: true,
+                    images: true,
                 },
             },
         },
@@ -310,6 +314,7 @@ export async function respondToFeedbackPrisma(feedbackId, response) {
                     id: true,
                     username: true,
                     profilePicture: true,
+                    isDeleted: true,
                 },
             },
         },
