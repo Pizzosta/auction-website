@@ -13,41 +13,209 @@ import {
 const router = express.Router();
 
 /**
- * @route POST /api/feedback
- * @group Feedback - feedback management
- * @description Create a new feedback for an auction. Requires authentication.
- * @header {string} Authorization - Bearer token for authentication
- * @param {object} body.body.required - Feedback details
- * @param {string} body.auctionId - ID of the auction
- * @param {string} body.type - Type of feedback (buyer/seller)
- * @param {number} body.rating - Rating (1-5)
- * @param {string} body.comment - Feedback comment
- * @returns {object} 201 - Feedback created successfully
- * @returns {Error} 400 - Invalid input
- * @returns {Error} 401 - Unauthorized
- * @returns {Error} 403 - Not allowed to leave feedback
- * @returns {Error} 404 - Auction not found
- * @returns {Error} 409 - Feedback already exists
+ * @swagger
+ * /api/feedback:
+ *   post:
+ *     tags: [Feedback]
+ *     summary: Create feedback for an auction
+ *     description: Leave feedback (rating and comment) for a completed auction. Buyers can rate sellers and vice versa.
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - auctionId
+ *               - type
+ *               - rating
+ *             properties:
+ *               auctionId:
+ *                 type: string
+ *                 format: uuid
+ *                 example: 5f8d0f4d7f4f3b2a1c9e8d7a
+ *               type:
+ *                 type: string
+ *                 enum: [buyer, seller]
+ *                 example: seller
+ *               rating:
+ *                 type: integer
+ *                 minimum: 1
+ *                 maximum: 5
+ *                 example: 5
+ *               comment:
+ *                 type: string
+ *                 minLength: 10
+ *                 maxLength: 1000
+ *                 example: Great seller, item as described!
+ *               isAnonymous:
+ *                 type: boolean
+ *                 default: false
+ *     responses:
+ *       201:
+ *         description: Feedback created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: string
+ *                 rating:
+ *                   type: integer
+ *                 comment:
+ *                   type: string
+ *                 type:
+ *                   type: string
+ *                   enum: [seller, buyer]
+ *                 auctionId:
+ *                   type: string
+ *                 fromUserId:
+ *                   type: string
+ *                 toUserId:
+ *                   type: string
+ *                 isAnonymous:
+ *                   type: boolean
+ *                 createdAt:
+ *                   type: string
+ *                   format: date-time
+ *       400:
+ *         description: Invalid input or auction not completed
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: User not authorized to leave feedback for this auction
+ *       404:
+ *         description: Auction not found
+ *       409:
+ *         description: Feedback already submitted
+ *       500:
+ *         description: Internal server error
  */
 router.post('/', protect, validate(feedbackSchema.create, 'body'), createFeedback);
 
 /**
- * @route GET /api/feedback/user/{userId}
- * @group Feedback - feedback management
- * @description Get feedback received by a specific user.
- * @header {string} Authorization - Bearer token for authentication
- * @param {string} userId.path.required - ID of the user to get feedback for
- * @param {string} type.query - Filter by feedback type (buyer/seller)
- * @param {number} minRating.query - Filter by minimum rating (1-5)
- * @param {string} sort.query - Sort field (createdAt, rating)
- * @param {string} order.query - Sort order (asc, desc)
- * @param {number} page.query - Page number for pagination
- * @param {number} limit.query - Number of items per page
- * @returns {object} 200 - List of feedback
- * @returns {Error} 400 - Invalid user ID
- * @returns {Error} 401 - Unauthorized
- * @returns {Error} 403 - Forbidden
- * @returns {Error} 404 - User not found
+ * @swagger
+ * /api/feedback/user/{userId}:
+ *   get:
+ *     tags: [Feedback]
+ *     summary: Get feedback received by user
+ *     description: Retrieve all feedback received by a specific user with filtering and pagination.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: ID of the user to get feedback for
+ *       - in: query
+ *         name: type
+ *         schema:
+ *           type: string
+ *           enum: [buyer, seller]
+ *         description: Filter by feedback type
+ *       - in: query
+ *         name: minRating
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 5
+ *         description: Filter by minimum rating (1-5)
+ *       - in: query
+ *         name: sort
+ *         schema:
+ *           type: string
+ *           enum: [createdAt, updatedAt, rating]
+ *           default: createdAt
+ *         description: Field to sort by
+ *       - in: query
+ *         name: order
+ *         schema:
+ *           type: string
+ *           enum: [asc, desc]
+ *           default: desc
+ *         description: Sort order
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 10
+ *         description: Number of items per page
+ *     responses:
+ *       200:
+ *         description: Feedback retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 pagination:
+ *                   type: object
+ *                   properties:
+ *                     page:
+ *                       type: integer
+ *                     limit:
+ *                       type: integer
+ *                     total:
+ *                       type: integer
+ *                     pages:
+ *                       type: integer
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                       rating:
+ *                         type: integer
+ *                       comment:
+ *                         type: string
+ *                       type:
+ *                         type: string
+ *                         enum: [seller, buyer]
+ *                       auction:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                           title:
+ *                             type: string
+ *                       fromUser:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                           username:
+ *                             type: string
+ *                       response:
+ *                         type: string
+ *                       createdAt:
+ *                         type: string
+ *                         format: date-time
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Internal server error
  */
 router.get(
   '/user/:userId',
@@ -58,36 +226,146 @@ router.get(
 );
 
 /**
- * @route GET /api/feedback/summary/{userId}
- * @group Feedback - feedback management
- * @description Get feedback summary for a user (average rating, total count, etc.)
- * @header {string} Authorization - Bearer token for authentication
- * @param {string} userId.path.required - ID of the user to get summary for
- * @returns {object} 200 - Feedback summary
- * @property {number} averageRating - Average rating (1-5)
- * @property {number} totalCount - Total number of feedbacks
- * @property {object} ratingBreakdown - Count of each rating (1-5)
- * @property {number} positivePercentage - Percentage of positive ratings (4-5)
- * @returns {Error} 400 - Invalid user ID
- * @returns {Error} 401 - Unauthorized
- * @returns {Error} 404 - User not found
+ * @swagger
+ * /api/feedback/summary/{userId}:
+ *   get:
+ *     tags: [Feedback]
+ *     summary: Get feedback summary for user
+ *     description: Get aggregated feedback statistics including average rating and rating distribution
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: ID of the user to get summary for
+ *     responses:
+ *       200:
+ *         description: Feedback summary retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     averageRating:
+ *                       type: number
+ *                       format: float
+ *                       example: 4.5
+ *                     totalCount:
+ *                       type: integer
+ *                       example: 42
+ *                     ratingBreakdown:
+ *                       type: object
+ *                       properties:
+ *                         1:
+ *                           type: integer
+ *                           example: 2
+ *                         2:
+ *                           type: integer
+ *                           example: 3
+ *                         3:
+ *                           type: integer
+ *                           example: 5
+ *                         4:
+ *                           type: integer
+ *                           example: 12
+ *                         5:
+ *                           type: integer
+ *                           example: 20
+ *                     positivePercentage:
+ *                       type: number
+ *                       format: float
+ *                       example: 76.19
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Internal server error
  */
 router.get('/summary/:userId', protect, validate(idSchema('userId'), 'params'), getFeedbackSummary);
 
 /**
- * @route POST /api/feedback/{feedbackId}/respond
- * @group Feedback - feedback management
- * @description Add a response to feedback. Only the recipient can respond.
- * @header {string} Authorization - Bearer token for authentication
- * @param {string} feedbackId.path.required - ID of the feedback to respond to
- * @param {object} body.body.required - Response details
- * @param {string} body.response - The response text
- * @returns {object} 200 - Response added successfully
- * @returns {Error} 400 - Invalid input
- * @returns {Error} 401 - Unauthorized
- * @returns {Error} 403 - Not allowed to respond to this feedback
- * @returns {Error} 404 - Feedback not found
- * @returns {Error} 409 - Response already exists
+ * @swagger
+ * /api/feedback/{feedbackId}/respond:
+ *   post:
+ *     tags: [Feedback]
+ *     summary: Respond to feedback
+ *     description: Add a response to feedback. Only the recipient of the feedback can respond.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: feedbackId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: ID of the feedback to respond to
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - response
+ *             properties:
+ *               response:
+ *                 type: string
+ *                 minLength: 1
+ *                 maxLength: 1000
+ *                 example: Thank you for your feedback!
+ *     responses:
+ *       200:
+ *         description: Response added successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: string
+ *                 rating:
+ *                   type: integer
+ *                 comment:
+ *                   type: string
+ *                 response:
+ *                   type: string
+ *                 type:
+ *                   type: string
+ *                   enum: [seller, buyer]
+ *                 auctionId:
+ *                   type: string
+ *                 fromUserId:
+ *                   type: string
+ *                 toUserId:
+ *                   type: string
+ *                 createdAt:
+ *                   type: string
+ *                   format: date-time
+ *                 updatedAt:
+ *                   type: string
+ *                   format: date-time
+ *       400:
+ *         description: Invalid response text
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Not authorized to respond to this feedback
+ *       404:
+ *         description: Feedback not found
+ *       500:
+ *         description: Internal server error
  */
 router.post(
   '/:feedbackId/respond',
@@ -98,21 +376,125 @@ router.post(
 );
 
 /**
- * @route GET /api/feedback/sent/{userId}
- * @group Feedback - feedback management
- * @description Get feedback sent by a specific user.
- * @header {string} Authorization - Bearer token for authentication
- * @param {string} userId.path.required - ID of the user who sent the feedback
- * @param {string} type.query - Filter by feedback type (buyer/seller)
- * @param {string} sort.query - Sort field (createdAt, rating)
- * @param {string} order.query - Sort order (asc, desc)
- * @param {number} page.query - Page number for pagination
- * @param {number} limit.query - Number of items per page
- * @returns {object} 200 - List of feedback sent by the user
- * @returns {Error} 400 - Invalid user ID
- * @returns {Error} 401 - Unauthorized
- * @returns {Error} 403 - Forbidden
- * @returns {Error} 404 - User not found
+ * @swagger
+ * /api/feedback/sent/{userId}:
+ *   get:
+ *     tags: [Feedback]
+ *     summary: Get feedback sent by user
+ *     description: Retrieve all feedback sent by a specific user with filtering and pagination.
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: ID of the user who sent the feedback
+ *       - in: query
+ *         name: type
+ *         schema:
+ *           type: string
+ *           enum: [buyer, seller]
+ *         description: Filter by feedback type
+ *       - in: query
+ *         name: minRating
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 5
+ *         description: Filter by minimum rating (1-5)
+ *       - in: query
+ *         name: sort
+ *         schema:
+ *           type: string
+ *           enum: [createdAt, updatedAt, rating]
+ *           default: createdAt
+ *         description: Field to sort by
+ *       - in: query
+ *         name: order
+ *         schema:
+ *           type: string
+ *           enum: [asc, desc]
+ *           default: desc
+ *         description: Sort order
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 10
+ *         description: Number of items per page
+ *     responses:
+ *       200:
+ *         description: Feedback sent by user retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 pagination:
+ *                   type: object
+ *                   properties:
+ *                     page:
+ *                       type: integer
+ *                     limit:
+ *                       type: integer
+ *                     total:
+ *                       type: integer
+ *                     pages:
+ *                       type: integer
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                       rating:
+ *                         type: integer
+ *                       comment:
+ *                         type: string
+ *                       type:
+ *                         type: string
+ *                         enum: [seller, buyer]
+ *                       auction:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                           title:
+ *                             type: string
+ *                       toUser:
+ *                         type: object
+ *                         properties:
+ *                           id:
+ *                             type: string
+ *                           username:
+ *                             type: string
+ *                       response:
+ *                         type: string
+ *                       createdAt:
+ *                         type: string
+ *                         format: date-time
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Internal server error
  */
 router.get(
   '/sent/:userId',
