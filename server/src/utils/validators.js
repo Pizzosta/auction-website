@@ -148,8 +148,12 @@ export const feedbackQuerySchema = Joi.object({
   page: Joi.number().integer().min(1).default(1),
   limit: Joi.number().integer().min(1).max(100).default(10),
   sort: Joi.string()
-    .pattern(/^(rating|createdAt):(asc|desc)$/)
-    .default('createdAt:desc')
+    .valid('rating', 'createdAt', 'updatedAt')
+    .default('createdAt')
+    .optional(),
+  order: Joi.string()
+    .valid('asc', 'desc')
+    .default('desc')
     .optional(),
   type: Joi.string().valid('seller', 'buyer').optional(),
   auctionId: Joi.string().uuid({ version: 'uuidv4' }).optional(),

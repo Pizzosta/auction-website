@@ -47,8 +47,8 @@ const router = express.Router();
  *                 example: 5
  *               comment:
  *                 type: string
- *                 minLength: 10
- *                 maxLength: 1000
+ *                 minLength: 3
+ *                 maxLength: 500
  *                 example: Great seller, item as described!
  *               isAnonymous:
  *                 type: boolean
@@ -125,7 +125,14 @@ router.post('/', protect, validate(feedbackSchema.create, 'body'), createFeedbac
  *           type: integer
  *           minimum: 1
  *           maximum: 5
- *         description: Filter by minimum rating (1-5)
+ *         description: Filter by minimum rating
+ *       - in: query
+ *         name: maxRating
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 5
+ *         description: Maximum rating filter
  *       - in: query
  *         name: sort
  *         schema:
@@ -155,6 +162,23 @@ router.post('/', protect, validate(feedbackSchema.create, 'body'), createFeedbac
  *           maximum: 100
  *           default: 10
  *         description: Number of items per page
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Filter feedback from this date
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Filter feedback until this date
+ *       - in: query
+ *         name: fields
+ *         schema:
+ *           type: string
+ *         description: Comma-separated list of fields to include
  *     responses:
  *       200:
  *         description: Feedback retrieved successfully
@@ -404,7 +428,14 @@ router.post(
  *           type: integer
  *           minimum: 1
  *           maximum: 5
- *         description: Filter by minimum rating (1-5)
+ *         description: Filter by minimum rating
+ *       - in: query
+ *         name: maxRating
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 5
+ *         description: Filter by maximum rating
  *       - in: query
  *         name: sort
  *         schema:
@@ -434,6 +465,23 @@ router.post(
  *           maximum: 100
  *           default: 10
  *         description: Number of items per page
+ *  *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Filter feedback from this date
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Filter feedback until this date
+ *       - in: query
+ *         name: fields
+ *         schema:
+ *           type: string
+ *         description: Comma-separated list of fields to include
  *     responses:
  *       200:
  *         description: Feedback sent by user retrieved successfully
