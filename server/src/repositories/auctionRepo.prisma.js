@@ -84,8 +84,6 @@ export async function listAuctionsPrisma({
   }
 
   // Sort
-  let [field, order] = String(sort).split(':');
-  if (!field) field = 'createdAt';
   const allowedSortFields = new Set([
     'title',
     'description',
@@ -96,8 +94,15 @@ export async function listAuctionsPrisma({
     'createdAt',
     'bidCount',
   ]);
-  if (!allowedSortFields.has(field)) field = 'createdAt';
-  const orderBy = { [field]: order === 'asc' ? 'asc' : 'desc' };
+
+  // Validate and set default sort field
+  const field = allowedSortFields.has(sort) ? sort : 'createdAt';
+
+  // Validate and set default order direction
+  const orderDirection = order === 'asc' ? 'asc' : 'desc';
+
+  const orderBy = { [field]: orderDirection };
+
 
   // Execute queries
   const [count, auctions] = await Promise.all([
