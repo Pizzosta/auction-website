@@ -243,6 +243,10 @@ export const placeBidCore = async ({ auctionId, amount, actorId, io, socket }) =
               throw new AppError('AUCTION_NOT_FOUND', 'Auction not found', 404);
             }
 
+            if (auction.status !== 'active') {
+              throw new AppError('AUCTION_NOT_ACTIVE', 'Auction is not active', 400);
+            }
+
             if (auction.sellerId.toString() === actorId) {
               throw new AppError('BID_ON_OWN_AUCTION', 'You cannot bid on your own auction', 400);
             }
@@ -265,10 +269,6 @@ export const placeBidCore = async ({ auctionId, amount, actorId, io, socket }) =
             const minAllowedBid = Number(auction.currentPrice) + Number(auction.bidIncrement);
             if (Number(amount) < minAllowedBid) {
               throw new AppError('BID_TOO_LOW', `Bid must be at least ${auction.bidIncrement} higher than current price (${auction.currentPrice})`, 400, { currentPrice: auction.currentPrice, bidIncrement: auction.bidIncrement, minAllowedBid });
-            }
-
-            if (auction.status !== 'active') {
-              throw new AppError('AUCTION_NOT_ACTIVE', 'Auction is not active', 400);
             }
 
             const now = new Date();
