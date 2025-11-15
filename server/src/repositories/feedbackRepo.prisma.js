@@ -91,14 +91,12 @@ export async function listFeedbackPrisma({
 
     // Feedback RECEIVED by user (they are the seller being rated)
     if (toUserId) {
-        where.toUserId = toUserId;
-        //where.type = 'seller'; // received feedback
+        where.toUserId = toUserId; // received feedback
     }
 
     // Feedback SENT by user (they are the buyer giving feedback)
     if (fromUserId) {
-        where.fromUserId = fromUserId;
-        //where.type = 'buyer'; // sent feedback
+        where.fromUserId = fromUserId; // sent feedback
     }
 
     if (type && ['seller', 'buyer'].includes(type)) {
@@ -123,91 +121,96 @@ export async function listFeedbackPrisma({
     const orderDirection = order === 'asc' ? 'asc' : 'desc';
     const orderBy = { [sortField]: orderDirection };
 
+    // Default relations to include
+    const includeRelations = {
+        fromUser: {
+            select: {
+                id: true,
+                username: true,
+                profilePicture: true,
+                isDeleted: true
+            }
+        },
+        toUser: {
+            select: {
+                id: true,
+                username: true,
+                profilePicture: true,
+                isDeleted: true
+            }
+        },
+        auction: {
+            select: {
+                id: true,
+                title: true,
+                images: true,
+                isDeleted: true
+            }
+        }
+    }
+
     // Query options
     const queryOptions = {
         where,
         orderBy,
         skip,
         take,
-        include: {
-            fromUser: {
-                select: {
-                    id: true,
-                    username: true,
-                    profilePicture: true,
-                    isDeleted: true
-                }
-            },
-            toUser: {
-                select: {
-                    id: true,
-                    username: true,
-                    profilePicture: true,
-                    isDeleted: true
-                }
-            },
-            auction: {
-                select: {
-                    id: true,
-                    title: true,
-                    images: true
-                }
-            }
-        }
+        include: includeRelations
     };
 
-    // Handle fields selection
     if (fields && fields.length > 0) {
         const fieldSet = new Set(fields.map(f => f.trim()));
 
-        // Delete the default 'include' object
         delete queryOptions.include;
+        queryOptions.select = { id: true };
 
-        // Initialize the 'select' object
-        queryOptions.select = {
-            id: true // Always include the ID for consistency
-        };
-
-        // Iterate over the main feedback model fields
         const mainFields = ['rating', 'comment', 'type', 'isAnonymous', 'response', 'createdAt', 'updatedAt'];
+        const relationFields = ['fromUser', 'toUser', 'auction'];
+
+        // 1. Process Main Fields (simple inclusion)
         mainFields.forEach(field => {
             if (fieldSet.has(field)) {
                 queryOptions.select[field] = true;
             }
         });
 
-        // Handle nested relationship fields (fromUser, toUser and auction)
-        if (fieldSet.has('fromUser')) {
-            queryOptions.select.fromUser = {
-                select: {
-                    id: true,
-                    username: true,
-                    profilePicture: true,
-                    isDeleted: true
-                }
-            };
-        }
+        // 2. Process Relationships (must check for both parent field and specific nested fields)
+        relationFields.forEach(parentField => {
+            // Find all fields requested for this relationship (e.g., 'auction', 'auction.id', 'auction.title')
+            const requestedNestedFields = fields.filter(f => f.startsWith(parentField));
 
-        if (fieldSet.has('toUser')) {
-            queryOptions.select.toUser = {
-                select: {
-                    id: true,
-                    username: true,
-                    profilePicture: true,
-                    isDeleted: true
-                }
-            };
-        }
+            if (requestedNestedFields.length > 0) {
+                // Get the default select structure for this relation
+                const defaultRelationSelect = includeRelations[parentField].select;
 
-        if (fieldSet.has('auction')) {
-            queryOptions.select.auction = {
-                select: {
-                    id: true,
-                    title: true,
-                    images: true
+                // Check if the full parent object was requested (e.g., fields=auction)
+                const parentRequested = fieldSet.has(parentField);
+
+                if (parentRequested) {
+                    // If parent requested, use the full default select
+                    queryOptions.select[parentField] = includeRelations[parentField];
+                } else {
+                    // If only specific nested fields were requested (e.g., 'auction.id'),
+                    // we must build a custom select for the nested object
+
+                    // Initialize the nested select object
+                    const nestedSelect = { id: true }; // Always include nested ID for context
+
+                    // Fields to check inside the nested model (excluding the parent field name)
+                    const nestedKeys = Object.keys(defaultRelationSelect).filter(k => k !== 'id' && k !== 'isDeleted');
+
+                    requestedNestedFields.forEach(fullKey => {
+                        const nestedKey = fullKey.split('.')[1]; // e.g., 'id' from 'auction.id'
+
+                        if (nestedKey && nestedKeys.includes(nestedKey)) {
+                            nestedSelect[nestedKey] = true;
+                        }
+                    });
+
+                    queryOptions.select[parentField] = { select: nestedSelect };
                 }
-            };
-        }
+            }
+        });
     }
 
     // Run the query
@@ -230,6 +233,7 @@ export async function listFeedbackPrisma({
         },
     };
 }
+
 
 /**
  * Get feedback summary for a user
@@ -306,6 +310,7 @@ export async function createFeedbackPrisma(data) {
                     id: true,
                     title: true,
                     images: true,
+                    isDeleted: true,
                 },
             },
         },
@@ -344,6 +349,7 @@ export async function getFeedbackByIdPrisma(feedbackId) {
     return prisma.feedback.findUnique({
         where: { id: feedbackId },
         include: {
+            //fromUser: true,
             auction: true,
             toUser: true,
         },
