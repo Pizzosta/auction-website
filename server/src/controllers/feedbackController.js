@@ -9,7 +9,8 @@ import {
     getExistingFeedback,
     updateUserRating
 } from '../repositories/feedbackRepo.prisma.js';
-import { processFeedbackForDisplay } from '../utils/format.js';
+import { findUserByIdPrisma } from '../repositories/userRepo.prisma.js';
+//import { processFeedbackForDisplay } from '../utils/format.js';
 import { AppError } from '../middleware/errorHandler.js';
 
 // Create feedback
@@ -17,6 +18,12 @@ export const createFeedback = async (req, res, next) => {
     try {
         const { auctionId, rating, comment, type, isAnonymous } = req.body;
         const fromUserId = req.user.id;
+
+        const fromUser = await findUserByIdPrisma(fromUserId, ['id'], { allowSensitive: false });
+
+        if (!fromUser) {
+            throw new AppError('USER_NOT_FOUND', 'User not found', 404);
+        }
 
         // Validate rating
         if (rating < 1 || rating > 5) {
@@ -84,9 +91,9 @@ export const createFeedback = async (req, res, next) => {
 };
 
 // Get feedback for a user
-export const getUserFeedback = async (req, res, next) => {
+export const getReceivedFeedback = async (req, res, next) => {
     try {
-        const { userId } = req.params;
+        const userId = req.user.id;
         const {
             type,
             page = 1,
@@ -100,8 +107,14 @@ export const getUserFeedback = async (req, res, next) => {
             fields
         } = req.query;
 
+        const user = await findUserByIdPrisma(userId, ['id'], { allowSensitive: false });
+
+        if (!user) {
+            throw new AppError('USER_NOT_FOUND', 'User not found', 404);
+        }
+
         const result = await listFeedbackPrisma({
-            userId,
+            toUserId: userId,
             type,
             page,
             limit,
@@ -114,18 +127,16 @@ export const getUserFeedback = async (req, res, next) => {
             fields: fields ? fields.split(',').map(f => f.trim()) : undefined
         });
 
-        // Process feedback to handle deleted users
-        const processedData = processFeedbackForDisplay(result.data);
-
         res.status(200).json({
             status: 'success',
             pagination: result.pagination,
-            data: processedData,
+            data: result.data,
         });
     } catch (error) {
         logger.error('Error fetching feedback', {
             error: error.message,
             stack: error.stack,
+            userId: req.user?.id,
         });
         next(error);
     }
@@ -137,6 +148,16 @@ export const respondToFeedback = async (req, res, next) => {
         const { feedbackId } = req.params;
         const { response } = req.body;
         const userId = req.user.id;
+
+        const user = await findUserByIdPrisma(userId, ['id'], { allowSensitive: false });
+
+        if (!user) {
+            throw new AppError('USER_NOT_FOUND', 'User not found', 404);
+        }
+
+        if(!response){
+            throw new AppError('RESPONSE_REQUIRED', 'Response is required', 400);
+        }
 
         const feedback = await getFeedbackByIdPrisma(feedbackId);
 
@@ -155,29 +176,15 @@ export const respondToFeedback = async (req, res, next) => {
         logger.error('Error responding to feedback', {
             error: error.message,
             stack: error.stack,
+            userId: req.user?.id,
         });
         next(error);
     }
 };
 
-// Get feedback summary for a user
-export const getFeedbackSummary = async (req, res, next) => {
+export const getSentFeedback = async (req, res, next) => {
     try {
-        const { userId } = req.params;
-        const summary = await getFeedbackSummaryPrisma(userId);
-        res.json(summary);
-    } catch (error) {
-        logger.error('Error fetching feedback summary', {
-            error: error.message,
-            stack: error.stack,
-        });
-        next(error);
-    }
-};
-
-export const getFeedbackSentByUser = async (req, res, next) => {
-    try {
-        const { userId } = req.params;
+        const userId = req.user.id;
         const {
             type,
             page = 1,
@@ -190,6 +197,12 @@ export const getFeedbackSentByUser = async (req, res, next) => {
             endDate,
             fields
         } = req.query;
+
+        const user = await findUserByIdPrisma(userId, ['id'], { allowSensitive: false });
+
+        if (!user) {
+            throw new AppError('USER_NOT_FOUND', 'User not found', 404);
+        }
 
         const result = await listFeedbackPrisma({
             fromUserId: userId,  // Filter by user who sent the feedback
@@ -214,8 +227,30 @@ export const getFeedbackSentByUser = async (req, res, next) => {
         logger.error('Error fetching feedback sent by user', {
             error: error.message,
             stack: error.stack,
-            userId: req.params.userId,
-            user: req.user?.id
+            userId: req.user?.id
+        });
+        next(error);
+    }
+};
+
+// Get feedback summary for a user
+export const getFeedbackSummary = async (req, res, next) => {
+    try {
+        const userId = req.user.id;
+
+        const user = await findUserByIdPrisma(userId, ['id'], { allowSensitive: false });
+
+        if (!user) {
+            throw new AppError('USER_NOT_FOUND', 'User not found', 404);
+        }
+
+        const summary = await getFeedbackSummaryPrisma(userId);
+        res.json(summary);
+    } catch (error) {
+        logger.error('Error fetching feedback summary', {
+            error: error.message,
+            stack: error.stack,
+            userId: req.user?.id,
         });
         next(error);
     }

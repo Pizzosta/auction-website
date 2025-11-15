@@ -4,10 +4,10 @@ import { validate } from '../middleware/validationMiddleware.js';
 import { idSchema, feedbackSchema, feedbackQuerySchema } from '../utils/validators.js';
 import {
   createFeedback,
-  getUserFeedback,
+  getReceivedFeedback,
   respondToFeedback,
   getFeedbackSummary,
-  getFeedbackSentByUser,
+  getSentFeedback,
 } from '../controllers/feedbackController.js';
 
 const router = express.Router();
@@ -98,21 +98,14 @@ router.post('/', protect, validate(feedbackSchema.create, 'body'), createFeedbac
 
 /**
  * @swagger
- * /api/feedback/user/{userId}:
+ * /api/feedback/received:
  *   get:
  *     tags: [Feedback]
  *     summary: Get feedback received by user
- *     description: Retrieve all feedback received by a specific user with filtering and pagination.
+ *     description: Retrieve all feedback/reviews received by a specific user as a seller with filtering and pagination.
  *     security:
  *       - bearerAuth: []
  *     parameters:
- *       - in: path
- *         name: userId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *         description: ID of the user to get feedback for
  *       - in: query
  *         name: type
  *         schema:
@@ -178,7 +171,8 @@ router.post('/', protect, validate(feedbackSchema.create, 'body'), createFeedbac
  *         name: fields
  *         schema:
  *           type: string
- *         description: Comma-separated list of fields to include
+ *           example: "rating,comment,fromUser.username,auction.title"
+ *         description: Comma-separated list of fields to include in the response. Supports nested fields using dot notation.
  *     responses:
  *       200:
  *         description: Feedback retrieved successfully
@@ -242,30 +236,21 @@ router.post('/', protect, validate(feedbackSchema.create, 'body'), createFeedbac
  *         description: Internal server error
  */
 router.get(
-  '/user/:userId',
+  '/received',
   protect,
-  validate(idSchema('userId'), 'params'),
   validate(feedbackQuerySchema, 'query'),
-  getUserFeedback
+  getReceivedFeedback
 );
 
 /**
  * @swagger
- * /api/feedback/summary/{userId}:
+ * /api/feedback/summary:
  *   get:
  *     tags: [Feedback]
  *     summary: Get feedback summary for user
  *     description: Get aggregated feedback statistics including average rating and rating distribution
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: userId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *         description: ID of the user to get summary for
  *     responses:
  *       200:
  *         description: Feedback summary retrieved successfully
@@ -316,7 +301,7 @@ router.get(
  *       500:
  *         description: Internal server error
  */
-router.get('/summary/:userId', protect, validate(idSchema('userId'), 'params'), getFeedbackSummary);
+router.get('/summary', protect, getFeedbackSummary);
 
 /**
  * @swagger
@@ -401,21 +386,14 @@ router.post(
 
 /**
  * @swagger
- * /api/feedback/sent/{userId}:
+ * /api/feedback/sent:
  *   get:
  *     tags: [Feedback]
  *     summary: Get feedback sent by user
- *     description: Retrieve all feedback sent by a specific user with filtering and pagination.
+ *     description: Retrieve all feedback/reviews sent by a specific user as a buyer with filtering and pagination.
  *     security:
  *       - bearerAuth: []
  *     parameters:
- *       - in: path
- *         name: userId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *         description: ID of the user who sent the feedback
  *       - in: query
  *         name: type
  *         schema:
@@ -465,7 +443,7 @@ router.post(
  *           maximum: 100
  *           default: 10
  *         description: Number of items per page
- *  *       - in: query
+ *       - in: query
  *         name: startDate
  *         schema:
  *           type: string
@@ -481,7 +459,8 @@ router.post(
  *         name: fields
  *         schema:
  *           type: string
- *         description: Comma-separated list of fields to include
+ *           example: "rating,comment,fromUser.username,auction.title"
+ *         description: Comma-separated list of fields to include in the response. Supports nested fields using dot notation.
  *     responses:
  *       200:
  *         description: Feedback sent by user retrieved successfully
@@ -545,11 +524,10 @@ router.post(
  *         description: Internal server error
  */
 router.get(
-  '/sent/:userId',
+  '/sent',
   protect,
-  validate(idSchema('userId'), 'params'),
   validate(feedbackQuerySchema, 'query'),
-  getFeedbackSentByUser
+  getSentFeedback
 );
 
 export default router;

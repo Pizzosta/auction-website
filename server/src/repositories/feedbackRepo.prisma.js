@@ -69,7 +69,7 @@ export async function updateUserRating(userId) {
  * @returns {Promise<Object>} - Object containing feedback items and pagination info
  */
 export async function listFeedbackPrisma({
-    userId,
+    toUserId,
     fromUserId,
     type,
     page = 1,
@@ -86,22 +86,29 @@ export async function listFeedbackPrisma({
     const take = Math.min(Math.max(1, parseInt(limit)), 100);
     const skip = (pageNum - 1) * take;
 
-    // Build where clause
+    // Build where clause 
     const where = {};
-    if (userId) where.toUserId = userId;  // For received feedback
-    if (fromUserId) where.fromUserId = fromUserId;  // For sent feedback
+
+    // Feedback RECEIVED by user (they are the seller being rated)
+    if (toUserId) {
+        where.toUserId = toUserId;
+        //where.type = 'seller'; // received feedback
+    }
+
+    // Feedback SENT by user (they are the buyer giving feedback)
+    if (fromUserId) {
+        where.fromUserId = fromUserId;
+        //where.type = 'buyer'; // sent feedback
+    }
 
     if (type && ['seller', 'buyer'].includes(type)) {
         where.type = type;
     }
 
-    if (minRating !== undefined) {
-        where.rating = { gte: parseInt(minRating) };
-    }
-
-    if (maxRating !== undefined) {
-        // If rating filter already exists, merge; otherwise, create new.
-        where.rating = where.rating ? { ...where.rating, lte: parseInt(maxRating) } : { lte: parseInt(maxRating) };
+    if (minRating !== undefined || maxRating !== undefined) {
+        where.rating = {};
+        if (minRating !== undefined) where.rating.gte = parseInt(minRating);
+        if (maxRating !== undefined) where.rating.lte = parseInt(maxRating);
     }
 
     if (startDate || endDate) {
@@ -110,94 +117,102 @@ export async function listFeedbackPrisma({
         if (endDate) where.createdAt.lte = new Date(endDate);
     }
 
-    // Sort
-    const allowedSortFields = new Set([
-        'rating',
-        'createdAt',
-        'updatedAt'
-    ]);
-    
-    // Validate and set default sort field
+    // Sorting
+    const allowedSortFields = new Set(['rating', 'createdAt', 'updatedAt']);
     const sortField = allowedSortFields.has(sort) ? sort : 'createdAt';
-    
-    // Validate and set default order direction
     const orderDirection = order === 'asc' ? 'asc' : 'desc';
-    
     const orderBy = { [sortField]: orderDirection };
 
-    // Build select object for fields
-    const select = {
-        fromUser: {
-            select: {
-                id: true,
-                username: true,
-                profilePicture: true,
-                isDeleted: true,
+    // Query options
+    const queryOptions = {
+        where,
+        orderBy,
+        skip,
+        take,
+        include: {
+            fromUser: {
+                select: {
+                    id: true,
+                    username: true,
+                    profilePicture: true,
+                    isDeleted: true
+                }
             },
-        },
-        auction: {
-            select: {
-                id: true,
-                title: true,
-                images: true,
+            toUser: {
+                select: {
+                    id: true,
+                    username: true,
+                    profilePicture: true,
+                    isDeleted: true
+                }
             },
-        },
-        id: true,
-        rating: true,
-        comment: true,
-        type: true,
-        isAnonymous: true,
-        response: true,
-        createdAt: true,
-        updatedAt: true,
+            auction: {
+                select: {
+                    id: true,
+                    title: true,
+                    images: true
+                }
+            }
+        }
     };
 
-    // If specific fields are requested, filter the select object
-    if (fields && Array.isArray(fields)) {
-        const fieldSet = new Set(fields);
-        const filteredSelect = {};
+    // Handle fields selection
+    if (fields && fields.length > 0) {
+        const fieldSet = new Set(fields.map(f => f.trim()));
 
-        Object.entries(select).forEach(([key, value]) => {
-            if (fieldSet.has(key) || key === 'id') { // Always include id
-                filteredSelect[key] = value;
+        // Delete the default 'include' object
+        delete queryOptions.include;
+
+        // Initialize the 'select' object
+        queryOptions.select = {
+            id: true // Always include the ID for consistency
+        };
+
+        // Iterate over the main feedback model fields
+        const mainFields = ['rating', 'comment', 'type', 'isAnonymous', 'response', 'createdAt', 'updatedAt'];
+        mainFields.forEach(field => {
+            if (fieldSet.has(field)) {
+                queryOptions.select[field] = true;
             }
         });
 
-        // Special handling for nested fields
+        // Handle nested relationship fields (fromUser, toUser and auction)
         if (fieldSet.has('fromUser')) {
-            filteredSelect.fromUser = select.fromUser;
-        }
-        if (fieldSet.has('auction')) {
-            filteredSelect.auction = select.auction;
+            queryOptions.select.fromUser = {
+                select: {
+                    id: true,
+                    username: true,
+                    profilePicture: true,
+                    isDeleted: true
+                }
+            };
         }
 
-        Object.assign(select, filteredSelect);
+        if (fieldSet.has('toUser')) {
+            queryOptions.select.toUser = {
+                select: {
+                    id: true,
+                    username: true,
+                    profilePicture: true,
+                    isDeleted: true
+                }
+            };
+        }
+
+        if (fieldSet.has('auction')) {
+            queryOptions.select.auction = {
+                select: {
+                    id: true,
+                    title: true,
+                    images: true
+                }
+            };
+        }
     }
 
+    // Run the query
     const [feedbacks, count] = await Promise.all([
-        prisma.feedback.findMany({
-            where,
-            include: {
-                fromUser: {
-                    select: {
-                        id: true,
-                        username: true,
-                        profilePicture: true,
-                        isDeleted: true
-                    }
-                },
-                auction: {
-                    select: {
-                        id: true,
-                        title: true,
-                        images: true
-                    }
-                }
-            },
-            orderBy,
-            skip,
-            take,
-        }),
+        prisma.feedback.findMany(queryOptions),
         prisma.feedback.count({ where }),
     ]);
 
@@ -207,14 +222,13 @@ export async function listFeedbackPrisma({
         data: feedbacks,
         pagination: {
             currentPage: pageNum,
-            totalFeedbacks: count,
+            total: count,
             totalPages,
             limit: take,
             hasNext: pageNum < totalPages,
             hasPrev: pageNum > 1,
         },
     };
-
 }
 
 /**
