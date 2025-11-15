@@ -25,11 +25,6 @@ export const createFeedback = async (req, res, next) => {
             throw new AppError('USER_NOT_FOUND', 'User not found', 404);
         }
 
-        // Validate rating
-        if (rating < 1 || rating > 5) {
-            throw new AppError('INVALID_RATING', 'Rating must be between 1 and 5', 400);
-        }
-
         // Get auction with related data using repository
         const auction = await getAuctionForFeedback(auctionId);
 
@@ -38,8 +33,8 @@ export const createFeedback = async (req, res, next) => {
         }
 
         // Validate auction status
-        if (auction.status !== 'sold') {
-            throw new AppError('AUCTION_NOT_SOLD', 'Feedback can only be left for sold auctions', 400);
+        if (auction.status !== 'completed') {
+            throw new AppError('AUCTION_NOT_COMPLETED', 'Feedback can only be left for completed auctions', 400);
         }
 
         // Determine who is giving feedback to whom
@@ -56,6 +51,11 @@ export const createFeedback = async (req, res, next) => {
             }
         } else {
             throw new AppError('INVALID_FEEDBACK_TYPE', 'Invalid feedback type', 400);
+        }
+
+        // Validate rating
+        if (rating < 1 || rating > 5) {
+            throw new AppError('INVALID_RATING', 'Rating must be between 1 and 5', 400);
         }
 
         // Check if feedback already exists using repository
@@ -124,7 +124,7 @@ export const getReceivedFeedback = async (req, res, next) => {
             maxRating: maxRating ? parseInt(maxRating) : undefined,
             startDate,
             endDate,
-            fields: fields ? fields.split(',').map(f => f.trim()) : undefined
+            fields: fields?.split(',').map(f => f.trim())
         });
 
         res.status(200).json({
@@ -155,10 +155,6 @@ export const respondToFeedback = async (req, res, next) => {
             throw new AppError('USER_NOT_FOUND', 'User not found', 404);
         }
 
-        if(!response){
-            throw new AppError('RESPONSE_REQUIRED', 'Response is required', 400);
-        }
-
         const feedback = await getFeedbackByIdPrisma(feedbackId);
 
         if (!feedback) {
@@ -168,6 +164,10 @@ export const respondToFeedback = async (req, res, next) => {
         // Only the user who received the feedback can respond
         if (feedback.toUserId !== userId) {
             throw new AppError('NOT_AUTHORIZED', 'Not authorized to respond to this feedback', 403);
+        }
+
+        if(!response){
+            throw new AppError('RESPONSE_REQUIRED', 'Response is required', 400);
         }
 
         const updatedFeedback = await respondToFeedbackPrisma(feedbackId, response);
@@ -215,7 +215,7 @@ export const getSentFeedback = async (req, res, next) => {
             maxRating: maxRating ? parseInt(maxRating) : undefined,
             startDate,
             endDate,
-            fields: fields ? fields.split(',').map(f => f.trim()) : undefined
+            fields: fields?.split(',').map(f => f.trim())
         });
 
         res.status(200).json({
