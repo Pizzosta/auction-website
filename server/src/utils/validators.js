@@ -160,7 +160,7 @@ export const feedbackQuerySchema = Joi.object({
   fromUserId: Joi.string().uuid({ version: 'uuidv4' }).optional(),
   toUserId: Joi.string().uuid({ version: 'uuidv4' }).optional(),
   fields: Joi.string()
-    .pattern(/^[a-zA-Z0-9_, ]*$/)
+    .pattern(/^[a-zA-Z0-9_,. ]*$/)
     .optional(),
   minRating: Joi.number().integer().min(1).max(5).optional(),
   maxRating: Joi.number().integer().min(1).max(5).optional(),
@@ -656,9 +656,6 @@ export const feedbackSchema = {
       'string.empty': 'Comment is required',
       'string.min': 'Comment must be at least 3 characters long',
       'string.max': 'Comment cannot exceed 500 characters',
-    }),
-    type: Joi.string().valid('seller', 'buyer').required().messages({
-      'any.only': 'Type must be either seller or buyer',
     }),
     isAnonymous: Joi.boolean().default(false),
   }),

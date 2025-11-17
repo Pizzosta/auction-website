@@ -10,18 +10,18 @@ import {
     updateUserRating
 } from '../repositories/feedbackRepo.prisma.js';
 import { findUserByIdPrisma } from '../repositories/userRepo.prisma.js';
-//import { processFeedbackForDisplay } from '../utils/format.js';
+import { processFeedbackForDisplay } from '../utils/format.js';
 import { AppError } from '../middleware/errorHandler.js';
 
 // Create feedback
 export const createFeedback = async (req, res, next) => {
     try {
-        const { auctionId, rating, comment, type, isAnonymous } = req.body;
-        const fromUserId = req.user.id;
+        const { auctionId, rating, comment, isAnonymous } = req.body;
+        const userId = req.user.id;
 
-        const fromUser = await findUserByIdPrisma(fromUserId, ['id'], { allowSensitive: false });
+        const user = await findUserByIdPrisma(userId, ['id'], { allowSensitive: false });
 
-        if (!fromUser) {
+        if (!user) {
             throw new AppError('USER_NOT_FOUND', 'User not found', 404);
         }
 
@@ -37,20 +37,10 @@ export const createFeedback = async (req, res, next) => {
             throw new AppError('AUCTION_NOT_COMPLETED', 'Feedback can only be left for completed auctions', 400);
         }
 
-        // Determine who is giving feedback to whom
-        let toUserId;
-        if (type === 'seller') {
-            toUserId = auction.sellerId;
-            if (auction.winnerId !== fromUserId) {
-                throw new AppError('ONLY_WINNING_BIDDER_CAN_LEAVE_SELLER_FEEDBACK', 'Only the winning bidder can leave seller feedback', 403);
-            }
-        } else if (type === 'buyer') {
-            toUserId = auction.winnerId;
-            if (auction.sellerId !== fromUserId) {
-                throw new AppError('ONLY_SELLER_CAN_LEAVE_BUYER_FEEDBACK', 'Only the seller can leave buyer feedback', 403);
-            }
-        } else {
-            throw new AppError('INVALID_FEEDBACK_TYPE', 'Invalid feedback type', 400);
+        // Only the winner can leave feedback for the seller
+        const toUserId = auction.sellerId;
+        if (auction.winnerId !== userId) {
+            throw new AppError('NOT_AUTHORIZED', 'Only the winning bidder can leave feedback', 403);
         }
 
         // Validate rating
@@ -59,19 +49,18 @@ export const createFeedback = async (req, res, next) => {
         }
 
         // Check if feedback already exists using repository
-        const existingFeedback = await getExistingFeedback(auctionId, fromUserId, type);
+        const existingFeedback = await getExistingFeedback(auctionId, userId);
 
         if (existingFeedback) {
-            throw new AppError('FEEDBACK_ALREADY_SUBMITTED', 'Feedback already submitted for this auction', 400);
+            throw new AppError('FEEDBACK_ALREADY_SUBMITTED', 'Feedback already submitted for this auction', 409);
         }
 
         // Create feedback using repository
         const feedback = await createFeedbackPrisma({
             rating,
             comment,
-            type,
             auctionId,
-            fromUserId,
+            fromUserId: userId,
             toUserId,
             isAnonymous: !!isAnonymous
         });
@@ -95,7 +84,6 @@ export const getReceivedFeedback = async (req, res, next) => {
     try {
         const userId = req.user.id;
         const {
-            type,
             page = 1,
             limit = 10,
             sort = 'createdAt',
@@ -115,7 +103,6 @@ export const getReceivedFeedback = async (req, res, next) => {
 
         const result = await listFeedbackPrisma({
             toUserId: userId,
-            type,
             page,
             limit,
             sort,
@@ -161,6 +148,10 @@ export const respondToFeedback = async (req, res, next) => {
             throw new AppError('FEEDBACK_NOT_FOUND', 'Feedback not found', 404);
         }
 
+        if (feedback.response) {
+            throw new AppError('RESPONSE_ALREADY_EXISTS', 'A response already exists for this feedback', 409);
+        }
+
         // Only the user who received the feedback can respond
         if (feedback.toUserId !== userId) {
             throw new AppError('NOT_AUTHORIZED', 'Not authorized to respond to this feedback', 403);
@@ -186,7 +177,6 @@ export const getSentFeedback = async (req, res, next) => {
     try {
         const userId = req.user.id;
         const {
-            type,
             page = 1,
             limit = 10,
             sort = 'createdAt',
@@ -206,7 +196,6 @@ export const getSentFeedback = async (req, res, next) => {
 
         const result = await listFeedbackPrisma({
             fromUserId: userId,  // Filter by user who sent the feedback
-            type,
             page,
             limit,
             sort,
@@ -218,10 +207,12 @@ export const getSentFeedback = async (req, res, next) => {
             fields: fields?.split(',').map(f => f.trim())
         });
 
+        const processData = processFeedbackForDisplay(result.data);
+
         res.status(200).json({
             status: 'success',
             pagination: result.pagination,
-            data: result.data,
+            data: processData,
         });
     } catch (error) {
         logger.error('Error fetching feedback sent by user', {

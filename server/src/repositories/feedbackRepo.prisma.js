@@ -23,16 +23,14 @@ export async function getAuctionForFeedback(auctionId) {
  * Check if feedback already exists for the given auction and user
  * @param {string} auctionId - Auction ID
  * @param {string} fromUserId - User ID leaving feedback
- * @param {string} type - Feedback type ('seller' or 'buyer')
  * @returns {Promise<Object|null>} Existing feedback or null if not found
  */
-export async function getExistingFeedback(auctionId, fromUserId, type) {
+export async function getExistingFeedback(auctionId, fromUserId) {
     return prisma.feedback.findUnique({
         where: {
-            auctionId_fromUserId_type: {
+            auctionId_fromUserId: {
                 auctionId,
                 fromUserId,
-                type,
             },
         },
     });
@@ -62,16 +60,22 @@ export async function updateUserRating(userId) {
 /**
  * List feedback with pagination and filtering
  * @param {Object} options - Query options
- * @param {string} options.userId - User ID to filter feedback for
- * @param {string} [options.type] - Feedback type ('seller' or 'buyer')
+ * @param {string} [options.toUserId] - User ID who received the feedback
+ * @param {string} [options.fromUserId] - User ID who gave the feedback
  * @param {number} [options.page=1] - Page number
  * @param {number} [options.limit=10] - Items per page
+ * @param {string} [options.sort='createdAt'] - Field to sort by
+ * @param {string} [options.order='desc'] - Sort order ('asc' or 'desc')
+ * @param {number} [options.minRating] - Minimum rating to filter by
+ * @param {number} [options.maxRating] - Maximum rating to filter by
+ * @param {string} [options.startDate] - Start date for filtering
+ * @param {string} [options.endDate] - End date for filtering
+ * @param {string[]} [options.fields] - Fields to include in the response
  * @returns {Promise<Object>} - Object containing feedback items and pagination info
  */
 export async function listFeedbackPrisma({
     toUserId,
     fromUserId,
-    type,
     page = 1,
     limit = 10,
     sort = 'createdAt',
@@ -97,10 +101,6 @@ export async function listFeedbackPrisma({
     // Feedback SENT by user (they are the buyer giving feedback)
     if (fromUserId) {
         where.fromUserId = fromUserId; // sent feedback
-    }
-
-    if (type && ['seller', 'buyer'].includes(type)) {
-        where.type = type;
     }
 
     if (minRating !== undefined || maxRating !== undefined) {
@@ -164,17 +164,17 @@ export async function listFeedbackPrisma({
         delete queryOptions.include;
         queryOptions.select = { id: true };
 
-        const mainFields = ['rating', 'comment', 'type', 'isAnonymous', 'response', 'createdAt', 'updatedAt'];
+        const mainFields = ['rating', 'comment', 'isAnonymous', 'response', 'createdAt', 'updatedAt'];
         const relationFields = ['fromUser', 'toUser', 'auction'];
 
-        // 1. Process Main Fields (simple inclusion)
+        // Process Main Fields (simple inclusion)
         mainFields.forEach(field => {
             if (fieldSet.has(field)) {
                 queryOptions.select[field] = true;
             }
         });
 
-        // 2. Process Relationships (must check for both parent field and specific nested fields)
+        // Process Relationships (must check for both parent field and specific nested fields)
         relationFields.forEach(parentField => {
             // Find all fields requested for this relationship (e.g., 'auction', 'auction.id', 'auction.title')
             const requestedNestedFields = fields.filter(f => f.startsWith(parentField));
@@ -190,9 +190,6 @@ export async function listFeedbackPrisma({
                     // If parent requested, use the full default select
                     queryOptions.select[parentField] = includeRelations[parentField];
                 } else {
-                    // If only specific nested fields were requested (e.g., 'auction.id'),
-                    // we must build a custom select for the nested object
-
                     // Initialize the nested select object
                     const nestedSelect = { id: true }; // Always include nested ID for context
 
@@ -241,22 +238,22 @@ export async function listFeedbackPrisma({
  * @returns {Promise<Object>} - Object containing feedback statistics
  */
 export async function getFeedbackSummaryPrisma(userId) {
-    const [sellerFeedback, buyerFeedback] = await Promise.all([
+    const [receivedFeedback, givenFeedback] = await Promise.all([
+        // Ratings RECEIVED (toUserId = the user)
         prisma.feedback.groupBy({
             by: ['rating'],
             where: {
                 toUserId: userId,
-                type: 'seller',
             },
             _count: {
                 rating: true,
             },
         }),
+        // Ratings GIVEN (fromUserId = the user)
         prisma.feedback.groupBy({
             by: ['rating'],
             where: {
-                toUserId: userId,
-                type: 'buyer',
+                fromUserId: userId,
             },
             _count: {
                 rating: true,
@@ -267,24 +264,33 @@ export async function getFeedbackSummaryPrisma(userId) {
     const calculateStats = (feedback) => {
         const total = feedback.reduce((sum, item) => sum + item._count.rating, 0);
         const average =
-            feedback.length > 0
+            feedback.length > 0 && total > 0
                 ? feedback.reduce((sum, item) => sum + item.rating * item._count.rating, 0) / total
                 : 0;
 
+        // Create the 5-point distribution (5, 4, 3, 2, 1)
         const distribution = Array(5)
             .fill(0)
             .map((_, i) => {
                 const rating = 5 - i;
                 const count = feedback.find((f) => f.rating === rating)?._count.rating || 0;
-                return { rating, count, percentage: total > 0 ? Math.round((count / total) * 100) : 0 };
+                return { 
+                    rating, 
+                    count, 
+                    percentage: total > 0 ? Math.round((count / total) * 100) : 0 
+                };
             });
 
-        return { total, average, distribution };
+        return { 
+            total, 
+            average: parseFloat(average.toFixed(2)), // Format average to 2 decimal places
+            distribution 
+        };
     };
 
     return {
-        seller: calculateStats(sellerFeedback),
-        buyer: calculateStats(buyerFeedback),
+        receivedAsSeller: calculateStats(receivedFeedback ?? []), 
+        givenAsBuyer: calculateStats(givenFeedback ?? []),
     };
 }
 
@@ -298,6 +304,14 @@ export async function createFeedbackPrisma(data) {
         data,
         include: {
             fromUser: {
+                select: {
+                    id: true,
+                    username: true,
+                    profilePicture: true,
+                    isDeleted: true,
+                },
+            },
+            toUser: {
                 select: {
                     id: true,
                     username: true,
@@ -349,27 +363,9 @@ export async function getFeedbackByIdPrisma(feedbackId) {
     return prisma.feedback.findUnique({
         where: { id: feedbackId },
         include: {
-            //fromUser: true,
+            fromUser: true,
             auction: true,
             toUser: true,
         },
     });
-}
-
-/**
- * Get user's average rating
- * @param {string} userId - User ID
- * @returns {Promise<number>} - Average rating
- */
-export async function getUserAverageRatingPrisma(userId) {
-    const result = await prisma.feedback.aggregate({
-        where: { toUserId: userId },
-        _avg: { rating: true },
-        _count: true,
-    });
-
-    return {
-        average: result._avg.rating || 0,
-        count: result._count,
-    };
 }
