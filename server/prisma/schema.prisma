@@ -208,7 +208,6 @@ model Feedback {
   id          String   @id @default(uuid())
   rating      Int
   comment     String?
-  type        String // 'seller' or 'buyer'
   isAnonymous Boolean  @default(false)
   response    String?
   createdAt   DateTime @default(now())
@@ -219,17 +218,15 @@ model Feedback {
 
   auction  Auction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
   fromUser User    @relation("FeedbackGiven", fields: [fromUserId], references: [id], onDelete: Cascade)
-  toUser   User?    @relation("FeedbackReceived", fields: [toUserId], references: [id], onDelete: SetNull)
+  toUser   User?   @relation("FeedbackReceived", fields: [toUserId], references: [id], onDelete: SetNull)
 
-  @@unique([auctionId, fromUserId, type])
+  @@unique([auctionId, fromUserId])
   @@index([toUserId])
   @@index([fromUserId])
   @@index([auctionId])
   @@index([rating])
-  @@index([type])
   @@index([createdAt])
-  @@index([toUserId, type])
-  @@index([toUserId, rating, type])
+  @@index([toUserId, rating])
 }
 
 enum AuctionStatus {
