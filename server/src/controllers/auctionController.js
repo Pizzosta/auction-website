@@ -499,6 +499,10 @@ export const confirmPayment = async (req, res, next) => {
       throw new AppError('AUCTION_NOT_FOUND', 'Auction not found', 404);
     }
 
+    if (auction.status !== 'sold') {
+      throw new AppError('AUCTION_NOT_SOLD', 'Auction is not sold yet', 400);
+    }
+
     // Only the seller or admin can confirm payment
     if (auction.sellerId !== userId && user.role !== 'admin') {
       throw new AppError('NOT_AUTHORIZED_TO_CONFIRM_PAYMENT', 'Not authorized to confirm payment for this auction', 403);
