@@ -76,30 +76,43 @@ export const parseDuration = (val, defaultMs = 10 * 60 * 1000) => {
   return num * (multipliers[unit] || 1);
 }
 
-// Process feedback to handle deleted users
+/**
+ * Processes feedback objects (single or array) for display in the UI.
+ * Handles making feedback anonymous if the sender is deleted or missing.
+ * @param {object|object[]} feedback - Single feedback object or an array of objects.
+ * @returns {object|object[]} The processed feedback data.
+ */
 export const processFeedbackForDisplay = (feedback) => {
+  const ANONYMOUS_USER = {
+    id: null,
+    username: 'Anonymous',
+    profilePicture: null
+  };
+  const DELETED_USER_SUFFIX = ' [User deleted]';
+
   const processedSingleFeedback = (item) => {
     if (!item) return item;
 
-    // If fromUser is null or user is soft-deleted, set isAnonymous to true
-    if (!item.fromUser || item.fromUser.isDeleted) {
+    // Check if fromUser is missing OR soft-deleted
+    const isDeleted = item.fromUser?.isDeleted === true;
+    const isMissing = !item.fromUser;
+
+    if (isDeleted || isMissing) {
       return {
         ...item,
-        isAnonymous: true,
-        fromUser: {
-          id: null,
-          username: 'Anonymous',
-          profilePicture: null
-        },
-        comment: feedback.comment ? `${feedback.comment} [User deleted]` : null,
+        isAnonymous: true, // Override regardless of original value
+        fromUser: ANONYMOUS_USER,
+        // Only modify comment if user was soft-deleted (not just missing)
+        comment: isDeleted ? `${item.comment || ''}${DELETED_USER_SUFFIX}` : item.comment,
       };
     }
-    return item;
+    
+    return item; // Return unmodified if user exists
   };
 
   // Handle both arrays and single feedback objects
   if (Array.isArray(feedback)) {
-    return feedback.map(processFeedbackForDisplay);
+    return feedback.map(processedSingleFeedback);
   }
   return processedSingleFeedback(feedback);
 };
