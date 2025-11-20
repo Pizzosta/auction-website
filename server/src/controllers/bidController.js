@@ -3,8 +3,6 @@ import prisma from '../config/prisma.js';
 import logger from '../utils/logger.js';
 import { acquireLock } from '../utils/lock.js';
 import {
-  listBidsPrisma,
-  listBidsByAuctionPrisma,
   listAllBidsPrisma,
 } from '../repositories/bidRepo.prisma.js';
 import { addToQueue } from '../services/emailQueue.js';
@@ -432,12 +430,12 @@ export const deleteBid = async (req, res, next) => {
       throw new AppError('UNAUTHORIZED', 'Only admins can permanently delete bids', 403);
     }
 
-    // Check if auction is ended or sold
-    if (['ended', 'sold', 'completed', 'cancelled'].includes(bid.auction.status)) {
+    // Check if auction is sold or completed or cancelled
+    if (['sold', 'completed', 'cancelled'].includes(bid.auction.status)) {
       throw new AppError('UNAUTHORIZED', `Cannot delete bids on ${bid.auction.status} auctions`, 400);
     }
 
-    // Check if we're in the last 15 minutes of the auction
+    // Check if we're in the last 1 hour of the auction
     const now = new Date();
     const endTime = new Date(bid.auction.endDate);
     const OneHourInMs = 60 * 60 * 1000; // 1 hour in milliseconds
@@ -726,46 +724,58 @@ export const restoreBid = async (req, res, next) => {
 export const getBidsByAuction = async (req, res, next) => {
   try {
     const { auctionId } = req.params;
-    const { page = 1, limit = 10, sort = 'amount:desc', status } = req.query;
+    const {
+      page = 1,
+      limit = 10,
+      sort = 'createdAt',
+      order = 'desc',
+      status,
+      bidderId,
+      minAmount,
+      maxAmount,
+      startDate,
+      endDate,
+      fields
+    } = req.query;
 
     // Check if auction exists
-    const auctionExists = await prisma.auction.findUnique({
-      where: { id: auctionId },
-      select: { id: true },
+    const auction = await prisma.auction.findUnique({
+      where: { id: auctionId, isDeleted: false },
+      select: { id: true, status: true, sellerId: true },
     });
 
-    if (!auctionExists) {
+    if (!auction) {
       throw new AppError('AUCTION_NOT_FOUND', 'Auction not found', 404);
     }
 
+    const isAdmin = req.user?.role === 'admin';
+    const isSeller = req.user?.id === auction.sellerId;
+
     // Check if user has permission to see deleted bids
-    if ((status === 'cancelled' || status === 'all') && (!req.user || req.user.role !== 'admin')) {
-      throw new AppError('NOT_AUTHORIZED', 'Not authorized to view deleted bids', 403);
+    // Only admin OR the auction seller can see cancelled bids
+    if ((status === 'cancelled') && !isAdmin && !isSeller) {
+      throw new AppError('NOT_AUTHORIZED', 'Not authorized to view cancelled bids', 403);
     }
 
     // Use the repository to get paginated and filtered bids
-    const { bids, count, pageNum, take } = await listBidsByAuctionPrisma({
+    const { data: bids, pagination } = await listAllBidsPrisma({
       auctionId,
-      status,
       page: parseInt(page),
       limit: parseInt(limit),
       sort,
+      order,
+      status,
+      bidderId,
+      minAmount: minAmount ? parseFloat(minAmount) : undefined,
+      maxAmount: maxAmount ? parseFloat(maxAmount) : undefined,
+      startDate,
+      endDate,
+      fields: fields?.split(',').map(f => f.trim())
     });
-
-    const totalPages = Math.ceil(count / take);
-    const hasNext = pageNum < totalPages;
-    const hasPrev = pageNum > 1;
 
     res.status(200).json({
       status: 'success',
-      results: bids.length,
-      pagination: {
-        currentPage: pageNum,
-        total: count,
-        totalPages,
-        hasNext,
-        hasPrev,
-      },
+      pagination,
       data: {
         bids,
       },
@@ -782,157 +792,55 @@ export const getBidsByAuction = async (req, res, next) => {
 export const getMyBids = async (req, res, next) => {
   try {
     const {
-      status,
       page = 1,
       limit = 10,
-      sort = 'createdAt:desc',
-      highestBidderOnly = 'false',
-      winningBidsOnly = 'false'
+      sort = 'createdAt',
+      order = 'desc',
+      status,
+      auctionId,
+      minAmount,
+      maxAmount,
+      startDate,
+      endDate,
+      fields,
     } = req.query;
 
-    const { id: userId } = req.user;
-
-    // Check if user has permission to view cancelled bids
-    if ((status === 'cancelled' || status === 'all') && req.user.role !== 'admin') {
-      throw new AppError('NOT_AUTHORIZED', 'Not authorized to view cancelled bids', 403);
-    }
+    const userId = req.user.id;
 
     // First, get all the user's bids
-    const { bids, count, pageNum, take } = await listBidsPrisma({
+    const { data: bids, pagination } = await listAllBidsPrisma({
       bidderId: userId,
-      status,
       page: parseInt(page),
       limit: parseInt(limit),
       sort,
+      order,
+      status,
+      auctionId,
+      minAmount: minAmount ? parseFloat(minAmount) : undefined,
+      maxAmount: maxAmount ? parseFloat(maxAmount) : undefined,
+      startDate,
+      endDate,
+      fields: fields?.split(',').map(f => f.trim()),
     });
-
-    // Apply filters if needed
-    if (highestBidderOnly === 'true' || winningBidsOnly === 'true') {
-      // Get all auctions where the user has bids
-      const auctionIds = [...new Set(bids.map(bid => bid.auctionId))];
-
-      // Build the where clause based on filter type
-      const where = {
-        id: { in: auctionIds },
-        isDeleted: false
-      };
-
-      if (highestBidderOnly === 'true') {
-        // For highest bidder, check current highest bid
-        where.highestBid = { bidderId: userId };
-      } else if (winningBidsOnly === 'true') {
-        // For winning bids, check if auction ended and user is the winner
-        where.AND = [
-          { status: { in: ['ended', 'sold'] } },
-          { winnerId: userId }
-        ];
-      }
-
-      // Find matching auctions
-      const matchingAuctions = await prisma.auction.findMany({
-        where,
-        select: {
-          id: true,
-          highestBidId: true,
-          status: true,
-          winnerId: true
-        }
-      });
-
-      const matchingAuctionIds = new Set(
-        matchingAuctions.map(a => a.id)
-      );
-
-      // Filter bids based on the selected filter
-      if (highestBidderOnly === 'true') {
-        bids = bids.filter(bid => matchingAuctionIds.has(bid.auctionId));
-      } else if (winningBidsOnly === 'true') {
-        // For winning bids, only include bids that won the auction
-        const winningBidIds = new Set(
-          matchingAuctions.map(a => a.highestBidId).filter(Boolean)
-        );
-        bids = bids.filter(bid => winningBidIds.has(bid.id));
-      }
-
-      // Update count and pagination
-      count = bids.length;
-      const totalPages = Math.ceil(count / take);
-      pageNum = Math.min(pageNum, Math.max(1, totalPages));
-    }
-
-    const totalPages = Math.ceil(count / take);
-    const hasNext = pageNum < totalPages;
-    const hasPrev = pageNum > 1;
-
-    // Enhance bids with additional information
-    const enhancedBids = await Promise.all(
-      bids.map(async bid => {
-        // Get auction and highest bid in parallel for better performance
-        const [auction, highestBid] = await Promise.all([
-          prisma.auction.findUnique({
-            where: { id: bid.auctionId },
-            select: {
-              status: true,
-              endDate: true,
-              winnerId: true,
-              highestBidId: true,
-            },
-          }),
-          // Get the highest bid for this auction
-          prisma.bid.findFirst({
-            where: {
-              auctionId: bid.auctionId,
-              isDeleted: false
-            },
-            orderBy: { amount: 'desc' },
-            select: {
-              id: true,
-              bidderId: true,
-              amount: true
-            },
-          }),
-        ]);
-
-        const isActive = auction?.status === 'active' && new Date(auction?.endDate) > new Date();
-        const isEnded = auction ? ['ended', 'sold'].includes(auction.status) : false;
-
-        // User is winning if:
-        // 1. Auction is active AND they have the highest bid, OR
-        // 2. Auction has ended AND they are the winner
-        const isWinning = isActive
-          ? highestBid?.bidderId === bid.bidderId
-          : auction?.winnerId === bid.bidderId;
-
-        return {
-          ...bid,
-          isWinning,
-          auctionStatus: auction?.status,
-          timeRemaining:
-            isActive && auction?.endDate ? new Date(auction.endDate) - new Date() : null,
-          isActive,
-          isEnded,
-        };
-      })
-    );
-
+    
     res.status(200).json({
       status: 'success',
-      pagination: {
-        currentPage: pageNum,
-        totalPages,
-        totalCount: count,
-        hasNext,
-        hasPrev,
-      },
+      pagination,
       data: {
-        bids: enhancedBids,
+        bids,
       },
     });
   } catch (error) {
-    logger.error('Get my bids error:', { error: error.message, stack: error.stack });
+    logger.error('Error fetching my bids:', {
+      error: error.message,
+      stack: error.stack,
+      query: req.query,
+      userId: req.user.id,
+    });
     next(error);
   }
 };
+
 
 /**
  * @desc    Get all bids with optional filtering
@@ -944,7 +852,8 @@ export const getAllBids = async (req, res, next) => {
     const {
       page = 1,
       limit = 10,
-      sort = 'createdAt:desc',
+      sort = 'createdAt',
+      order = 'desc',
       status,
       auctionId,
       bidderId,
@@ -952,13 +861,22 @@ export const getAllBids = async (req, res, next) => {
       maxAmount,
       startDate,
       endDate,
+      fields
     } = req.query;
 
+    const isAdmin = req.user?.role === 'admin';
+
+    // Check if user has permission to view all bids
+    if (!isAdmin) {
+      throw new AppError('NOT_AUTHORIZED', 'Not authorized to view all bids', 403);
+    }
+
     // Use the repository to get paginated and filtered bids
-    const { bids, count, pageNum, take } = await listAllBidsPrisma({
+    const { data: bids, pagination } = await listAllBidsPrisma({
       page: parseInt(page),
       limit: parseInt(limit),
       sort,
+      order,
       status,
       auctionId,
       bidderId,
@@ -966,22 +884,12 @@ export const getAllBids = async (req, res, next) => {
       maxAmount: maxAmount ? parseFloat(maxAmount) : undefined,
       startDate,
       endDate,
+      fields: fields?.split(',').map(f => f.trim())
     });
-
-    const totalPages = Math.ceil(count / take);
-    const hasNext = pageNum < totalPages;
-    const hasPrev = pageNum > 1;
 
     res.status(200).json({
       status: 'success',
-      results: bids.length,
-      pagination: {
-        currentPage: pageNum,
-        total: count,
-        totalPages,
-        hasNext,
-        hasPrev,
-      },
+      pagination,
       data: {
         bids,
       },
@@ -995,3 +903,4 @@ export const getAllBids = async (req, res, next) => {
     next(error);
   }
 };
+

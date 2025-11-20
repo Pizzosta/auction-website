@@ -1,12 +1,27 @@
 import prisma from '../config/prisma.js';
 
 /**
- * Get all bids with filtering and pagination
+ * List all bids with pagination, filtering, and field selection (Admin only)
+ * @param {Object} options - Query options
+ * @param {number} [options.page=1] - Page number
+ * @param {number} [options.limit=10] - Items per page
+ * @param {string} [options.sort='createdAt'] - Field to sort by
+ * @param {string} [options.order='desc'] - Sort order ('asc' or 'desc')
+ * @param {string} [options.status] - Bid status ('active', 'outbid', 'cancelled', 'won')
+ * @param {string} [options.auctionId] - Auction ID to filter bids for
+ * @param {string} [options.bidderId] - Bidder ID to filter bids for
+ * @param {number} [options.minAmount] - Minimum bid amount
+ * @param {number} [options.maxAmount] - Maximum bid amount
+ * @param {string} [options.startDate] - Start date for filtering
+ * @param {string} [options.endDate] - End date for filtering
+ * @param {string[]} [options.fields] - Fields to include in the response
+ * @returns {Promise<Object>} - Object containing bids and pagination info
  */
 export async function listAllBidsPrisma({
   page = 1,
   limit = 10,
-  sort = 'createdAt:desc',
+  sort = 'createdAt',
+  order = 'desc',
   status,
   auctionId,
   bidderId,
@@ -14,301 +29,178 @@ export async function listAllBidsPrisma({
   maxAmount,
   startDate,
   endDate,
+  fields,
 }) {
   const pageNum = Math.max(1, parseInt(page));
   const take = Math.min(Math.max(1, parseInt(limit)), 100);
   const skip = (pageNum - 1) * take;
 
+  // Parse sort parameter
+  const allowedSortFields = new Set(['createdAt', 'amount', 'updatedAt']);
+  const sortField = allowedSortFields.has(sort) ? sort : 'createdAt';
+  const orderDirection = order === 'asc' ? 'asc' : 'desc';
+  const orderBy = { [sortField]: orderDirection };
+
   // Build where filter
   const where = {};
 
-  // Handle status filter
-  if (status) {
-    const normalizedStatus = status.toLowerCase();
-
-    if (normalizedStatus === 'active') {
-      // Show only bids that are not deleted
-      where.isDeleted = false;
-      where.auction = {
-        status: 'active',
-        endDate: { gt: new Date() },
-      };
-    } else if (normalizedStatus === 'won') {
-      where.auction = {
-        status: 'sold',
-        winnerId: where.bidderId, // The bidder won this auction
-      };
-    } else if (normalizedStatus === 'lost') {
-      where.AND = [
-        {
-          auction: {
-            status: { in: ['ended', 'sold'] },
-            NOT: { winnerId: where.bidderId }, // The bidder didn't win
-          },
-        },
-      ];
-    } else if (normalizedStatus === 'outbid') {
-      // This requires additional logic to determine if a bid was outbid
-      // You might need to add a field to track this
-      where.isOutbid = true;
-    } else if (normalizedStatus === 'cancelled') {
-      where.isDeleted = true;
-    } else if (normalizedStatus === 'all') {
-      // no filter
-    } else {
-      // fallback for unknown status strings
-      where.status = normalizedStatus;
-    }
-  }
-
-  // ID filters
   if (auctionId) where.auctionId = auctionId;
   if (bidderId) where.bidderId = bidderId;
 
-  // Amount range
-  if (minAmount || maxAmount) {
-    where.amount = {};
-    if (minAmount) where.amount.gte = parseFloat(minAmount);
-    if (maxAmount) where.amount.lte = parseFloat(maxAmount);
-  }
-
-  // Date range
-  if (startDate || endDate) {
-    where.createdAt = {};
-    if (startDate) where.createdAt.gte = new Date(startDate);
-    if (endDate) where.createdAt.lte = new Date(endDate);
-  }
-
-  // Sort
-  let [sortField, sortOrder] = sort.split(':');
-  sortOrder = sortOrder || 'desc';
-  const orderBy = { [sortField]: sortOrder };
-
-  const [count, bids] = await Promise.all([
-    prisma.bid.count({ where }),
-    prisma.bid.findMany({
-      where,
-      orderBy,
-      skip,
-      take,
-      include: {
-        bidder: {
-          select: {
-            id: true,
-            username: true,
-            email: true,
-          },
-        },
-        auction: {
-          select: {
-            id: true,
-            title: true,
-            currentPrice: true,
-            endDate: true,
-            status: true,
-            winnerId: true,
-          },
-        },
-      },
-    }),
-  ]);
-
-  return {
-    bids,
-    count,
-    pageNum,
-    take,
-  };
-}
-
-/**
- * List bids with filtering and pagination for a specific bidder
- */
-export async function listBidsPrisma({
-  bidderId,
-  status,
-  showDeleted = false,
-  page = 1,
-  limit = 10,
-  sort = 'createdAt:desc',
-}) {
-  const pageNum = Math.max(1, parseInt(page));
-  const take = Math.min(Math.max(1, parseInt(limit)), 100);
-  const skip = (pageNum - 1) * take;
-
-  // Build where filter
-  const where = {};
-
-  if (bidderId) where.bidderId = bidderId;
-
   // Handle status filter
   if (status) {
     const normalizedStatus = status.toLowerCase();
 
     if (normalizedStatus === 'active') {
+      where.isDeleted = false;
       where.auction = {
         status: 'active',
         endDate: { gt: new Date() },
+        highestBidId: bidderId
       };
     } else if (normalizedStatus === 'won') {
+      where.isDeleted = false;
       where.auction = {
-        status: 'sold',
-        winnerId: bidderId,
-      };
-    } else if (normalizedStatus === 'lost') {
-      where.NOT = {
-        auction: {
-          winnerId: bidderId,
-        },
-      };
-      where.auction = {
-        status: { in: ['ended', 'sold'] },
+        status: { in: ['sold', 'completed'] },
+        winnerId: bidderId, // User must be the winner
       };
     } else if (normalizedStatus === 'outbid') {
       where.isOutbid = true;
+      where.auction = {
+        status: 'active',
+      };
+      where.isDeleted = false;
+    } else if (normalizedStatus === 'lost') {
+      where.isOutbid = true;
+      where.auction = {
+        status: { in: ['sold', 'completed'] },
+      };
+      where.isDeleted = false;
     } else if (normalizedStatus === 'cancelled') {
       where.isDeleted = true;
-    } else if (normalizedStatus === 'all') {
-      // no filter
-    } else {
-      // fallback for unknown status strings
-      where.status = normalizedStatus;
-    }
-  }
-
-  // Handle deleted items
-  if (!showDeleted) {
-    where.isDeleted = false;
-  }
-
-  // Sort
-  let [field, order] = String(sort).split(':');
-  if (!field) field = 'createdAt';
-  const allowedSortFields = new Set(['amount', 'createdAt']);
-  if (!allowedSortFields.has(field)) field = 'createdAt';
-  const orderBy = { [field]: order === 'asc' ? 'asc' : 'desc' };
-
-  // Execute queries
-  const [count, bids] = await Promise.all([
-    prisma.bid.count({ where }),
-    prisma.bid.findMany({
-      where,
-      orderBy,
-      skip,
-      take,
-      include: {
-        auction: {
-          select: {
-            id: true,
-            title: true,
-            currentPrice: true,
-            endDate: true,
-            status: true,
-            winnerId: true,
-          },
-        },
-        bidder: {
-          select: {
-            id: true,
-            firstname: true,
-            lastname: true,
-            email: true,
-          },
-        },
-      },
-    }),
-  ]);
-
-  return {
-    bids,
-    count,
-    pageNum,
-    take,
-  };
-}
-
-/**
- * List bids for a specific auction
- */
-export async function listBidsByAuctionPrisma({
-  auctionId,
-  status,
-  page = 1,
-  limit = 10,
-  sort = 'amount:desc',
-}) {
-  const pageNum = Math.max(1, parseInt(page));
-  const take = Math.min(Math.max(1, parseInt(limit)), 100);
-  const skip = (pageNum - 1) * take;
-
-  // Build where filter
-  const where = { auctionId };
-
-  // Handle status filter
-  if (status) {
-    const normalizedStatus = status.toLowerCase();
-
-    if (normalizedStatus === 'cancelled') {
-      // Show all bids that are cancelled (isDeleted=true), regardless of auction status
-      where.isDeleted = true;
-    } else if (normalizedStatus === 'all') {
-      // no additional filters needed
-    } else {
-      // For other statuses, ensure we don't show deleted bids
-      where.isDeleted = false;
-
-      if (normalizedStatus === 'active') {
-        // Show only bids that are not deleted
-        where.isDeleted = false;
-        where.auction = {
-          status: 'active',
-          endDate: { gt: new Date() },
-        };
-      } else if (normalizedStatus === 'won') {
-        where.auction = {
-          status: 'sold',
-        };
-      } else if (normalizedStatus === 'outbid') {
-        where.isOutbid = true;
-      }
     }
   } else {
     // Default behavior - don't show deleted bids
     where.isDeleted = false;
   }
 
-  // Sort
-  let [field, order] = String(sort).split(':');
-  if (!field) field = 'amount';
-  const allowedSortFields = new Set(['amount', 'createdAt']);
-  if (!allowedSortFields.has(field)) field = 'amount';
-  const orderBy = { [field]: order === 'asc' ? 'asc' : 'desc' };
+  // Amount range filter
+  if (minAmount !== undefined || maxAmount !== undefined) {
+    where.amount = {};
+    if (minAmount !== undefined) where.amount.gte = parseInt(minAmount);
+    if (maxAmount !== undefined) where.amount.lte = parseInt(maxAmount);
+  }
 
-  // Execute queries
-  const [count, bids] = await Promise.all([
-    prisma.bid.count({ where }),
-    prisma.bid.findMany({
-      where,
-      orderBy,
-      skip,
-      take,
-      include: {
-        bidder: {
-          select: {
-            id: true,
-            firstname: true,
-            lastname: true,
-            email: true,
-          },
-        },
+  // Date range filter
+  if (startDate || endDate) {
+    where.createdAt = {};
+    if (startDate) where.createdAt.gte = new Date(startDate);
+    if (endDate) where.createdAt.lte = new Date(endDate);
+  }
+
+  // Build default include relations
+  const includeRelations = {
+    bidder: {
+      select: {
+        id: true,
+        username: true,
+        profilePicture: true,
+        isDeleted: true,
       },
-    }),
+    },
+    auction: {
+      select: {
+        id: true,
+        title: true,
+        images: true,
+        status: true,
+        endDate: true,
+        isDeleted: true,
+        highestBidId: true,
+        winnerId: true,
+      },
+    },
+  };
+
+  // Build query options
+  const queryOptions = {
+    where,
+    orderBy,
+    skip,
+    take,
+    include: includeRelations
+  };
+
+  // Handle field selection
+  if (fields && fields.length > 0) {
+    const fieldSet = new Set(fields.map(f => f.trim()));
+
+    delete queryOptions.include;
+    queryOptions.select = { id: true };
+
+    const mainFields = ['amount', 'createdAt', 'updatedAt', 'isOutbid', 'isDeleted', 'deletedAt', 'outbidAt'];
+    const relationFields = ['bidder', 'auction'];
+
+    // Process Main Fields (simple inclusion)
+    mainFields.forEach(field => {
+      if (fieldSet.has(field)) {
+        queryOptions.select[field] = true;
+      }
+    });
+
+    // Process Relationships (must check for both parent field and specific nested fields)
+    relationFields.forEach(parentField => {
+      // Find all fields requested for this relationship (e.g., 'auction', 'auction.id', 'auction.title')
+      const requestedNestedFields = fields.filter(f => f.startsWith(parentField));
+
+      if (requestedNestedFields.length > 0) {
+        // Get the default select structure for this relation
+        const defaultRelationSelect = includeRelations[parentField].select;
+
+        // Check if the full parent object was requested (e.g., fields=auction)
+        const parentRequested = fieldSet.has(parentField);
+
+        if (parentRequested) {
+          // If parent requested, use the full default select
+          queryOptions.select[parentField] = includeRelations[parentField];
+        } else {
+          // Initialize the nested select object
+          const nestedSelect = { id: true }; // Always include nested ID for context
+
+          // Fields to check inside the nested model (excluding the parent field name)
+          const nestedKeys = Object.keys(defaultRelationSelect).filter(k => k !== 'id' && k !== 'isDeleted');
+
+          requestedNestedFields.forEach(fullKey => {
+            const nestedKey = fullKey.split('.')[1]; // e.g., 'id' from 'auction.id'
+
+            if (nestedKey && nestedKeys.includes(nestedKey)) {
+              nestedSelect[nestedKey] = true;
+            }
+          });
+
+          queryOptions.select[parentField] = { select: nestedSelect };
+        }
+      }
+    });
+  }
+
+  // Execute queries in parallel
+  const [bids, count] = await Promise.all([
+    prisma.bid.findMany(queryOptions),
+    prisma.bid.count({ where })
   ]);
 
+  const totalPages = Math.ceil(count / take);
+
   return {
-    bids,
-    count,
-    pageNum,
-    take,
+    data: bids,
+    pagination: {
+      currentPage: pageNum,
+      total: count,
+      totalPages,
+      itemsPerPage: take,
+      hasNext: pageNum < totalPages,
+      hasPrev: pageNum > 1,
+    },
   };
 }

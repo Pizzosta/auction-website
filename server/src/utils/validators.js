@@ -101,11 +101,15 @@ export const bidQuerySchema = {
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(100).default(10),
     sort: Joi.string()
-      .pattern(/^(amount|createdAt):(asc|desc)$/)
-      .default('createdAt:desc')
+      .valid('createdAt', 'amount', 'updatedAt')
+      .default('createdAt')
+      .optional(),
+    order: Joi.string()
+      .valid('asc', 'desc')
+      .default('desc')
       .optional(),
     status: Joi.string()
-      .valid('active', 'won', 'lost', 'outbid', 'cancelled', 'all')
+      .valid('active', 'won', 'lost', 'outbid', 'cancelled')
       .lowercase()
       .optional(),
     auctionId: Joi.string().uuid({ version: 'uuidv4' }).optional(),
@@ -120,8 +124,12 @@ export const bidQuerySchema = {
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(100).default(10),
     sort: Joi.string()
-      .pattern(/^(amount|createdAt):(asc|desc)$/)
-      .default('createdAt:desc')
+      .valid('createdAt', 'amount', 'updatedAt')
+      .default('createdAt')
+      .optional(),
+    order: Joi.string()
+      .valid('asc', 'desc')
+      .default('desc')
       .optional(),
   }),
 
@@ -129,8 +137,12 @@ export const bidQuerySchema = {
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(100).default(10),
     sort: Joi.string()
-      .pattern(/^(amount|createdAt):(asc|desc)$/)
-      .default('createdAt:desc')
+      .valid('createdAt', 'amount', 'updatedAt')
+      .default('createdAt')
+      .optional(),
+    order: Joi.string()
+      .valid('asc', 'desc')
+      .default('desc')
       .optional(),
     highestBidderOnly: Joi.boolean().optional(),
     winningBidsOnly: Joi.boolean().optional(),
