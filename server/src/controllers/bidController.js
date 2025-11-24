@@ -130,7 +130,7 @@ const updateOutbidBids = async (req, auctionId, newBidAmount, newBidId, currentB
           name: bid.bidder.firstname,
           title: bid.auction.title,
           newBidAmount: formatCurrency(newBidAmount),
-          auctionUrl: `${process.env.FRONTEND_URL}/auctions/${auctionId}`,
+          auctionUrl: `${env.clientUrl}/auctions/${auctionId}`,
           endDate: formatDateTime(bid.auction.endDate),
         });
         logger.info('Outbid User email queued', { userEmail: bid.bidder.email });
