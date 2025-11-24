@@ -3,7 +3,7 @@ import prisma from '../config/prisma.js';
 import logger from '../utils/logger.js';
 import { acquireLock } from '../utils/lock.js';
 import {
-  listAllBidsPrisma,
+  listAllBidsPrisma, findOutbidCandidates, findCurrentHighestBid, getBidWithAuction,
 } from '../repositories/bidRepo.prisma.js';
 import { addToQueue } from '../services/emailQueue.js';
 import { formatCurrency, formatDateTime } from '../utils/format.js';
@@ -20,45 +20,10 @@ if (missingVars.length > 0) {
 const updateOutbidBids = async (req, auctionId, newBidAmount, newBidId, currentBidderId) => {
   try {
     // Find all bids that are now outbid by the new bid
-    // These are bids with lower amounts that are not already marked as outbid
-    // Exclude bids from the current bidder to avoid self-outbid notifications
-    const outbidBids = await prisma.bid.findMany({
-      where: {
-        auctionId,
-        amount: { lt: newBidAmount },
-        isOutbid: false,
-        isDeleted: false,
-        bidderId: { not: currentBidderId }, // Exclude current bidder's other bids
-      },
-      include: {
-        bidder: {
-          select: {
-            id: true,
-            email: true,
-            firstname: true,
-          },
-        },
-        auction: {
-          select: {
-            id: true,
-            title: true,
-            endDate: true,
-          },
-        },
-      },
-    });
+    const outbidBids = await findOutbidCandidates(auctionId, newBidAmount, currentBidderId);
 
     // Verify the new bid is still the highest before processing outbid notifications
-    const currentHighestBid = await prisma.bid.findFirst({
-      where: {
-        auctionId,
-        isDeleted: false,
-        isOutbid: false,
-      },
-      orderBy: { amount: 'desc' },
-      take: 1,
-      select: { id: true, amount: true },
-    });
+    const currentHighestBid = await findCurrentHighestBid(auctionId);
 
     // If our bid is no longer the highest, another bid was placed concurrently
     if (!currentHighestBid || currentHighestBid.id !== newBidId) {
@@ -199,10 +164,10 @@ const updateOutbidBids = async (req, auctionId, newBidAmount, newBidId, currentB
 
 /**
  * Core bid placement logic for REST and Socket.IO
- * Accepts: { auctionId, amount, actorId, io, socket }
+ * Accepts: { auctionId, amount, actorId, io }
  * Returns: bid result or throws error
  */
-export const placeBidCore = async ({ auctionId, amount, actorId, io, socket }) => {
+export const placeBidCore = async ({ auctionId, amount, actorId, io }) => {
   const MAX_RETRIES = 3;
   let retries = 0;
   let result;
@@ -395,7 +360,7 @@ export const placeBid = async (req, res, next) => {
 // @access  Private (Admin for permanent delete)
 export const deleteBid = async (req, res, next) => {
   const { bidId } = req.params;
-  const actorId = req.user?.id?.toString();
+  const userId = req.user?.id?.toString();
 
   const getPermanentValue = value => {
     if (value == null) return false;
@@ -408,10 +373,7 @@ export const deleteBid = async (req, res, next) => {
 
   try {
     // Find the bid with auction
-    const bid = await prisma.bid.findUnique({
-      where: { id: bidId },
-      include: { auction: { select: { status: true, endDate: true } } },
-    });
+    const bid = await getBidWithAuction(bidId);
 
     if (!bid) {
       throw new AppError('BID_NOT_FOUND', 'Bid not found', 404);
@@ -419,7 +381,7 @@ export const deleteBid = async (req, res, next) => {
 
     // Check user permissions
     const isAdmin = req.user.role === 'admin';
-    const isBidder = bid.bidderId.toString() === actorId;
+    const isBidder = bid.bidderId.toString() === userId;
 
     if (!isAdmin && !isBidder) {
       throw new AppError('UNAUTHORIZED', 'Not authorized to delete this bid', 403);
@@ -444,14 +406,14 @@ export const deleteBid = async (req, res, next) => {
       throw new AppError('CANCELLATION_WINDOW_CLOSED', 'Bids cannot be canceled within the final hour of the auction.', 400);
     }
 
-    // Check cancellation limit: Max 2 cancellations per user per auction
+    // Check cancellation limit: Max 1 cancellations per user per auction
     if (!isAdmin) {
       const userCancellations = await prisma.bid.count({
         where: {
-          bidderId: req.user.id,
+          bidderId: userId,
           auctionId: bid.auctionId,
           isDeleted: true,
-          deletedById: req.user.id, // Ensure it's their own cancellation
+          deletedById: userId, // Ensure it's their own cancellation
         },
       });
 
@@ -461,7 +423,7 @@ export const deleteBid = async (req, res, next) => {
     }
 
     // Add retry logic for concurrent operations
-    const MAX_RETRIES = 5; // Increased from 3 to 5 for better resilience
+    const MAX_RETRIES = 3;
     let retries = 0;
     let result;
 
@@ -507,7 +469,7 @@ export const deleteBid = async (req, res, next) => {
                 data: {
                   isDeleted: true,
                   deletedAt: new Date(),
-                  deletedById: actorId,
+                  deletedById: userId,
                   version: { increment: 1 },
                 },
               });
@@ -628,95 +590,6 @@ export const deleteBid = async (req, res, next) => {
     next(error);
   }
 };
-
-/*
-// @desc    Restore a soft-deleted bid
-// @route   POST /api/bids/:bidId/restore
-// @access  Private (Admin only)
-export const restoreBid = async (req, res, next) => {
-  try {
-    const { bidId } = req.params;
-
-    // Only admins can restore bids
-    if (req.user.role !== 'admin') {
-      throw new AppError('UNAUTHORIZED', 'Only admins can restore deleted bids', 403);
-    }
-
-    const bid = await prisma.bid.findUnique({
-      where: { id: bidId },
-      include: {
-        auction: {
-          select: {
-            status: true,
-            endDate: true,
-          }
-        }
-      }
-    });
-
-    if (!bid) {
-      throw new AppError('BID_NOT_FOUND', 'Bid not found', 404);
-    }
-
-    if (!bid.isDeleted) {
-      throw new AppError('BID_NOT_CANCELLED', 'Bid is not cancelled', 400);
-    }
-
-    if (bid.auction.status !== 'active' || bid.auction.endDate < new Date()) {
-      throw new AppError('AUCTION_NOT_ACTIVE', 'Cannot restore bid on inactive auction', 400);
-    }
-
-    const result = await prisma.$transaction(async (tx) => {
-      // Restore the bid
-      await tx.bid.update({
-        where: { id: bidId },
-        data: { isDeleted: false, deletedAt: null, deletedById: null, version: { increment: 1 } },
-      });
-
-      // Find the new highest bid
-      const newHighestBid = await tx.bid.findFirst({
-        where: { auctionId: bid.auctionId, isDeleted: false, isOutbid: false },
-        orderBy: [{ amount: 'desc' }, { createdAt: 'asc' }],
-        take: 1,
-        select: { id: true, amount: true },
-      });
-
-      // Update auction if this bid is now the highest
-      if (newHighestBid?.id === bidId) {
-        await tx.auction.update({
-          where: { id: bid.auctionId },
-          data: {
-            currentPrice: newHighestBid.amount,
-            highestBidId: bidId,
-            version: { increment: 1 },
-          },
-        });
-      }
-
-      return newHighestBid;
-    });
-
-    logger.info('Bid restored successfully', {
-      bidId: bidId,
-      restoredById: req.user?.id,
-    });
-
-    res.status(200).json({
-      success: true,
-      message: 'Bid restored successfully',
-      ...(result ? { newHighestBid: result.id } : {}),
-    });
-  } catch (error) {
-    logger.error('Restore bid error:', {
-      error: error.message,
-      bidId: req.params.bidId,
-      restoredById: req.user?.id,
-    });
-
-    next(error);
-  }
-};
-*/
 
 // @desc    Get bids by auction
 // @route   GET /api/bids/auction/:auctionId
@@ -903,4 +776,3 @@ export const getAllBids = async (req, res, next) => {
     next(error);
   }
 };
-

@@ -204,3 +204,37 @@ export async function listAllBidsPrisma({
     },
   };
 }
+
+export async function findOutbidCandidates(auctionId, newBidAmount, excludeBidderId) {
+  return prisma.bid.findMany({
+    where: {
+      auctionId,
+      amount: { lt: newBidAmount },
+      isOutbid: false,
+      isDeleted: false,
+      bidderId: { not: excludeBidderId },
+    },
+    include: {
+      bidder: {
+        select: { id: true, email: true, firstname: true },
+      },
+      auction: { select: { id: true, title: true, endDate: true } },
+    },
+  });
+}
+
+export async function findCurrentHighestBid(auctionId) {
+  return prisma.bid.findFirst({
+    where: { auctionId, isDeleted: false, isOutbid: false },
+    orderBy: { amount: 'desc' },
+    select: { id: true, amount: true },
+    take: 1,
+  });
+}
+
+export async function getBidWithAuction(bidId) {
+  return prisma.bid.findUnique({
+    where: { id: bidId },
+    include: { auction: { select: { id: true, status: true, endDate: true, currentPrice: true, startingPrice: true } } },
+  });
+}
