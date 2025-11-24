@@ -102,7 +102,7 @@ check auctions et all show only active users
 
 auto-clean orphaned watchlist entries
 
-seperate auction query search by user from admin (fimplement eatured auction -- auction, user)
+seperate auction query search by user from admin (implement featured auction -- auction, user)
 
 add restoredBy to all restore functions (bid, auction, featured auction, user, feedback, watchlist)
 
@@ -116,3 +116,21 @@ add cleanup jobs for orphaned images, profile picture, featured auction, watchli
 
 Block account deletion if the user has won any auctions that haven't been completed (not yet paid or delivered)
 
+// Soft-deleted bids are ignored in this unique constraint
+@@index([auctionId, bidderId, amount], name: "Bid_auctionId_bidderId_amount_active_key")
+
+Implement bidCount for sorting
+
+check swagger for any implicating statements. .. correct all 500 status to Internal Server Error
+
+Check for Memory Leaks:
+Review your Swagger documentation for large responses or circular references
+Look for large data processing in your routes
+Optimize Swagger:
+Split large route files
+Use $ref for repeated schemas $ref: '#/components/schemas/User' .. later update the 200: responses cue refreshToken
+Disable Swagger in production if not needed ...
+
+check on edge cases
+
+adopt a streamlined repo.prisma like bidRepo.prisma

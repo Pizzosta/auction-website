@@ -822,7 +822,7 @@ export const getMyBids = async (req, res, next) => {
       endDate,
       fields: fields?.split(',').map(f => f.trim()),
     });
-    
+
     res.status(200).json({
       status: 'success',
       pagination,

@@ -1,450 +1,389 @@
-// backend/utils/socket.js
-const socketIo = require("socket.io");
-const jwt = require("jsonwebtoken");
+/*
+import swaggerJSDoc from 'swagger-jsdoc';
+import swaggerUi from 'swagger-ui-express';
+import express from 'express';
+import { env, validateEnv } from './config/env.js';
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { dirname, resolve } from 'path';
+import logger from './utils/logger.js';
 
-const initSocket = (server, app) => {
-  const io = socketIo(server, {
-    cors: {
-      origin: process.env.FRONTEND_URL || "http://localhost:5173",
-      methods: ["GET", "POST"],
-      credentials: true,
-    },
-    transports: ["websocket", "polling"],
-    pingTimeout: 60000, // 60 seconds
-    pingInterval: 25000, // 25 seconds
-  });
+// Validate required environment variables once at startup
+const missingVars = validateEnv();
 
-  // Track connected users and their rooms
-  const userRooms = new Map(); // userId -> Set of roomIds
-  const auctionRooms = new Map(); // auctionId -> { bidders: Set<userId>, viewers: number }
+if (missingVars.length > 0) {
+    logger.error(`Missing required environment variables: ${missingVars.join(', ')}`);
+    process.exit(1);
+}
 
-  io.use((socket, next) => {
-    const token = socket.handshake.auth.token;
-    if (token) {
-      try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        socket.user = decoded; // Attach user info to socket
-        console.log(
-          `User ${socket.user.id} authenticated for socket ${socket.id}`
-        );
-      } catch (err) {
-        console.warn(
-          `Socket ${socket.id}: Invalid token, treating as Guest. Error: ${err.message}`
-        );
-        socket.user = null;
-      }
-    } else {
-      console.log(`Socket ${socket.id}: No token provided, treating as Guest.`);
-      socket.user = null;
-    }
-    next();
-  });
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
-  io.on("connection", (socket) => {
-    const userId = socket.user?.id || `guest-${socket.id}`;
-    console.log(`User connected: ${socket.id} (${userId})`);
+const router = express.Router();
 
-    // Initialize user's room set if authenticated
-    if (socket.user?.id && !userRooms.has(socket.user.id)) {
-      userRooms.set(socket.user.id, new Set());
-    }
+// Define the API routes directory
+const routesDir = path.join(__dirname, 'routes');
 
-    // Join user to their personal room for private messages
-    if (socket.user?.id) {
-      socket.join(`user:${socket.user.id}`);
-      console.log(`User ${socket.user.id} joined personal room`);
-    }
-
-    // Join an auction room
-    socket.on("joinAuctionRoom", (auctionId) => {
-      if (!auctionId) return;
-
-      // Join the auction room
-      socket.join(auctionId);
-
-      // Initialize auction room tracking if needed
-      if (!auctionRooms.has(auctionId)) {
-        auctionRooms.set(auctionId, { bidders: new Set(), viewers: 0 });
-      }
-
-      const room = auctionRooms.get(auctionId);
-
-      // Track if this is a bidder or just a viewer
-      if (socket.user?.id) {
-        room.bidders.add(socket.user.id);
-        userRooms.get(socket.user.id)?.add(auctionId);
-      } else {
-        room.viewers++;
-      }
-
-      console.log(
-        `User ${userId} joined auction ${auctionId} (${room.bidders.size} bidders, ${room.viewers} viewers)`
-      );
-
-      // Update viewer count for all in the room
-      io.to(auctionId).emit("viewerCount", {
-        auctionId,
-        count: room.bidders.size + room.viewers,
-      });
-    });
-
-    // Handle new bid from client
-    socket.on("placeBid", async ({ auctionId, bidAmount, userId }) => {
-      if (!socket.user || socket.user.id !== userId) {
-        return socket.emit("bidError", {
-          message: "Authentication required to place a bid",
-        });
-      }
-
-      try {
-        // In a real implementation, you would validate and save the bid to the database here
-        // Then emit the appropriate events
-
-        // For now, we'll just broadcast the new bid
-        const bidData = {
-          auctionId,
-          userId,
-          bidAmount,
-          timestamp: new Date(),
-        };
-
-        // Notify all users in the auction room
-        io.to(auctionId).emit("bidUpdate", {
-          auction: {
-            _id: auctionId,
-            currentHighestBid: bidAmount,
-            currentHighestBidder: userId,
-          },
-          newBid: bidData,
-          previousHighestBid:
-            auctionRooms.get(auctionId)?.currentHighestBid || 0,
-        });
-
-        // Notify the previous highest bidder if they've been outbid
-        const room = auctionRooms.get(auctionId);
-        if (
-          room?.currentHighestBidder &&
-          room.currentHighestBidder !== userId
-        ) {
-          io.to(`user:${room.currentHighestBidder}`).emit("outbid", {
-            auctionId,
-            auctionTitle: `Auction ${auctionId}`, // You would fetch this from DB in reality
-            yourBid: room.currentHighestBid,
-            newHighestBid: bidAmount,
-            timeRemaining: "2m 30s", // You would calculate this
-            newBidder: userId,
-          });
-        }
-
-        // Update room state
-        room.currentHighestBid = bidAmount;
-        room.currentHighestBidder = userId;
-      } catch (error) {
-        console.error("Error processing bid:", error);
-        socket.emit("bidError", { message: "Failed to process bid" });
-      }
-    });
-
-    // Handle auction ending
-    socket.on(
-      "auctionEnding",
-      ({ auctionId, timeRemaining, currentHighestBidder }) => {
-        const room = auctionRooms.get(auctionId);
-        if (!room) return;
-
-        // Notify all bidders
-        room.bidders.forEach((bidderId) => {
-          io.to(`user:${bidderId}`).emit("auctionEnding", {
-            auctionId,
-            auctionTitle: `Auction ${auctionId}`,
-            timeRemaining,
-            isLeading: bidderId === currentHighestBidder,
-            currentHighestBid: room.currentHighestBid,
-          });
-        });
-      }
-    );
-
-    // Handle auction won
-    socket.on("auctionWon", ({ auctionId, winnerId, winningBid }) => {
-      io.to(`user:${winnerId}`).emit("auctionWon", {
-        auctionId,
-        auctionTitle: `Auction ${auctionId}`,
-        winningBid,
-        timestamp: new Date(),
-      });
-    });
-
-    // Leave an auction room
-    socket.on("leaveAuctionRoom", (auctionId) => {
-      if (!auctionId) return;
-
-      const room = auctionRooms.get(auctionId);
-      if (!room) return;
-
-      // Remove from user's rooms
-      if (socket.user?.id) {
-        userRooms.get(socket.user.id)?.delete(auctionId);
-        room.bidders.delete(socket.user.id);
-      } else {
-        room.viewers = Math.max(0, room.viewers - 1);
-      }
-
-      socket.leave(auctionId);
-      console.log(`User ${userId} left auction ${auctionId}`);
-
-      // Clean up empty rooms
-      if (room.bidders.size === 0 && room.viewers === 0) {
-        auctionRooms.delete(auctionId);
-      } else {
-        // Update viewer count
-        io.to(auctionId).emit("viewerCount", {
-          auctionId,
-          count: room.bidders.size + room.viewers,
-        });
-      }
-    });
-
-    // Clean up on disconnect
-    socket.on("disconnect", () => {
-      console.log(`User disconnected: ${socket.id} (${userId})`);
-
-      // Leave all rooms and clean up
-      if (socket.user?.id) {
-        const userRoomSet = userRooms.get(socket.user.id);
-        if (userRoomSet) {
-          userRoomSet.forEach((auctionId) => {
-            const room = auctionRooms.get(auctionId);
-            if (room) {
-              room.bidders.delete(socket.user.id);
-
-              // Clean up empty rooms
-              if (room.bidders.size === 0 && room.viewers === 0) {
-                auctionRooms.delete(auctionId);
-              } else {
-                // Update viewer count
-                io.to(auctionId).emit("viewerCount", {
-                  auctionId,
-                  count: room.bidders.size + room.viewers,
-                });
-              }
+const swaggerOptions = {
+    definition: {
+        openapi: '3.0.0',
+        info: {
+            title: 'Kawodze Auction Website API',
+            version: '1.0.0',
+            description: 'Comprehensive API documentation for the Kawodze Auction Website',
+            contact: {
+                name: 'API Support',
+                url: 'https://kawodze.com/support',
+                email: 'support@kawodze.com'
+            },
+            license: {
+                name: 'Apache 2.0',
+                url: 'https://www.apache.org/licenses/LICENSE-2.0.html'
             }
-          });
-          userRooms.delete(socket.user.id);
-        }
-      }
-    });
-  });
-
-  // Helper function to get the io instance
-  //const io = () => io;
-
-  // Store io on the Express app
-  app.set("io", io);
-  return io;
+        },
+        servers: [
+            {
+                url: env.isProd ? 'https://api.kawodze.com' : 'http://localhost:5001',
+                description: env.isProd ? 'Production Server' : 'Development Server',
+            },
+        ],
+        components: {
+            securitySchemes: {
+                bearerAuth: {
+                    type: 'http',
+                    scheme: 'bearer',
+                    bearerFormat: 'JWT',
+                    description: 'JWT Authorization header using the Bearer scheme. Example: "Authorization: Bearer {token}"'
+                },
+            },
+        },
+        security: [{
+            bearerAuth: []
+        }],
+        tags: [
+            { name: 'Feedback', description: 'Operations related to feedback and ratings' },
+            { name: 'User', description: 'User management endpoints' },
+            { name: 'Auction', description: 'Auction listing and bidding endpoints' },
+            { name: 'Admin', description: 'Admin management endpoints' },
+            { name: 'Stats', description: 'Stats management endpoints' },
+            { name: 'Webhook', description: 'Webhook management endpoints' },
+            { name: 'Watchlist', description: 'Watchlist management endpoints' },
+            { name: 'Featured Auction', description: 'Featured Auction management endpoints' },
+            { name: 'Auth', description: 'Authentication endpoints' },
+            { name: 'Bid', description: 'Bid management endpoints' },
+        ],
+    },
+    apis: [
+        `${routesDir}/*.js`,
+        `${__dirname}/models/*.js`,
+    ]
 };
 
-module.exports = initSocket;
+// Initialize swagger-jsdoc
+let swaggerSpec;
+try {
+    swaggerSpec = swaggerJSDoc(swaggerOptions);
 
-// Add these new event handlers inside the io.on('connection') block, after the existing event handlers
+    // Generate and save the OpenAPI spec
+    const outputFile = path.join(__dirname, 'swagger-output.json');
+    fs.writeFileSync(outputFile, JSON.stringify(swaggerSpec, null, 2));
+    logger.info(`Swagger documentation generated at ${outputFile}`);
 
-// Handle auction ending (admin-triggered)
-socket.on("auctionEnding", async ({ auctionId, timeRemaining }) => {
-  try {
-    if (!auctionId) {
-      throw new Error("Auction ID is required");
+    // Log available routes for debugging
+    if (swaggerSpec.paths) {
+        const routes = Object.keys(swaggerSpec.paths);
+        logger.info(`Documented ${routes.length} API endpoints`);
+    } else {
+        logger.warn('No API endpoints found in the documentation');
     }
+} catch (error) {
+    logger.error('Error generating Swagger documentation:', error);
+    throw error;
+}
 
-    // Verify the auction exists and get its details
-    const auction = await prisma.auction.findUnique({
-      where: { id: auctionId, isDeleted: false },
-      include: {
-        seller: {
-          select: {
-            id: true,
-            email: true,
-            username: true,
-          },
-        },
-        currentBid: {
-          select: {
-            amount: true,
-            bidder: {
-              select: {
-                id: true,
-                email: true,
-                username: true,
-              },
-            },
-          },
-        },
-      },
-    });
+// Serve Swagger UI
+const swaggerUiOptions = {
+    explorer: true,
+    customCss: '.swagger-ui .topbar { display: none }',
+    swaggerOptions: {
+        docExpansion: 'list',
+        filter: true,
+        persistAuthorization: true,
+        displayRequestDuration: true,
+    },
+};
 
-    if (!auction) {
-      throw new Error("Auction not found");
-    }
+router.use('/', swaggerUi.serve);
+router.get('/', swaggerUi.setup(swaggerSpec, swaggerUiOptions));
 
-    // Only allow admin or the seller to trigger auction ending
-    if (socket.user?.role !== "admin" && socket.user?.id !== auction.sellerId) {
-      throw new Error("Unauthorized to end this auction");
-    }
-
-    logger.info(`Auction ${auctionId} is ending soon`, {
-      timeRemaining,
-      triggeredBy: socket.user?.id,
-    });
-
-    // Notify all participants in the auction room
-    io.to(auctionId).emit("auctionEnding", {
-      auctionId,
-      title: auction.title,
-      timeRemaining,
-      endsAt: auction.endTime,
-      currentBid: auction.currentBid?.amount || auction.startingPrice,
-      currentBidder: auction.currentBid?.bidder || null,
-    });
-
-    // Notify the current highest bidder in their private room
-    if (auction.currentBid?.bidder?.id) {
-      io.to(`user:${auction.currentBid.bidder.id}`).emit(
-        "auctionEndingForYou",
-        {
-          auctionId,
-          title: auction.title,
-          timeRemaining,
-          currentBid: auction.currentBid.amount,
-          isLeading: true,
-        }
-      );
-    }
-  } catch (error) {
-    logger.error("Error handling auction ending", {
-      error: error.message,
-      auctionId,
-      userId: socket.user?.id,
-    });
-
-    // Only send error back to the sender
-    socket.emit("auctionError", {
-      auctionId,
-      message: error.message || "Failed to process auction ending",
-    });
-  }
+// Add a route to get the raw JSON spec
+router.get('/json', (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.send(swaggerSpec);
 });
 
-// Handle auction won (triggered when auction actually ends)
-socket.on("auctionWon", async ({ auctionId }) => {
+export default router;
+*/
+
+
+import swaggerAutogen from 'swagger-autogen';
+import path, { dirname } from 'path';
+import { fileURLToPath } from 'url';
+import express from 'express';
+import swaggerUi from 'swagger-ui-express';
+import fs from 'fs';
+import logger from './utils/logger.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+const outputFile = path.join(__dirname, 'swagger-output.json');
+const endpoints = [path.join(__dirname, 'server.js')];
+
+const router = express.Router();
+
+const swaggerOutputPath = path.resolve('src/swagger-output.json');
+
+const doc = {
+  info: {
+    title: 'Kawodze Auction Website API',
+    version: '1.0.0',
+    description: 'API documentation for the Kawodze Auction Website',
+  },
+  host: 'localhost:5001',
+  basePath: '/',
+  schemes: ['http', 'https'],
+  securityDefinitions: {
+    // will appear as “lock” icons in UI
+    bearerAuth: {
+      type: 'http',
+      scheme: 'bearer',
+      bearerFormat: 'JWT',
+    },
+  },
+};
+
+const generateAndLoadSwagger = async () => {
   try {
-    if (!auctionId) {
-      throw new Error("Auction ID is required");
-    }
-
-    // Get the final auction state
-    const auction = await prisma.auction.findUnique({
-      where: { id: auctionId },
-      include: {
-        seller: {
-          select: {
-            id: true,
-            email: true,
-            username: true,
-          },
-        },
-        currentBid: {
-          select: {
-            id: true,
-            amount: true,
-            bidder: {
-              select: {
-                id: true,
-                email: true,
-                username: true,
-              },
-            },
-          },
-        },
-      },
-    });
-
-    if (!auction) {
-      throw new Error("Auction not found");
-    }
-
-    // Only allow admin or the seller to trigger this
-    if (socket.user?.role !== "admin" && socket.user?.id !== auction.sellerId) {
-      throw new Error("Unauthorized to finalize this auction");
-    }
-
-    // Update auction status in the database
-    await prisma.auction.update({
-      where: { id: auctionId },
-      data: { status: "COMPLETED" },
-    });
-
-    logger.info(
-      `Auction ${auctionId} won by ${
-        auction.currentBid?.bidder?.id || "no one"
-      }`
-    );
-
-    // Notify all participants in the auction room
-    const winnerData = auction.currentBid
-      ? {
-          winnerId: auction.currentBid.bidder.id,
-          winnerUsername: auction.currentBid.bidder.username,
-          winningBid: auction.currentBid.amount,
-        }
-      : null;
-
-    io.to(auctionId).emit("auctionWon", {
-      auctionId,
-      title: auction.title,
-      ...winnerData,
-      endedAt: new Date().toISOString(),
-    });
-
-    // Notify the winner in their private room
-    if (auction.currentBid?.bidder?.id) {
-      io.to(`user:${auction.currentBid.bidder.id}`).emit("youWonAuction", {
-        auctionId,
-        title: auction.title,
-        winningBid: auction.currentBid.amount,
-        seller: {
-          id: auction.seller.id,
-          username: auction.seller.username,
-        },
-      });
-    }
-
-    // Notify the seller in their private room
-    if (auction.sellerId) {
-      io.to(`user:${auction.sellerId}`).emit("yourAuctionEnded", {
-        auctionId,
-        title: auction.title,
-        sold: !!auction.currentBid,
-        winningBid: auction.currentBid?.amount,
-        winner: auction.currentBid?.bidder,
-      });
-    }
-
-    // Clean up the room after a delay
-    setTimeout(() => {
-      if (auctionRooms.has(auctionId)) {
-        auctionRooms.delete(auctionId);
+    await swaggerAutogen()(outputFile, endpoints, doc);
+    logger.info('Swagger spec generated at', { outputFile });
+    if (fs.existsSync(swaggerOutputPath)) {
+      const content = fs.readFileSync(swaggerOutputPath, 'utf8').trim();
+      if (content) {
+        const generated = JSON.parse(content);
+        return generated;
       }
-    }, 300000); // 5 minutes
-  } catch (error) {
-    logger.error("Error handling auction won", {
-      error: error.message,
-      auctionId,
-      userId: socket.user?.id,
+    }
+    return doc;
+  } catch (e) {
+    logger.error('Swagger generation failed, falling back to existing doc or minimal doc', {
+      error: e?.message,
     });
+    if (fs.existsSync(swaggerOutputPath)) {
+      try {
+        const content = fs.readFileSync(swaggerOutputPath, 'utf8').trim();
+        if (content) return JSON.parse(content);
+      } catch (readErr) {
+        // ignore and fall through
+      }
+    }
+    return doc;
+  }
+};
 
-    // Only send error back to the sender
-    socket.emit("auctionError", {
-      auctionId,
-      message: error.message || "Failed to process auction win",
+(async () => {
+  const swaggerDoc = await generateAndLoadSwagger();
+  router.use('/', swaggerUi.serve, swaggerUi.setup(swaggerDoc, { explorer: true }));
+})();
+
+export default router;
+
+
+
+import swaggerAutogen from 'swagger-autogen';
+import path, { dirname } from 'path';
+import { fileURLToPath } from 'url';
+import express from 'express';
+import swaggerUi from 'swagger-ui-express';
+import fs from 'fs';
+import logger from './utils/logger.js';
+import { env } from './config/env.js';
+
+// Configure paths
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const outputFile = path.join(__dirname, 'swagger-output.json');
+const endpoints = [
+  path.join(__dirname, 'routes/*.js'),
+  path.join(__dirname, 'routes/**/*.js')
+];
+
+const router = express.Router();
+const swaggerOutputPath = path.resolve('src/swagger-output.json');
+
+// Base Swagger configuration
+const doc = {
+  info: {
+    title: 'Kawodze Auction Website API',
+    version: '1.0.0',
+    description: 'Comprehensive API documentation for the Kawodze Auction Platform',
+    contact: {
+      name: 'API Support',
+      url: 'https://kawodze.com/support',
+      email: 'support@kawodze.com'
+    },
+    license: {
+      name: 'Apache 2.0',
+      url: 'https://www.apache.org/licenses/LICENSE-2.0.html'
+    }
+  },
+  host: env.isProd ? 'api.kawodze.com' : 'localhost:5001',
+  basePath: '/',
+  schemes: env.isProd ? ['https'] : ['http'],
+  consumes: ['application/json'],
+  produces: ['application/json'],
+  securityDefinitions: {
+    bearerAuth: {
+      type: 'http',
+      scheme: 'bearer',
+      bearerFormat: 'JWT',
+      description: 'JWT Authorization header using the Bearer scheme. Example: "Authorization: Bearer {token}"'
+    }
+  },
+  security: [{
+    bearerAuth: []
+  }],
+  tags: [
+    {
+      name: 'Authentication',
+      description: 'User authentication and authorization endpoints'
+    },
+    {
+      name: 'Auctions',
+      description: 'Auction management endpoints'
+    },
+    {
+      name: 'Users',
+      description: 'User management endpoints'
+    },
+    {
+      name: 'Bids',
+      description: 'Bid management endpoints'
+    },
+    {
+      name: 'Admin',
+      description: 'Administrative endpoints'
+    }
+  ]
+};
+
+/**
+ * Generates and loads the Swagger documentation
+ * @returns {Promise<object>} The generated Swagger documentation
+ */
+const generateAndLoadSwagger = async () => {
+  try {
+    logger.info('Generating Swagger documentation...');
+    
+    // Only generate in development or if file doesn't exist
+    if (!fs.existsSync(outputFile) || !env.isProd) {
+      const swaggerAutogenInstance = swaggerAutogen({
+        openapi: '3.0.0',
+        language: 'en-US',
+        autoHeaders: true,
+        autoQuery: true,
+        autoBody: true
+      });
+      
+      await swaggerAutogenInstance(outputFile, endpoints, doc);
+      logger.info(`Swagger documentation generated at: ${outputFile}`);
+    }
+
+    if (fs.existsSync(swaggerOutputPath)) {
+      const content = fs.readFileSync(swaggerOutputPath, 'utf8').trim();
+      if (content) {
+        return JSON.parse(content);
+      }
+    }
+    
+    return doc;
+  } catch (error) {
+    logger.error('Failed to generate Swagger documentation:', {
+      error: error.message,
+      stack: error.stack
+    });
+    
+    // Fallback to existing doc or minimal doc
+    if (fs.existsSync(swaggerOutputPath)) {
+      try {
+        const content = fs.readFileSync(swaggerOutputPath, 'utf8').trim();
+        if (content) return JSON.parse(content);
+      } catch (readError) {
+        logger.error('Failed to read existing Swagger file:', {
+          error: readError.message
+        });
+      }
+    }
+    
+    return doc;
+  }
+};
+
+// Initialize Swagger UI
+let isSwaggerInitialized = false;
+
+const initializeSwagger = async () => {
+  if (isSwaggerInitialized) return;
+  
+  try {
+    const swaggerDoc = await generateAndLoadSwagger();
+    
+    // Configure Swagger UI options
+    const swaggerUiOptions = {
+      explorer: true,
+      customCss: '.swagger-ui .topbar { display: none }',
+      customSiteTitle: 'Kawodze API Documentation',
+      swaggerOptions: {
+        docExpansion: 'list',
+        filter: true,
+        persistAuthorization: true,
+        displayRequestDuration: true,
+        defaultModelsExpandDepth: -1, // Hide schemas by default
+        defaultModelExpandDepth: 3
+      }
+    };
+    
+    // Setup Swagger UI
+    router.use('/', swaggerUi.serve, swaggerUi.setup(swaggerDoc, swaggerUiOptions));
+    
+    // Add a route to get the raw JSON spec
+    router.get('/json', (req, res) => {
+      res.setHeader('Content-Type', 'application/json');
+      res.send(swaggerDoc);
+    });
+    
+    isSwaggerInitialized = true;
+    logger.info('Swagger UI initialized successfully');
+  } catch (error) {
+    logger.error('Failed to initialize Swagger UI:', {
+      error: error.message,
+      stack: error.stack
+    });
+    
+    // Fallback to error message
+    router.use('/', (req, res) => {
+      res.status(500).json({
+        error: 'Failed to load API documentation',
+        message: 'Please check the server logs for more information'
+      });
     });
   }
+};
+
+// Initialize Swagger when the module loads
+initializeSwagger().catch(error => {
+  logger.error('Unhandled error during Swagger initialization:', error);
 });
+
+export default router;
