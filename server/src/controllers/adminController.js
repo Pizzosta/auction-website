@@ -1,6 +1,6 @@
-import prisma from '../config/prisma.js';
 import { getRedisClient } from '../config/redis.js';
 import logger from '../utils/logger.js';
+import * as statsRepo from '../repositories/statsRepo.prisma.js';
 
 // Helper: scan keys with pattern (avoids KEYS on large datasets)
 async function scanKeys(client, pattern, count = 100) {
@@ -87,29 +87,11 @@ export async function getPrometheusMetrics(req, res, next) {
       10,
     );
 
-    // Count currently active auctions in Postgres
-    const activeAuctionsCount = await prisma.auction.count({
-      where: { status: 'active', isDeleted: false },
-    });
-
-    // Active auctions grouped by category
-    const activeByCategory = await prisma.auction.groupBy({
-      by: ['category'],
-      where: { status: 'active', isDeleted: false },
-      _count: { _all: true },
-    });
-
-    // Count ended auctions
-    const endedAuctionsCount = await prisma.auction.count({
-      where: { status: 'ended', isDeleted: false },
-    });
-
-    // Ended auctions grouped by category
-    const endedByCategory = await prisma.auction.groupBy({
-      by: ['category'],
-      where: { status: 'ended', isDeleted: false },
-      _count: { _all: true },
-    });
+    // Use repository functions for auction counts/groupings
+    const activeAuctionsCount = await statsRepo.countActiveAuctions();
+    const activeByCategory = await statsRepo.groupActiveByCategory();
+    const endedAuctionsCount = await statsRepo.countEndedAuctions();
+    const endedByCategory = await statsRepo.groupEndedByCategory();
 
     const lines = [];
 
