@@ -1,6 +1,6 @@
-import prisma from '../config/prisma.js';
 import logger from '../utils/logger.js';
 import { getSocketStats, userRooms, auctionRooms, auctionTimers } from '../middleware/socketMiddleware.js';
+import * as statsRepo from '../repositories/statsRepo.prisma.js';
 
 export const getSystemStats = async (req, res, next) => {
     try {
@@ -27,103 +27,31 @@ export const getSystemStats = async (req, res, next) => {
             // 'all' will use the default startDate (beginning of time)
         }
 
-        // Get user statistics
-        const [totalUsers, activeUsers, deletedUsers, newUsers] = await Promise.all([
-            prisma.user.count({
-                where: {
-                    isDeleted: false,
-                    createdAt: { gte: startDate }
-                }
-            }),
-            prisma.user.count({
-                where: {
-                    isDeleted: false,
-                    updatedAt: { gte: startDate }
-                }
-            }),
-            prisma.user.count({
-                where: {
-                    isDeleted: true,
-                    createdAt: { gte: startDate }
-                }
-            }),
-            prisma.user.count({
-                where: {
-                    isDeleted: false,
-                    createdAt: { gte: startDate }
-                }
-            })
-        ]);
-
-        // Get auction statistics
-        const [totalAuctions, activeAuctions, endedAuctions] = await Promise.all([
-            prisma.auction.count({
-                where: {
-                    isDeleted: false,
-                    createdAt: { gte: startDate }
-                }
-            }),
-            prisma.auction.count({
-                where: {
-                    isDeleted: false,
-                    endDate: { gt: new Date() },
-                    startDate: { lte: new Date() }
-                }
-            }),
-            prisma.auction.count({
-                where: {
-                    isDeleted: false,
-                    endDate: {
-                        gte: startDate,
-                        lte: new Date()
-                    }
-                }
-            })
-        ]);
-
-        // Get bid statistics
-        const [totalBids, bidsToday, avgBidsPerAuction] = await Promise.all([
-            prisma.bid.count({
-                where: {
-                    isDeleted: false,
-                    createdAt: { gte: startDate }
-                }
-            }),
-            prisma.bid.count({
-                where: {
-                    isDeleted: false,
-                    createdAt: { gte: today }
-                }
-            }),
-            prisma.$queryRaw`
-        SELECT AVG(bid_count) as avg_bids
-        FROM (
-          SELECT COUNT(*) as bid_count
-          FROM "Bid"
-          WHERE "isDeleted" = false
-          GROUP BY "auctionId"
-        ) as bid_counts
-      `
+        // Delegate data-access to repository layer
+        const [userStats, auctionStats, bidStats] = await Promise.all([
+            statsRepo.countUsersSince(startDate),
+            statsRepo.countAuctionsSince(startDate),
+            statsRepo.countBidsSince(startDate)
         ]);
 
         res.status(200).json({
             status: 'success',
             data: {
                 users: {
-                    total: totalUsers,
-                    active: activeUsers,
-                    inactive: deletedUsers,
-                    new: newUsers
+                    total: userStats.totalUsers,
+                    active: userStats.activeUsers,
+                    inactive: userStats.deletedUsers,
+                    new: userStats.newUsers
                 },
                 auctions: {
-                    total: totalAuctions,
-                    active: activeAuctions,
-                    ended: endedAuctions
+                    total: auctionStats.totalAuctions,
+                    active: auctionStats.activeAuctions,
+                    ended: auctionStats.endedAuctions
                 },
                 bids: {
-                    total: totalBids,
-                    today: bidsToday,
-                    averagePerAuction: Number(avgBidsPerAuction[0]?.avg_bids || 0).toFixed(2)
+                    total: bidStats.totalBids,
+                    today: bidStats.bidsToday,
+                    averagePerAuction: Number(bidStats.avgBids || 0).toFixed(2)
                 },
                 timeFrame: {
                     value: timeFrame,
@@ -160,69 +88,14 @@ export const getAuctionStats = async (req, res, next) => {
             // 'all' will use the default startDate (beginning of time)
         }
 
-        const [
+        const {
             totalAuctions,
             activeAuctions,
             completedAuctions,
             upcomingAuctions,
             auctionsByCategory,
             avgBidsPerAuction
-        ] = await Promise.all([
-            prisma.auction.count({
-                where: {
-                    isDeleted: false,
-                    createdAt: { gte: startDate }
-                }
-            }),
-            prisma.auction.count({
-                where: {
-                    isDeleted: false,
-                    startDate: { lte: new Date() },
-                    endDate: { gte: new Date() },
-                    createdAt: { gte: startDate }
-                }
-            }),
-            prisma.auction.count({
-                where: {
-                    isDeleted: false,
-                    endDate: { lt: new Date() },
-                    createdAt: { gte: startDate }
-                }
-            }),
-            prisma.auction.count({
-                where: {
-                    isDeleted: false,
-                    startDate: { gt: new Date() },
-                    createdAt: { gte: startDate }
-                }
-            }),
-            prisma.auction.groupBy({
-                by: ['category'],
-                where: {
-                    isDeleted: false,
-                    createdAt: { gte: startDate }
-                },
-                _count: {
-                    _all: true
-                },
-                orderBy: {
-                    _count: {
-                        category: 'desc'
-                    }
-                },
-                take: 5
-            }),
-            prisma.$queryRaw`
-        SELECT AVG(bid_count) as avg_bids
-        FROM (
-          SELECT COUNT(*) as bid_count
-          FROM "Bid"
-          WHERE "isDeleted" = false
-          AND "createdAt" >= ${startDate}
-          GROUP BY "auctionId"
-        ) as bid_counts
-      `
-        ]);
+        } = await statsRepo.fetchAuctionStatsSince(startDate);
 
         res.status(200).json({
             status: 'success',
@@ -235,9 +108,9 @@ export const getAuctionStats = async (req, res, next) => {
                 },
                 auctionsByCategory: auctionsByCategory.map(item => ({
                     category: item.category,
-                    count: item._count._all
+                    count: item._count?._all ?? item.count ?? 0
                 })),
-                averageBidsPerAuction: Number(avgBidsPerAuction[0]?.avg_bids || 0).toFixed(2)
+                averageBidsPerAuction: Number(avgBidsPerAuction || 0).toFixed(2)
             }
         });
     } catch (error) {
@@ -268,112 +141,22 @@ export const getBidStats = async (req, res, next) => {
             // 'all' will use the default startDate (beginning of time)
         }
 
-        const [
+        const {
             totalBids,
             bidsToday,
-            averageBidAmount,
+            averageBidAmountAgg,
             highestBid,
             bidsByAuction,
             bidsByUser
-        ] = await Promise.all([
-            // Total bids in time frame
-            prisma.bid.count({
-                where: {
-                    isDeleted: false,
-                    createdAt: { gte: startDate }
-                }
-            }),
-
-            // Bids today
-            prisma.bid.count({
-                where: {
-                    isDeleted: false,
-                    createdAt: {
-                        gte: new Date(new Date().setHours(0, 0, 0, 0)),
-                        lt: new Date(new Date().setHours(23, 59, 59, 999))
-                    }
-                }
-            }),
-
-            // Average bid amount
-            prisma.bid.aggregate({
-                where: {
-                    isDeleted: false,
-                    createdAt: { gte: startDate }
-                },
-                _avg: {
-                    amount: true
-                }
-            }),
-
-            // Highest bid
-            prisma.bid.findFirst({
-                where: {
-                    isDeleted: false,
-                    createdAt: { gte: startDate }
-                },
-                orderBy: {
-                    amount: 'desc'
-                },
-                select: {
-                    amount: true,
-                    auction: {
-                        select: {
-                            id: true,
-                            title: true
-                        }
-                    },
-                    bidder: {
-                        select: {
-                            id: true,
-                            username: true
-                        }
-                    }
-                }
-            }),
-
-            // Bids by auction (top 5)
-            prisma.$queryRaw`
-        SELECT 
-          b."auctionId", 
-          a.title,
-          COUNT(*)::int as "bidCount"
-        FROM "Bid" b
-        JOIN "Auction" a ON a.id = b."auctionId"
-        WHERE b."isDeleted" = false
-        AND b."createdAt" >= ${startDate}
-        GROUP BY b."auctionId", a.title
-        ORDER BY "bidCount" DESC
-        LIMIT 5
-      `,
-
-            // Bids by user (top 5)
-            prisma.$queryRaw`
-        SELECT 
-          b."bidderId" as "userId",
-          u.username,
-          COUNT(*)::int as "bidCount"
-        FROM "Bid" b
-        JOIN "User" u ON u.id = b."bidderId"
-        WHERE b."isDeleted" = false
-        AND b."createdAt" >= ${startDate}
-        GROUP BY b."bidderId", u.username
-        ORDER BY "bidCount" DESC
-        LIMIT 5
-      `
-        ]);
+        } = await statsRepo.fetchBidStatsSince(startDate);
 
         res.status(200).json({
             status: 'success',
             data: {
                 totalBids,
                 bidsToday,
-                averageBidAmount: Number(averageBidAmount._avg.amount || 0).toFixed(2),
-                highestBid: {
-                    amount: highestBid?.amount ? Number(highestBid.amount) : 0,
-                    auction: highestBid?.auction || null,
-                    bidder: highestBid?.bidder || null
-                },
+                averageBidAmount: Number(averageBidAmountAgg._avg?.amount || averageBidAmountAgg._avg || 0).toFixed(2),
+                highestBid: highestBid || null,
                 bidsByAuction,
                 bidsByUser
             }
@@ -406,70 +189,18 @@ export const getUserStats = async (req, res, next) => {
             // 'all' will use the default startDate (beginning of time)
         }
 
-        const [
-            totalUsers,
-            activeUsers,
-            deletedUsers,
-            newUsers,
-            usersByRole,
-        ] = await Promise.all([
-            prisma.user.count({
-                where: {
-                    isDeleted: false,
-                    createdAt: { gte: startDate }
-                }
-            }),
-            prisma.user.count({
-                where: {
-                    isDeleted: false,
-                    lastActiveAt: {
-                        gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) // Active in last 30 days
-                    },
-                    createdAt: { gte: startDate }
-                }
-            }),
-            prisma.user.count({
-                where: {
-                    isDeleted: true,
-                    createdAt: { gte: startDate }
-                }
-            }),
-            prisma.user.count({
-                where: {
-                    isDeleted: false,
-                    createdAt: {
-                        gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) // Registered in last 30 days
-                    },
-                    createdAt: { gte: startDate }
-                }
-            }),
-            prisma.user.groupBy({
-                by: ['role'],
-                where: {
-                    isDeleted: false,
-                    createdAt: { gte: startDate }
-                },
-                _count: {
-                    role: true
-                },
-                orderBy: {
-                    _count: {
-                        role: 'desc'
-                    }
-                }
-            })
-        ]);
+        const userStats = await statsRepo.fetchUserStatsSince(startDate);
 
         res.status(200).json({
             status: 'success',
             data: {
-                totalUsers,
-                activeUsers,
-                deletedUsers,
-                newUsers,
-                usersByRole: usersByRole.map(item => ({
+                totalUsers: userStats.totalUsers,
+                activeUsers: userStats.activeUsers,
+                deletedUsers: userStats.deletedUsers,
+                newUsers: userStats.newUsers,
+                usersByRole: (userStats.usersByRole || []).map(item => ({
                     role: item.role,
-                    count: item._count._all
+                    count: item._count?.role ?? item._count?._all ?? item.count ?? 0
                 })),
             }
         });
@@ -497,7 +228,6 @@ export const getSocketStatsController = (req, res, next) => {
             error: error.message,
             userId: req.user.id
         });
-
         next(error);
     }
 };
