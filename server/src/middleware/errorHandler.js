@@ -1,5 +1,13 @@
 import { Prisma } from '@prisma/client';
 import logger from '../utils/logger.js';
+import { env, validateEnv } from '../config/env.js';
+
+// Validate required environment variables
+const missingVars = validateEnv();
+if (missingVars.length > 0) {
+  logger.error(`Missing required environment variables: ${missingVars.join(', ')}`);
+  process.exit(1);
+}
 
 /**
  * Custom error class for handling operational errors
@@ -94,7 +102,7 @@ const globalErrorHandler = (err, req, res, _next) => {
     // Only include stack for non-operational errors in production
     ...(!error.isOperational && { stack: error.stack }),
     // Include original error object for debugging in development
-    ...(process.env.NODE_ENV === 'development' && {
+    ...(env.isDev && {
       stack: error.stack,
       originalError: {
         name: err.name,
@@ -111,7 +119,7 @@ const globalErrorHandler = (err, req, res, _next) => {
     status: error.status,
     message: error.message || 'Internal Server Error',
     ...(error.details && { details: error.details }),
-    ...(process.env.NODE_ENV === 'development' && {
+    ...(env.isDev && {
       originalError: error.originalError || error.stack,
     }),
   });

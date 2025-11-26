@@ -1,6 +1,7 @@
 import prisma from '../config/prisma.js';
 import { verifyToken, isRefreshTokenValid } from '../services/tokenService.js';
 import logger from '../utils/logger.js';
+import { env } from '../config/env.js';
 
 // Protect routes with JWT authentication
 export const protect = async (req, res, next) => {
@@ -173,7 +174,7 @@ export const verifyRefreshToken = async (req, res, next) => {
     // Clear invalid refresh token cookie
     res.clearCookie('refreshToken', {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: env.isProd,
       sameSite: 'strict'
     });
 

@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import fs from 'fs';
 import morgan from 'morgan';
 import { getRequestContext } from '../middleware/requestContext.js';
+import { env } from '../config/env.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -34,7 +35,7 @@ const logFormat = winston.format.combine(
 
 // Create logger instance
 const logger = winston.createLogger({
-  level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
+  level: env.isProd ? 'info' : 'debug',
   format: logFormat,
   defaultMeta: { service: 'auction-website' },
   transports: [
@@ -57,7 +58,7 @@ const logger = winston.createLogger({
 });
 
 // Add console transport in non-production environments
-if (process.env.NODE_ENV !== 'production') {
+if (!env.isProd) {
   logger.add(
     new winston.transports.Console({
       format: winston.format.combine(

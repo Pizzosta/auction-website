@@ -6,8 +6,15 @@ import {
 } from '../services/tokenService.js';
 import { findUserByIdPrisma } from '../repositories/userRepo.prisma.js';
 import logger from '../utils/logger.js';
-import { env } from '../config/env.js';
+import { env, validateEnv } from '../config/env.js';
 import { AppError } from '../middleware/errorHandler.js';
+
+// Validate required environment variables
+const missingVars = validateEnv();
+if (missingVars.length > 0) {
+  logger.error(`Missing required environment variables: ${missingVars.join(', ')}`);
+  process.exit(1);
+}
 
 /**
  * Refresh access token using a valid refresh token
@@ -39,7 +46,7 @@ export const refreshToken = async (req, res, next) => {
     // Set new refresh token cookie (if rotating refresh tokens)
     res.cookie('refreshToken', newRefreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: env.isProd,
       sameSite: 'strict',
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
@@ -82,7 +89,7 @@ export const logout = async (req, res, next) => {
     // Clear the refresh token cookie
     res.clearCookie('refreshToken', {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: env.isProd,
       sameSite: 'strict',
     });
 
@@ -109,7 +116,7 @@ export const logoutAllDevices = async (req, res, next) => {
     // Clear the refresh token cookie
     res.clearCookie('refreshToken', {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: env.isProd,
       sameSite: 'strict',
     });
 

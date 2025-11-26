@@ -1,4 +1,5 @@
 import logger from '../utils/logger.js';
+import { env } from '../config/env.js';
 
 /**
  * Logs API requests and responses
@@ -52,7 +53,7 @@ export const apiLogger = (req, res, next) => {
 export const errorLogger = (err, req, res, next) => {
   logger.error('API Error', {
     message: err.message,
-    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,
+    stack: env.isDev ? err.stack : undefined,
     method: req.method,
     url: req.originalUrl,
     ip: req.ip,

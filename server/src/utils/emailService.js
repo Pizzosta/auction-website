@@ -5,6 +5,7 @@ import fs from 'fs';
 import handlebars from 'handlebars';
 import emailConfig from '../config/email.js';
 import logger from '../utils/logger.js';
+import { env } from '../config/env.js';
 
 /**
  * Detects if an email error is temporary/transient and can be retried
@@ -70,8 +71,8 @@ export const sendEmail = async ({ to, subject, template, context = {}, retryCoun
 
   try {
     // In development, log the email being sent
-    if (process.env.NODE_ENV === 'development') {
-      logger.info(`Sending email (attempt ${retryCount + 1}/${maxRetries + 1}):`, {
+    if (env.isDev) {
+     logger.info(`Sending email (attempt ${retryCount + 1}/${maxRetries + 1}):`, {
         to,
         subject,
         template,
@@ -93,7 +94,7 @@ export const sendEmail = async ({ to, subject, template, context = {}, retryCoun
       text: html.replace(/<[^>]*>?/gm, ''), // Convert HTML to plain text
     });
 
-    if (process.env.NODE_ENV === 'development') {
+    if (env.isDev) {
       const previewUrl = nodemailer.getTestMessageUrl(info);
       if (previewUrl) {
         logger.info(`Email sent. Preview URL: ${previewUrl}`);

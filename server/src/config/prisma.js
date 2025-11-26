@@ -1,10 +1,18 @@
 import { PrismaClient } from '@prisma/client';
 import logger from '../utils/logger.js';
+import { env, validateEnv } from '../config/env.js';
+
+// Validate required environment variables
+const missingVars = validateEnv();
+if (missingVars.length > 0) {
+  logger.error(`Missing required environment variables: ${missingVars.join(', ')}`);
+  process.exit(1);
+}
 
 let prisma;
 
 // Ensure we reuse a single PrismaClient in dev (hot-reload friendly)
-if (process.env.NODE_ENV !== 'production') {
+if (!env.isProd) {
   if (!global.__PRISMA_CLIENT__) {
     logger.info('Initializing new PrismaClient (dev mode)');
     global.__PRISMA_CLIENT__ = new PrismaClient();
