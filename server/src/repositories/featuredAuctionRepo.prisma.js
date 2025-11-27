@@ -61,7 +61,7 @@ export const findFeaturedAuctionsPrisma = async (options = {}) => {
             // no filter - include both deleted and non-deleted
         } else {
             // fallback for unknown status strings
-            where.isDeleted = false;
+            where.status = normalizedStatus;
         }
     } else {
         // Default behavior: only show active if no status specified
