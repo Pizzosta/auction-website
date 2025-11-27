@@ -72,8 +72,8 @@ import statsRoutes from './routes/statsRoutes.js';
 import webhookRoutes from './routes/webhookRoutes.js';
 import watchlistRoutes from './routes/watchlistRoutes.js';
 import featuredAuctionRoutes from './routes/featuredAuctionRoutes.js';
-import { initSocketIO } from './middleware/socketMiddleware.js';
 import feedbackRoutes from './routes/feedbackRoutes.js';
+import { initSocketIO } from './middleware/socketMiddleware.js';
 
 const app = express();
 
@@ -153,7 +153,12 @@ if (env.isProd) {
 
 // 404 handler
 app.use((req, res, next) => {
-  next(new AppError('ROUTE_NOT_FOUND', `Can't find ${req.originalUrl} on this server!`, 404, { method: req.method, url: req.originalUrl }));
+  next(
+    new AppError('ROUTE_NOT_FOUND', `Can't find ${req.originalUrl} on this server!`, 404, {
+      method: req.method,
+      url: req.originalUrl,
+    })
+  );
 });
 
 // Global error handler
@@ -169,10 +174,33 @@ process.on('uncaughtException', error => {
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
-  // In production, you might want to gracefully shut down
+  // Log as much useful information as possible to trace the source of the rejection
+  try {
+    const serializedReason =
+      reason instanceof Error ? { message: reason.message, stack: reason.stack } : reason;
+    logger.error('Unhandled Rejection', { reason: serializedReason, promise: String(promise) });
+  } catch (logErr) {
+    // Fallback logger if serialization fails
+    logger.error('Unhandled Rejection (could not serialize reason)', { reason, promise });
+  }
+
+  // In production, fail fast after logging so monitoring can capture the error
   if (env.isProd) {
-    process.exit(1);
+    // give logger a moment to flush
+    setTimeout(() => process.exit(1), 100);
+  }
+});
+
+// Also capture Node warnings which may contain helpful stack traces
+process.on('warning', warning => {
+  try {
+    logger.warn('Node warning', {
+      name: warning.name,
+      message: warning.message,
+      stack: warning.stack,
+    });
+  } catch (err) {
+    logger.warn('Node warning (could not serialize)', { warning });
   }
 });
 
