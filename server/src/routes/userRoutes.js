@@ -17,57 +17,302 @@ import { uploadProfileImageMiddleware } from '../middleware/uploadMiddleware.js'
 const router = express.Router();
 
 /**
- * @route GET /api/users
- * @group Users - user management
- * @description Retrieve a list of all users. Requires admin privileges.
- * @param {string} search.query - Search query for username, email, or name
- * @param {string} role.query - Filter by user role
- * @param {boolean} isVerified.query - Filter by email verification status
- * @param {string} status.query - Filter by user status (active, deleted, all)
- * @param {string} sort.query - Sort field (createdAt, username, email)
- * @param {string} order.query - Sort order (asc, desc)
- * @param {number} page.query - Page number for pagination
- * @param {number} limit.query - Number of items per page
- * @param {date} lastActiveAfter.query - Filter users active after a specific date
- * @param {date} lastActiveBefore.query - Filter users active before a specific date
- * @returns {object} 200 - List of users
- * @returns {Error}  default - Unexpected error
+ * @swagger
+ * /api/users:
+ *   get:
+ *     tags: [Users]
+ *     summary: Retrieve all users (Admin only)
+ *     security:
+ *       - bearerAuth: []
+ *     description: Get a paginated list of all users with filtering and sorting options. Requires admin privileges.
+ *     parameters:
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search query for username, email, phone or name
+ *       - in: query
+ *         name: role
+ *         schema:
+ *           type: string
+ *           enum: [user, admin]
+ *         description: Filter by user role
+ *       - in: query
+ *         name: isVerified
+ *         schema:
+ *           type: boolean
+ *         description: Filter by email verification status
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [active, deleted, all]
+ *           default: active
+ *         description: Filter by user status
+ *       - in: query
+ *         name: sort
+ *         schema:
+ *           type: string
+ *           enum: [firstname, lastname, createdAt, username, email, lastActiveAt]
+ *           default: createdAt
+ *         description: Field to sort by
+ *       - in: query
+ *         name: order
+ *         schema:
+ *           type: string
+ *           enum: [asc, desc]
+ *           default: desc
+ *         description: Sort order
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           default: 1
+ *         description: Page number for pagination
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 100
+ *           default: 10
+ *         description: Number of items per page
+ *       - in: query
+ *         name: lastActiveAfter
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Filter users active after this date
+ *       - in: query
+ *         name: lastActiveBefore
+ *         schema:
+ *           type: string
+ *           format: date-time
+ *         description: Filter users active before this date
+ *     responses:
+ *       200:
+ *         description: List of users retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 pagination:
+ *                   type: object
+ *                   properties:
+ *                     page:
+ *                       type: integer
+ *                     limit:
+ *                       type: integer
+ *                     total:
+ *                       type: integer
+ *                     pages:
+ *                       type: integer
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       id:
+ *                         type: string
+ *                       username:
+ *                         type: string
+ *                       email:
+ *                         type: string
+ *                       role:
+ *                         type: string
+ *                         enum: [user, admin]
+ *                       isVerified:
+ *                         type: boolean
+ *                       isActive:
+ *                         type: boolean
+ *                       createdAt:
+ *                         type: string
+ *                         format: date-time
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden (admin access required)
+ *       500:
+ *         description: Internal server error
  */
 router.get('/', protect, admin, validate(userQuerySchema.search, 'query'), getAllUsers);
 
 /**
- * @route GET /api/users/me
- * @group Users - user management
- * @description Get the profile of the currently authenticated user.
- * @header {string} Authorization - Bearer token for authentication
- * @returns {object} 200 - Current user profile
- * @returns {Error} 401 - Unauthorized
- * @returns {Error}  default - Unexpected error
+ * @swagger
+ * /api/users/me:
+ *   get:
+ *     tags: [Users]
+ *     summary: Get current user profile
+ *     security:
+ *       - bearerAuth: []
+ *     description: Retrieve the profile of the currently authenticated user. Only accessible by the user themselves.
+ *     responses:
+ *       200:
+ *         description: Current user profile retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     username:
+ *                       type: string
+ *                     email:
+ *                       type: string
+ *                     firstName:
+ *                       type: string
+ *                     lastName:
+ *                       type: string
+ *                     middlename:
+ *                       type: string
+ *                       nullable: true
+ *                     phone:
+ *                       type: string
+ *                     role:
+ *                       type: string
+ *                       enum: [user, admin]
+ *                     isVerified:
+ *                       type: boolean
+ *                     profilePicture:
+ *                       type: string
+ *                       nullable: true
+ *                     createdAt:
+ *                       type: string
+ *                       format: date-time
+ *                     updatedAt:
+ *                       type: string
+ *                       format: date-time
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
  */
 router.get('/me', protect, getMe);
 
 /**
- * @route PATCH /api/users/{id}
- * @group Users - user management
- * @description Update user details by user ID. Only allowed for the user or admin.
- * @header {string} Authorization - Bearer token for authentication
- * @param {string} id.path.required - User ID to update
- * @param {string} username.body - New username (must be unique)
- * @param {string} email.body - New email (must be unique)
- * @param {string} firstName.body - User's first name
- * @param {string} middlename.body - User's middle name
- * @param {string} lastName.body - User's last name
- * @param {string} phone.body - User's phone number (must be unique)
- * @param {string} currentPassword.body - Required when changing password
- * @param {string} password.body - New password (requires currentPassword)
- * @param {string} confirmPassword.body - Must match password if provided
- * @returns {object} 200 - User updated successfully
- * @returns {Error} 400 - Invalid input data
- * @returns {Error} 401 - Unauthorized
- * @returns {Error} 403 - Forbidden (not the account owner or admin)
- * @returns {Error} 404 - User not found
- * @returns {Error} 409 - Version conflict or duplicate data
- * @returns {Error}  default - Unexpected error
+ * @swagger
+ * /api/users/{id}:
+ *   patch:
+ *     tags: [Users]
+ *     summary: Update user details
+ *     security:
+ *       - bearerAuth: []
+ *     description: Update user profile information. Users can only update their own profile, admins can update any profile.
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: User ID to update
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               username:
+ *                 type: string
+ *                 minLength: 3
+ *                 maxLength: 30
+ *                 example: "johndoe123"
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: john@example.com
+ *               firstName:
+ *                 type: string
+ *                 example: "John"
+ *               middlename:
+ *                 type: string
+ *                 nullable: true
+ *                 example: "Michael"
+ *               lastName:
+ *                 type: string
+ *                 example: "Doe"
+ *               phone:
+ *                 type: string
+ *                 example: "+1234567890"
+ *               currentPassword:
+ *                 type: string
+ *                 format: password
+ *                 description: Required when changing password
+ *                 example: "OldPass123!"
+ *               password:
+ *                 type: string
+ *                 format: password
+ *                 minLength: 8
+ *                 description: New password (requires currentPassword)
+ *                 example: "NewPass123!"
+ *               confirmPassword:
+ *                 type: string
+ *                 format: password
+ *                 description: Must match password if provided
+ *                 example: "NewPass123!"
+ *     responses:
+ *       200:
+ *         description: User updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     username:
+ *                       type: string
+ *                     email:
+ *                       type: string
+ *                     firstName:
+ *                       type: string
+ *                     lastName:
+ *                       type: string
+ *                     phone:
+ *                       type: string
+ *                     role:
+ *                       type: string
+ *                     isVerified:
+ *                       type: boolean
+ *                     profilePicture:
+ *                       type: string
+ *                       nullable: true
+ *                     createdAt:
+ *                       type: string
+ *                       format: date-time
+ *                     updatedAt:
+ *                       type: string
+ *                       format: date-time
+ *       400:
+ *         description: Invalid input data
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden (not the account owner or admin)
+ *       404:
+ *         description: User not found
+ *       409:
+ *         description: Conflict (duplicate username/email or version mismatch)
+ *       500:
+ *         description: Internal server error
  */
 router.patch(
   '/:id',
@@ -78,14 +323,61 @@ router.patch(
 );
 
 /**
- * @route DELETE /api/users/{id}
- * @group Users - user management
- * @description Delete a user by ID. Only allowed for the user or admin.
- *              Soft delete by default. Add `?permanent=true` (admin only) to permanently delete.
- * @param {string} id.path.required
- * @param {boolean} permanent.query - Permanently delete the user (admin only)
- * @returns {object} 200 - User deleted
- * @returns {Error}  default - Unexpected error
+ * @swagger
+ * /api/users/{id}:
+ *   delete:
+ *     tags: [Users]
+ *     summary: Delete or deactivate a user
+ *     security:
+ *       - bearerAuth: []
+ *     description: Soft delete a user by default. Admins can permanently delete with ?permanent=true query parameter.
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: User ID to delete
+ *       - in: query
+ *         name: permanent
+ *         schema:
+ *           type: boolean
+ *           default: false
+ *         description: Set to true for permanent deletion (admin only)
+ *     responses:
+ *       200:
+ *         description: User deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 message:
+ *                   type: string
+ *                   example: User deleted successfully
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     isDeleted:
+ *                       type: boolean
+ *                     deletedAt:
+ *                       type: string
+ *                       format: date-time
+ *       400:
+ *         description: Invalid request
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden (not the account owner or admin)
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Internal server error
  */
 router.delete(
   '/:id',
@@ -97,26 +389,111 @@ router.delete(
 );
 
 /**
- * @route POST /api/users/{id}/restore
- * @group Users - user management
- * @description Restore a soft-deleted user. Only allowed for admin.
- * @param {string} id.path.required
- * @returns {object} 200 - User restored
- * @returns {Error}  default - Unexpected error
+ * @swagger
+ * /api/users/{id}/restore:
+ *   post:
+ *     tags: [Users]
+ *     summary: Restore a soft-deleted user
+ *     security:
+ *       - bearerAuth: []
+ *     description: Restore a user that was previously soft-deleted. Admin access required.
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: User ID to restore
+ *     responses:
+ *       200:
+ *         description: User restored successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 message:
+ *                   type: string
+ *                   example: User restored successfully
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     isDeleted:
+ *                       type: boolean
+ *                     restoredAt:
+ *                       type: string
+ *                       format: date-time
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden (admin access required)
+ *       404:
+ *         description: User not found
+ *       409:
+ *         description: User is not deleted
+ *       500:
+ *         description: Internal server error
  */
 router.post('/:id/restore', protect, admin, validate(idSchema('id'), 'params'), restoreUser);
 
 /**
- * @route POST /api/users/me/upload-picture
- * @group Users - user management
- * @description Upload a profile picture for the authenticated user.
- * @header {string} Authorization - Bearer token for authentication
- * @param {file} file.formData - The image file to upload (max 2MB, jpg/jpeg/png)
- * @returns {object} 200 - Profile picture uploaded successfully
- * @returns {Error} 400 - Invalid file format or validation error
- * @returns {Error} 401 - Unauthorized
- * @returns {Error} 413 - File too large
- * @returns {Error}  default - Unexpected error
+ * @swagger
+ * /api/users/me/upload-picture:
+ *   post:
+ *     tags: [Users]
+ *     summary: Upload profile picture
+ *     security:
+ *       - bearerAuth: []
+ *     description: Upload a profile picture for the authenticated user. Supports JPG, JPEG, and PNG formats up to 5MB.
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - file
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: Image file (JPG, JPEG, PNG, max 5MB)
+ *     responses:
+ *       200:
+ *         description: Profile picture uploaded successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 message:
+ *                   type: string
+ *                   example: Profile picture uploaded successfully
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     profilePicture:
+ *                       type: string
+ *                       format: uri
+ *                       example: "https://kawodze.com/api/uploads/profiles/user123.jpg"
+ *       400:
+ *         description: Invalid file format or validation error
+ *       401:
+ *         description: Unauthorized
+ *       413:
+ *         description: File too large (exceeds 5MB limit)
+ *       415:
+ *         description: Unsupported media type
+ *       500:
+ *         description: Internal server error
  */
 router.post(
   '/me/upload-picture',
@@ -127,14 +504,41 @@ router.post(
 );
 
 /**
- * @route DELETE /api/users/me/remove-picture
- * @group Users - user management
- * @description Remove the profile picture of the authenticated user.
- * @header {string} Authorization - Bearer token for authentication
- * @returns {object} 200 - Profile picture removed successfully
- * @returns {Error} 401 - Unauthorized
- * @returns {Error} 404 - No profile picture found
- * @returns {Error}  default - Unexpected error
+ * @swagger
+ * /api/users/me/remove-picture:
+ *   delete:
+ *     tags: [Users]
+ *     summary: Remove profile picture
+ *     security:
+ *       - bearerAuth: []
+ *     description: Remove the profile picture of the authenticated user.
+ *     responses:
+ *       200:
+ *         description: Profile picture removed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 message:
+ *                   type: string
+ *                   example: Profile picture removed successfully
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     profilePicture:
+ *                       type: string
+ *                       nullable: true
+ *                       example: null
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: No profile picture found
+ *       500:
+ *         description: Internal server error
  */
 router.delete(
   '/me/remove-picture',
@@ -144,16 +548,77 @@ router.delete(
 );
 
 /**
- * @route GET /api/users/{id}
- * @group Users - user management
- * @description Get user details by user ID. Requires admin privileges.
- * @header {string} Authorization - Bearer token for authentication
- * @param {string} id.path.required - The ID of the user to retrieve
- * @returns {object} 200 - User details
- * @returns {Error} 401 - Unauthorized
- * @returns {Error} 403 - Forbidden (not an admin)
- * @returns {Error} 404 - User not found
- * @returns {Error}  default - Unexpected error
+ * @swagger
+ * /api/users/{id}:
+ *   get:
+ *     tags: [Users]
+ *     summary: Get user by ID (Admin only)
+ *     security:
+ *       - bearerAuth: []
+ *     description: Retrieve detailed information about a specific user. Requires admin privileges.
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: User ID
+ *     responses:
+ *       200:
+ *         description: User details retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: success
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     username:
+ *                       type: string
+ *                     email:
+ *                       type: string
+ *                     firstName:
+ *                       type: string
+ *                     lastName:
+ *                       type: string
+ *                     middlename:
+ *                       type: string
+ *                       nullable: true
+ *                     phone:
+ *                       type: string
+ *                     role:
+ *                       type: string
+ *                       enum: [user, admin]
+ *                     isVerified:
+ *                       type: boolean
+ *                     isActive:
+ *                       type: boolean
+ *                     profilePicture:
+ *                       type: string
+ *                       nullable: true
+ *                     createdAt:
+ *                       type: string
+ *                       format: date-time
+ *                     updatedAt:
+ *                       type: string
+ *                       format: date-time
+ *                     lastActiveAt:
+ *                       type: string
+ *                       format: date-time
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden (admin access required)
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Internal server error
  */
 router.get('/:id', protect, admin, validate(idSchema('id'), 'params'), getUserById);
 

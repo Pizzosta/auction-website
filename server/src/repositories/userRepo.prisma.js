@@ -481,7 +481,8 @@ export const listUsersPrisma = async ({
   page = 1,
   limit = 10,
   search = '',
-  sort = 'createdAt:desc',
+  sort = 'createdAt',
+  order = 'desc',
   status,
   role,
   isVerified,
@@ -504,6 +505,7 @@ export const listUsersPrisma = async ({
   // Handle status filter (case-insensitive via normalization)
   if (status) {
     const normalizedStatus = status.toLowerCase();
+
     if (normalizedStatus === 'active') {
       where.isDeleted = { not: true };
     } else if (normalizedStatus === 'deleted') {
@@ -544,12 +546,17 @@ export const listUsersPrisma = async ({
     ];
   }
 
-  // Sort mapping
-  let [field, order] = String(sort).split(':');
-  if (!field) field = 'createdAt';
-  const allowed = new Set(['firstname', 'lastname', 'email', 'phone', 'username', 'createdAt']);
-  if (!allowed.has(field)) field = 'createdAt';
-  const orderBy = { [field]: order === 'asc' ? 'asc' : 'desc' };
+  // Sort 
+  const allowedSortFields = new Set(['firstname', 'lastname', 'email', 'phone', 'username', 'createdAt']);
+
+  // Validate and set default sort field
+  const field = allowedSortFields.has(sort) ? sort : 'createdAt';
+
+  // Validate and set default order direction
+  const orderDirection = order === 'asc' ? 'asc' : 'desc';
+
+  const orderBy = { [field]: orderDirection };
+
 
   const [count, users] = await Promise.all([
     prisma.user.count({ where }),

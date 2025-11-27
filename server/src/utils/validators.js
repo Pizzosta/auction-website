@@ -7,8 +7,12 @@ export const userQuerySchema = {
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(100).default(10),
     sort: Joi.string()
-      .pattern(/^(firstname|lastname|email|phone|username|createdAt):(asc|desc)$/)
-      .default('createdAt:desc')
+      .valid('firstname', 'lastname', 'email', 'phone', 'username', 'createdAt')
+      .default('createdAt')
+      .optional(),
+    order: Joi.string()
+      .valid('asc', 'desc')
+      .default('desc')
       .optional(),
     fields: Joi.string()
       .pattern(/^[a-zA-Z0-9_, ]*$/)
@@ -241,15 +245,15 @@ export const authSchema = {
   }),
 
   register: Joi.object({
-    firstname: Joi.string().trim().min(3).max(20).required().messages({
+    firstname: Joi.string().trim().min(3).max(20).pattern(/^[a-zA-Z\s-']*$/).required().messages({
       'string.empty': 'First name is required',
       'string.min': 'First name must be at least 3 characters long',
       'string.max': 'First name cannot be more than 20 characters',
     }),
-    middlename: Joi.string().trim().max(20).allow('').messages({
+    middlename: Joi.string().trim().max(20).pattern(/^[a-zA-Z\s-']*$/).allow('').messages({
       'string.max': 'Middle name cannot be more than 20 characters',
     }),
-    lastname: Joi.string().trim().min(3).max(20).required().messages({
+    lastname: Joi.string().trim().min(3).max(20).pattern(/^[a-zA-Z\s-']*$/).required().messages({
       'string.empty': 'Last name is required',
       'string.min': 'Last name must be at least 3 characters long',
       'string.max': 'Last name cannot be more than 20 characters',
@@ -340,7 +344,7 @@ export const authSchema = {
 // Auction schema validation
 export const auctionSchema = {
   create: Joi.object({
-    title: Joi.string().trim().min(3).max(50).required(),
+    title: Joi.string().trim().min(3).max(50).pattern(/^[a-zA-Z\s-']*$/).required(),
     description: Joi.string().trim().min(3).max(500).required(),
     startingPrice: Joi.number().min(0).required(),
     bidIncrement: Joi.number().min(0.01).required(),
@@ -386,7 +390,7 @@ export const auctionSchema = {
   }),
 
   update: Joi.object({
-    title: Joi.string().trim().min(3).max(50).optional(),
+    title: Joi.string().trim().min(3).max(50).pattern(/^[a-zA-Z\s-']*$/).optional(),
     description: Joi.string().trim().min(3).max(500).optional(),
     startingPrice: Joi.number().min(0).optional(),
     bidIncrement: Joi.number().min(0.01).optional(),
