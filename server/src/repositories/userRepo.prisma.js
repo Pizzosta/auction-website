@@ -507,7 +507,7 @@ export const listUsersPrisma = async ({
     const normalizedStatus = status.toLowerCase();
 
     if (normalizedStatus === 'active') {
-      where.isDeleted = { not: true };
+      where.isDeleted = false;
     } else if (normalizedStatus === 'deleted') {
       where.isDeleted = true;
     } else if (normalizedStatus === 'all') {
@@ -516,6 +516,9 @@ export const listUsersPrisma = async ({
       // fallback for unknown status strings
       where.status = normalizedStatus;
     }
+  } else {
+    // Default behavior: only show active if no status specified
+    where.isDeleted = false;
   }
 
   if (role) where.role = role;
