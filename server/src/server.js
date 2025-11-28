@@ -206,8 +206,9 @@ process.on('warning', warning => {
 
 // Health-check: ensure Redis/Bull queue connectivity
 try {
-  const { emailQueue } = await import('./services/emailQueue.js');
-  await emailQueue.isReady();
+  const { getEmailQueue } = await import('./services/emailQueue.js');
+  const queue = await getEmailQueue();
+  await queue.isReady();
   logger.info('Redis (Bull) connected', {
     host: env.redis?.host || '127.0.0.1',
     port: env.redis?.port || 6379,
@@ -245,10 +246,11 @@ const shutdown = async () => {
 
     // Close Redis/Bull queues
     try {
-      const { emailQueue } = await import('./services/emailQueue.js');
-      if (emailQueue && typeof emailQueue.close === 'function') {
+      const { getEmailQueue } = await import('./services/emailQueue.js');
+      const queue = await getEmailQueue();
+      if (queue && typeof queue.close === 'function') {
         // Wait for active jobs to finish; pass true to not wait if you want faster exits
-        await emailQueue.close();
+        await queue.close();
         logger.info('Email queue closed');
       } else {
         logger.warn('Email queue not available or already closed');

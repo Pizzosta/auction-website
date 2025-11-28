@@ -15,7 +15,7 @@ export async function getRedisClient() {
       socket: {
         host: env.redis?.host || '127.0.0.1',
         port: env.redis?.port || 6379,
-        tls: env.redis?.tls || false,
+        tls: env.redis?.tls ? {} : undefined,
         reconnectStrategy: retries =>
           // Exponential backoff with max delay
           Math.min(retries * 100, 3000),
