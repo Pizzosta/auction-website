@@ -33,7 +33,6 @@ export async function getRedisClient() {
           // Only reconnect when the error contains "READONLY"
           return true;
         }
-        return false;
       },
       lazyConnect: true, // Connect lazily for better control
     });
