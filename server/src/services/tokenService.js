@@ -24,7 +24,7 @@ const generateRefreshToken = async (userId, email, role) => {
   try {
     const redis = await getRedisClient();
     if (redis) {
-      await redis.setEx(`refresh_token:${userId}:${refreshToken}`, expiresIn, 'valid');
+      await redis.setex(`refresh_token:${userId}:${refreshToken}`, expiresIn, 'valid');
     } else {
       throw new Error('Redis client not available');
     }
@@ -67,9 +67,9 @@ async function scanAllKeys(client, pattern, count = 200) {
   const keys = [];
   let cursor = '0';
   do {
-    const res = await client.scan(cursor, { MATCH: pattern, COUNT: count });
-    cursor = res.cursor;
-    keys.push(...res.keys);
+    const [newCursor, scanKeys] = await client.scan(cursor, 'MATCH', pattern, 'COUNT', count);
+    cursor = newCursor;
+    keys.push(...scanKeys);
   } while (cursor !== '0');
   return keys;
 }

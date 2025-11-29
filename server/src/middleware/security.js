@@ -146,7 +146,8 @@ const createRateLimiter = (options = {}) => {
     try {
       // Get Redis client with proper error handling
       redisClient = await getRedisClient();
-      if (redisClient && redisClient.isOpen) {
+      // ioredis uses status property, check if it's ready
+      if (redisClient && redisClient.status === 'ready') {
         isRedisAvailable = true;
       }
     } catch (error) {
@@ -194,8 +195,8 @@ const createRateLimiter = (options = {}) => {
       try {
         if (shouldReset) {
           await Promise.all([
-            redisClient.set(redisKey, '1', { PX: windowMs, NX: true }),
-            redisClient.set(`${redisKey}:reset`, String(resetTime), { PX: windowMs, NX: true }),
+            redisClient.set(redisKey, '1', 'PX', windowMs, 'NX'),
+            redisClient.set(`${redisKey}:reset`, String(resetTime), 'PX', windowMs, 'NX'),
           ]);
         } else {
           await redisClient.incr(redisKey);

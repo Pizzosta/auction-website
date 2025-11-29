@@ -7,9 +7,9 @@ async function scanKeys(client, pattern, count = 100) {
   const keys = [];
   let cursor = '0';
   do {
-    const res = await client.scan(cursor, { MATCH: pattern, COUNT: count });
-    cursor = res.cursor;
-    keys.push(...res.keys);
+    const [newCursor, scanKeys] = await client.scan(cursor, 'MATCH', pattern, 'COUNT', count);
+    cursor = newCursor;
+    keys.push(...scanKeys);
   } while (cursor !== '0');
   return keys;
 }

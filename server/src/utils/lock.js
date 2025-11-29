@@ -11,8 +11,8 @@ export async function acquireLock(key, ttlMs = 5000, options = {}) {
   const start = Date.now();
   let attempts = 0;
   while (attempts <= retries) {
-    // Redis v5 client supports options object for NX/PX
-    const result = await client.set(key, token, { NX: true, PX: ttlMs });
+    // ioredis uses string-based options for NX/PX
+    const result = await client.set(key, token, 'PX', ttlMs, 'NX');
     if (result === 'OK') {
       return {
         token,
@@ -52,7 +52,7 @@ export async function releaseLock(key, token) {
     end
   `;
   try {
-    await client.eval(lua, { keys: [key], arguments: [token] });
+    await client.eval(lua, 1, key, token);
   } catch (e) {
     // Swallow release errors; lock will expire by TTL
   }

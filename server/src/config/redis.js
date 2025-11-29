@@ -1,40 +1,46 @@
-import { createClient } from 'redis';
+import IORedis from 'ioredis';
 import { env } from './env.js';
 import logger from '../utils/logger.js';
 
 let redisClient = null;
 
 export async function getRedisClient() {
-  if (redisClient && redisClient.isOpen) {
+  if (redisClient && redisClient.status === 'ready') {
     return redisClient;
   }
 
   try {
-    // Create Redis client with configuration
-    redisClient = createClient({
-      socket: {
-        host: env.redis?.host || '127.0.0.1',
-        port: env.redis?.port || 6379,
-        tls: env.redis?.tls ? {} : undefined,
-        reconnectStrategy: retries =>
-          // Exponential backoff with max delay
-          Math.min(retries * 100, 3000),
-      },
+    // Create ioredis client with configuration
+    redisClient = new IORedis({
+      host: env.redis?.host || '127.0.0.1',
+      port: env.redis?.port || 6379,
       password: env.redis?.password || undefined,
-      // Add prefix to all keys
-      legacyMode: false, // Use new Redis commands
+      tls: env.redis?.tls ? {} : undefined,
+      maxRetriesPerRequest: null, // Disable max retries per request
+      retryStrategy: (times) => {
+        // Exponential backoff with max delay
+        return Math.min(times * 100, 3000);
+      },
+      reconnectOnError: (err) => {
+        const targetError = 'READONLY';
+        if (err.message.includes(targetError)) {
+          // Only reconnect when the error contains "READONLY"
+          return true;
+        }
+      },
+      lazyConnect: true, // Connect lazily for better control
     });
 
     // Event handlers
     redisClient.on('connect', () => {
-      logger.info('Redis client connecting', {
+      logger.info('ioredis client connecting', {
         host: env.redis?.host,
         port: env.redis?.port,
       });
     });
 
     redisClient.on('ready', () => {
-      logger.info('Redis client ready', {
+      logger.info('ioredis client ready', {
         host: env.redis?.host,
         port: env.redis?.port,
         auth: env.redis?.password ? 'enabled' : 'disabled',
@@ -43,15 +49,15 @@ export async function getRedisClient() {
     });
 
     redisClient.on('error', err => {
-      logger.error('Redis client error', { error: err.message });
+      logger.error('ioredis client error', { error: err.message });
     });
 
     redisClient.on('end', () => {
-      logger.info('Redis client connection ended');
+      logger.info('ioredis client connection ended');
     });
 
     redisClient.on('reconnecting', () => {
-      logger.info('Redis client reconnecting');
+      logger.info('ioredis client reconnecting');
     });
 
     // Connect to Redis
@@ -59,7 +65,7 @@ export async function getRedisClient() {
 
     return redisClient;
   } catch (error) {
-    logger.error('Failed to create Redis client', { error: error.message });
+    logger.error('Failed to create ioredis client', { error: error.message });
     throw error;
   }
 }
@@ -70,7 +76,7 @@ export async function executeRedisCommand(command, ...args) {
     const client = await getRedisClient();
     return await client[command](...args);
   } catch (error) {
-    logger.error(`Redis command ${command} failed`, {
+    logger.error(`ioredis command ${command} failed`, {
       error: error.message,
       args,
     });
@@ -80,9 +86,9 @@ export async function executeRedisCommand(command, ...args) {
 
 // Gracefully close Redis connection
 export async function closeRedisClient() {
-  if (redisClient && redisClient.isOpen) {
+  if (redisClient && redisClient.status === 'ready') {
     await redisClient.quit();
-    logger.info('Redis client connection closed');
+    logger.info('ioredis client connection closed');
   }
 }
 
@@ -93,7 +99,7 @@ export async function checkRedisHealth() {
     await client.ping();
     return true;
   } catch (error) {
-    logger.error('Redis health check failed', { error: error.message });
+    logger.error('ioredis health check failed', { error: error.message });
     return false;
   }
 }

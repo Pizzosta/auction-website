@@ -9,27 +9,29 @@ let emailQueue = null;
 export async function getEmailQueue() {
   if (emailQueue) return emailQueue;
 
-  // Bull v4 requires ioredis for proper pub/sub support with authentication
-  // Use a factory function to create authenticated ioredis clients
-  const redisConfig = {
-    host: env.redis?.host || '127.0.0.1',
-    port: env.redis?.port || 6379,
-    password: env.redis?.password || undefined,
-    tls: env.redis?.tls ? {} : undefined,
-  };
-
+  // Factory to create new ioredis clients for Bull's multiple connections
+  // Must be synchronous (Bull doesn't await it)
   const createClient = type => {
-    const opts = { ...redisConfig };
-    // For subscriber/bclient roles, disable ready checks as Bull requires
+    const opts = {
+      host: env.redis?.host || '127.0.0.1',
+      port: env.redis?.port || 6379,
+      password: env.redis?.password || undefined,
+      tls: env.redis?.tls ? {} : undefined,
+      maxRetriesPerRequest: null,
+      retryStrategy: times => Math.min(times * 100, 3000),
+    };
+
+    // For subscriber/bclient, disable ready checks as Bull requires
     if (type === 'subscriber' || type === 'bclient') {
       opts.enableReadyCheck = false;
-      opts.maxRetriesPerRequest = null;
     }
+
     logger.info(`Creating ioredis client for Bull role: ${type}`, {
       host: opts.host,
       port: opts.port,
       auth: !!opts.password,
     });
+
     return new IORedis(opts);
   };
 
@@ -60,10 +62,10 @@ export async function getEmailQueue() {
         ...context,
         ...(typeof to === 'object' ? to : {}),
       });
-      logger.info(`Email sent successfully: ${job.id} → ${recipientEmail}`);
+      logger.info(`Email sent successfully: ${job.id}`);
       return result;
     } catch (error) {
-      logger.error(`Failed to send email(${job.id}):`, error);
+      logger.error(`Failed to send email (${job.id}):`, error);
       throw error; // Let Bull handle retries
     }
   });
