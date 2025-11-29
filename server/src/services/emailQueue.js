@@ -18,7 +18,9 @@ export async function getEmailQueue() {
       password: env.redis?.password || undefined,
       tls: env.redis?.tls ? {} : undefined,
       maxRetriesPerRequest: null,
-      retryStrategy: times => Math.min(times * 100, 3000),
+      commandTimeout: 30000,
+      connectTimeout: 15000,
+      retryStrategy: times => Math.min(times * 500, 10000), // Up to 10 seconds between retries
     };
 
     // For subscriber/bclient, disable ready checks as Bull requires
