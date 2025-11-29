@@ -16,8 +16,14 @@ export async function getRedisClient() {
       port: env.redis?.port || 6379,
       password: env.redis?.password || undefined,
       tls: env.redis?.tls ? {} : undefined,
-      maxRetriesPerRequest: null, // Disable max retries per request
+      maxRetriesPerRequest: 3,
+      connectTimeout: 10000,              // 10 second connection timeout
+      commandTimeout: 5000,               // 5 second command timeout
+      retryDelayOnFailover: 100,
       retryStrategy: (times) => {
+        if (times > 10) {
+          return null; // Stop retrying after 10 attempts
+        }
         // Exponential backoff with max delay
         return Math.min(times * 100, 3000);
       },
@@ -27,6 +33,7 @@ export async function getRedisClient() {
           // Only reconnect when the error contains "READONLY"
           return true;
         }
+        return false;
       },
       lazyConnect: true, // Connect lazily for better control
     });
@@ -66,6 +73,7 @@ export async function getRedisClient() {
     return redisClient;
   } catch (error) {
     logger.error('Failed to create ioredis client', { error: error.message });
+    redisClient = null;
     throw error;
   }
 }
@@ -88,6 +96,7 @@ export async function executeRedisCommand(command, ...args) {
 export async function closeRedisClient() {
   if (redisClient && redisClient.status === 'ready') {
     await redisClient.quit();
+    redisClient = null;
     logger.info('ioredis client connection closed');
   }
 }
