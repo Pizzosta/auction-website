@@ -28,9 +28,8 @@ export async function getRedisClient() {
         return Math.min(times * 100, 3000);
       },
       reconnectOnError: (err) => {
-        const targetError = 'READONLY';
+        const targetError = 'READONLY'; // Only reconnect when the error contains "READONLY" (for Sentinel/Cluster failovers)
         if (err.message.includes(targetError)) {
-          // Only reconnect when the error contains "READONLY"
           return true;
         }
       },
