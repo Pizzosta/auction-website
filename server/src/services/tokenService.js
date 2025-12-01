@@ -2,6 +2,7 @@ import jwt from 'jsonwebtoken';
 import { env } from '../config/env.js';
 import { getRedisClient } from '../config/redis.js';
 import logger from '../utils/logger.js';
+import { AppError } from '../middleware/errorHandler.js';
 
 // Generate access token
 const generateAccessToken = (userId, email, role) => {
@@ -26,25 +27,28 @@ const generateRefreshToken = async (userId, email, role) => {
     if (redis) {
       await redis.setex(`refresh_token:${userId}:${refreshToken}`, expiresIn, 'valid');
     } else {
-      throw new Error('Redis client not available');
+      throw new AppError('REDIS_CLIENT_NOT_AVAILABLE', 'Redis client not available', 500);
     }
   } catch (error) {
-    logger.error('Failed to store refresh token in Redis:', error);
-    throw new Error('Failed to generate refresh token');
+    logger.error('Failed to store refresh token in Redis:', { userId, error: error.message });
+    throw new AppError('REDIS_CLIENT_NOT_AVAILABLE', 'Failed to generate refresh token', 500);
   }
 
   return refreshToken;
 };
 
-// Verify token and return payload if valid
-const verifyToken = token => {
+const verifyToken = (token) => {
   try {
     return jwt.verify(token, env.jwtSecret);
   } catch (error) {
     if (error.name === 'TokenExpiredError') {
-      throw new Error('Token expired');
+      throw new AppError('TOKEN_EXPIRED', 'Your session has expired. Please log in again.', 401);
     }
-    throw new Error('Invalid token');
+    if (error.name === 'JsonWebTokenError') {
+      throw new AppError('INVALID_TOKEN', 'Invalid token. Please log in again.', 401);
+    }
+    // Fallback for any other error
+    throw new AppError('INVALID_TOKEN', 'Token verification failed', 401);
   }
 };
 
@@ -57,8 +61,8 @@ const revokeRefreshToken = async (userId, token) => {
     }
     return true;
   } catch (error) {
-    logger.error('Failed to revoke refresh token:', error);
-    return false;
+    logger.error('Failed to revoke refresh token:', { userId, token, error: error.message });
+    throw new AppError('REDIS_CLIENT_NOT_AVAILABLE', 'Failed to revoke refresh token', 500);
   }
 };
 
@@ -78,23 +82,30 @@ async function scanAllKeys(client, pattern, count = 200) {
 const revokeAllRefreshTokens = async userId => {
   try {
     const redis = await getRedisClient();
-    if (redis) {
-      // Use SCAN to avoid blocking Redis on large datasets
-      const pattern = `refresh_token:${userId}:*`;
-      const keys = await scanAllKeys(redis, pattern, 500);
-      if (keys.length > 0) {
-        // Delete in batches to avoid large argument lists
-        const batchSize = 500;
-        for (let i = 0; i < keys.length; i += batchSize) {
-          const slice = keys.slice(i, i + batchSize);
-          await redis.del(slice);
-        }
+    if (!redis) {
+      logger.error('Redis client not available, cannot revoke tokens.');
+      return false;
+    }
+
+    // Use SCAN to avoid blocking Redis on large datasets
+    const pattern = `refresh_token:${userId}:*`;
+    const keys = await scanAllKeys(redis, pattern, 500);
+    if (keys.length > 0) {
+      logger.info(`Found ${keys.length} tokens to revoke for user ${userId}. Deleting in batches.`);
+      // Delete in batches to avoid large argument lists
+      const batchSize = 500;
+      for (let i = 0; i < keys.length; i += batchSize) {
+        const slice = keys.slice(i, i + batchSize);
+        await redis.del(slice);
       }
+    }
+    else {
+      logger.info(`No refresh tokens found to revoke for user ${userId}.`);
     }
     return true;
   } catch (error) {
-    logger.error('Failed to revoke all refresh tokens:', error);
-    return false;
+    logger.error('Failed to revoke all refresh tokens:', { userId, error: error.message });
+    throw new AppError('REDIS_CLIENT_NOT_AVAILABLE', 'Failed to revoke all refresh tokens', 500);
   }
 };
 
@@ -103,7 +114,7 @@ const isRefreshTokenValid = async (userId, token) => {
   try {
     const redis = await getRedisClient();
     if (!redis) {
-      logger.error('Redis client not available');
+      logger.error('Redis client not available, cannot revoke tokens.');
       return false;
     }
 
@@ -120,8 +131,8 @@ const isRefreshTokenValid = async (userId, token) => {
 
     return isValid;
   } catch (error) {
-    logger.error('Failed to check refresh token validity:', error);
-    return false;
+    logger.error('Failed to check refresh token validity:', { userId, token, error: error.message });
+    throw new AppError('REDIS_CLIENT_NOT_AVAILABLE', 'Failed to check refresh token validity', 500);
   }
 };
 
