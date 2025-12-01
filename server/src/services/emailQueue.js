@@ -1,7 +1,7 @@
 import Queue from 'bull';
 import IORedis from 'ioredis';
 import logger from '../utils/logger.js';
-import { sendTemplateEmail } from '../utils/emailService.js';
+import { sendTemplateEmail } from './emailService.js';
 import { env } from '../config/env.js';
 
 let emailQueue = null;
