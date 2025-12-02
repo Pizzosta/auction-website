@@ -84,6 +84,28 @@ const globalErrorHandler = (err, req, res, _next) => {
   // Validation errors
   if (error.name === 'ValidationError') error = handleValidationError(error);
 
+  // Handle generic errors (like TypeError, ReferenceError, etc.)
+  if (!error.isOperational && error instanceof Error) {
+    error = new AppError(
+      error.name?.toUpperCase() || 'UNKNOWN_ERROR',
+      error.message || 'An unexpected error occurred',
+      error.statusCode || 500,
+      {
+        // Include specific error details
+        type: error.name,
+        // For TypeErrors, include what property was missing
+        ...(error.name === 'TypeError' && error.message.includes('is not a function') && {
+          missingMethod: error.message.match(/(\w+)\.(\w+) is not a function/)?.[2],
+          objectType: error.message.match(/(\w+)\.(\w+) is not a function/)?.[1]
+        }),
+        // For ReferenceErrors
+        ...(error.name === 'ReferenceError' && {
+          undefinedVariable: error.message.match(/(\w+) is not defined/)?.[1]
+        })
+      },
+      error // Original error for logging
+    );
+  }
 
   // Determine log level based on error type
   const logLevel = error.isOperational ? 'warn' : 'error';
@@ -99,31 +121,60 @@ const globalErrorHandler = (err, req, res, _next) => {
     ip: req.ip,
     user: req.user?.id || 'guest',
     isOperational: error.isOperational,
-    // Only include stack for non-operational errors in production
-    ...(!error.isOperational && { stack: error.stack }),
-    // Include original error object for debugging in development
+    // Always include stack for errors in development
     ...(env.isDev && {
       stack: error.stack,
-      originalError: {
-        name: err.name,
-        message: err.message,
-        code: err.code,
-        full: err,
-      },
+      // Include original error if available
+      ...(error.originalError && {
+        originalError: {
+          name: error.originalError.name,
+          message: error.originalError.message,
+          stack: error.originalError.stack
+        }
+      }),
+      // Include details if available
+      ...(error.details && { details: error.details })
     }),
+    // For production, include minimal stack info for non-operational errors
+    ...(!env.isDev && !error.isOperational && {
+      stack: error.stack?.split('\n')[0] // Just first line in production
+    })
   });
 
   // Send response to client
-  res.status(error.statusCode || 500).json({
+  // Build response object
+  const response = {
     code: error.code || 'INTERNAL_SERVER_ERROR',
     status: error.status,
     message: error.message || 'Internal Server Error',
-    ...(error.details && { details: error.details }),
-    ...(env.isDev && {
-      originalError: error.originalError || error.stack,
-    }),
-  });
+    // Always include details if available
+    ...(error.details && { details: error.details })
+  };
 
+  // Enhanced development response
+  if (env.isDev) {
+    response.debug = {
+      timestamp: new Date().toISOString(),
+      path: req.originalUrl,
+      method: req.method
+    };
+    
+    // Include original error info if available
+    if (error.originalError) {
+      response.debug.originalError = {
+        name: error.originalError.name,
+        message: error.originalError.message,
+        // Only include first few lines of stack in response
+        stack: error.originalError.stack?.split('\n').slice(0, 5)
+      };
+    }
+    
+    // Include the error stack
+    response.debug.stack = error.stack?.split('\n').slice(0, 10);
+  }
+
+  // Send response
+  res.status(error.statusCode).json(response);
 };
 
 export { globalErrorHandler, AppError };
