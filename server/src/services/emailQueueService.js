@@ -93,7 +93,7 @@ export async function getEmailQueue() {
             error: err?.message
         });
     });
-    
+
     // Move failed jobs to DLQ after max attempts
     emailQueue.on('failed', async (job, err) => {
         if (job.attemptsMade >= job.opts.attempts) {
@@ -126,7 +126,7 @@ async function moveToDeadLetterQueue(job, error) {
         recipient: job.data.to,
         reason: error?.message
     });
-    
+
     if (!deadLetterQueue) return;
 
     try {
@@ -246,8 +246,13 @@ export async function deleteDeadLetterJob(jobId) {
 }
 
 export async function closeQueues() {
-    clearInterval(monitoringInterval);
-    if (emailQueue) await emailQueue.close();
-    if (deadLetterQueue) await deadLetterQueue.close();
-    logger.info('Email queues closed');
+  clearInterval(monitoringInterval);
+
+  const queues = [emailQueue, deadLetterQueue].filter(Boolean);
+  await Promise.all(queues.map(q => q.close()));
+
+  emailQueue = null;
+  deadLetterQueue = null;
+
+  logger.info('Email queues closed');
 }

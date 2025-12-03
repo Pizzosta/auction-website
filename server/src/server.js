@@ -3,15 +3,16 @@ import apiDocsRouter from './swagger.js';
 import http from 'http';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
-import logger from './utils/logger.js';
+import logger, { httpLogger, loggerClose } from './utils/logger.js';
 import requestLogger from './middleware/requestLogger.js';
 import securityMiddleware from './middleware/security.js';
 import { apiLogger, errorLogger } from './middleware/apiLogger.js';
 import { globalErrorHandler, AppError } from './middleware/errorHandler.js';
 import './jobs/index.js'; // Import jobs to start the scheduler
 import { requestContextMiddleware } from './middleware/requestContext.js';
-import { httpLogger } from './utils/logger.js';
 import { env, validateEnv } from './config/env.js';
+import { closeRedisClient } from './config/redis.js';
+import { pubsub } from './services/queuePubSub.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -259,79 +260,23 @@ const shutdown = async () => {
   logger.info('Shutting down server...');
 
   const completeShutdown = async () => {
-    // Stop monitoring first
-    try {
-      const { monitoringInterval } = await import('./services/emailQueueService.js');
-      if (monitoringInterval) {
-        clearInterval(monitoringInterval);
-        logger.info('Queue monitoring stopped');
-      }
-    } catch (e) {
-      logger.warn('Could not stop monitoring:', e.message);
-    }
-
-    // Close email queue
-    try {
-      const { getEmailQueue } = await import('./services/emailQueueService.js');
-      const queue = await getEmailQueue();
-      if (queue && typeof queue.close === 'function') {
-        // Wait for active jobs to finish; pass true to not wait if you want faster exits
-        await queue.close();
-        logger.info('Email queue closed');
-      } else {
-        logger.warn('Email queue not available or already closed');
-      }
-    } catch (queueError) {
-      logger.error('Error closing email queue:', queueError);
-    }
-
+    // Close Bull queues (waits for active jobs to finish)
+    logger.info('Closing Bull queues...');
+    await closeQueues();
+    
     // Close queue pubsub
-    try {
-      const { pubsub } = await import('./services/queuePubSub.js');
-      if (pubsub?.close) {
-        await pubsub.close();
-        logger.info('Queue pubsub closed');
-      }
-    } catch (e) {
-      logger.error('Error closing queue pubsub:', e.message);
-    }
-
-    // Close DLQ
-    try {
-      const { deadLetterQueue } = await import('./services/emailQueueService.js');
-      if (deadLetterQueue?.close) {
-        await deadLetterQueue.close();
-        logger.info('Dead letter queue closed');
-      }
-    } catch (e) {
-      logger.error('Error closing DLQ:', e.message);
-    }
+    logger.info('Closing QueuePubSub connections...');
+    await pubsub.close();
 
     // Close shared Redis client (used by rate limiter)
-    try {
-      const { getRedisClient } = await import('./config/redis.js');
-      const client = await getRedisClient();
-      if (client) {
-        await client.quit();
-        logger.info('Redis client closed');
-      } else {
-        logger.warn('Redis client not available or already closed');
-      }
-    } catch (redisCloseErr) {
-      logger.error('Error closing Redis client:', redisCloseErr);
-    }
+    logger.info('Closing Redis client...');
+    await closeRedisClient();
 
     // Final confirmation log
     logger.info('Server successfully shut down');
 
     // Flush logger transports before exiting to ensure final logs are written
-    try {
-      for (const transport of logger.transports) {
-        if (typeof transport.close === 'function') transport.close();
-      }
-    } catch (e) {
-      // ignore transport close errors
-    }
+    loggerClose();
 
     // Allow I/O to flush
     await new Promise(resolve => setTimeout(resolve, 50));

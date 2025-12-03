@@ -92,10 +92,16 @@ export async function executeRedisCommand(command, ...args) {
 
 // Gracefully close Redis connection
 export async function closeRedisClient() {
-  if (redisClient && redisClient.status === 'ready') {
-    await redisClient.quit();
-    redisClient = null;
-    logger.info('ioredis client connection closed');
+  try {
+    if (redisClient && redisClient.status === 'ready') {
+      await redisClient.quit();
+      redisClient = null;
+      logger.info('ioredis client connection closed');
+    } else {
+      logger.warn('Redis client not available or already closed');
+    }
+  } catch (error) {
+    logger.error('Failed to close ioredis client', { error: error.message });
   }
 }
 

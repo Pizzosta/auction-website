@@ -121,4 +121,16 @@ for (const level of levelsToPatch) {
   };
 }
 
+export function loggerClose() {
+  try {
+    for (const transport of logger.transports) {
+      if (typeof transport.close === 'function') {
+        transport.close();
+      }
+    }
+  } catch (e) {
+    // ignore transport close errors
+  }
+}
+
 export default logger;
