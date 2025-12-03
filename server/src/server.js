@@ -73,6 +73,7 @@ import webhookRoutes from './routes/webhookRoutes.js';
 import watchlistRoutes from './routes/watchlistRoutes.js';
 import featuredAuctionRoutes from './routes/featuredAuctionRoutes.js';
 import feedbackRoutes from './routes/feedbackRoutes.js';
+import emailRoutes from './routes/emailRoute.js';
 import { initSocketIO } from './middleware/socketMiddleware.js';
 
 const app = express();
@@ -109,7 +110,7 @@ app.use(httpLogger);
 app.use(requestLogger);
 
 // Health check endpoint
-app.get('/health', (req, res) => {
+app.get('/health/server', (req, res) => {
   res.status(200).json({
     status: 'success',
     message: 'Server is running',
@@ -117,6 +118,24 @@ app.get('/health', (req, res) => {
     uptime: process.uptime(),
     environment: env.nodeEnv || 'development',
   });
+});
+
+import { getQueueMetrics } from './services/emailQueueService.js';
+app.get('/health/queue', async (req, res, next) => {
+  try {
+    const metrics = await getQueueMetrics();
+    res.json({
+      status: 'healthy',
+      queue: 'email',
+      metrics: {
+        waiting: metrics.waiting,
+        deadLetter: metrics.deadLetter,
+        isOverloaded: metrics.waiting > 1000
+      }
+    });
+  } catch (error) {
+    next(error);
+  }
 });
 
 // Error logging (should be before global error handler)
@@ -133,6 +152,7 @@ app.use('/api/v1/webhook', webhookRoutes);
 app.use('/api/watchlist', watchlistRoutes);
 app.use('/api/featured-auctions', featuredAuctionRoutes);
 app.use('/api/feedback', feedbackRoutes);
+app.use('/api/email', emailRoutes);
 
 // Create HTTP server and initialize Socket.IO
 const server = http.createServer(app);
@@ -154,10 +174,7 @@ if (env.isProd) {
 // 404 handler
 app.use((req, res, next) => {
   next(
-    new AppError('ROUTE_NOT_FOUND', `Can't find ${req.originalUrl} on this server!`, 404, {
-      method: req.method,
-      url: req.originalUrl,
-    })
+    new AppError('ROUTE_NOT_FOUND', `Can't find ${req.originalUrl} on this server!`, 404)
   );
 });
 
@@ -206,7 +223,7 @@ process.on('warning', warning => {
 
 // Health-check: ensure Redis/Bull queue connectivity
 try {
-  const { getEmailQueue } = await import('./services/emailQueue.js');
+  const { getEmailQueue } = await import('./services/emailQueueService.js');
   const queue = await getEmailQueue();
   await queue.isReady();
   logger.info('Redis (Bull) connected', {
@@ -242,11 +259,20 @@ const shutdown = async () => {
   logger.info('Shutting down server...');
 
   const completeShutdown = async () => {
-    // No MongoDB connection to close; Prisma manages connections per request
-
-    // Close Redis/Bull queues
+    // Stop monitoring first
     try {
-      const { getEmailQueue } = await import('./services/emailQueue.js');
+      const { monitoringInterval } = await import('./services/emailQueueService.js');
+      if (monitoringInterval) {
+        clearInterval(monitoringInterval);
+        logger.info('Queue monitoring stopped');
+      }
+    } catch (e) {
+      logger.warn('Could not stop monitoring:', e.message);
+    }
+
+    // Close email queue
+    try {
+      const { getEmailQueue } = await import('./services/emailQueueService.js');
       const queue = await getEmailQueue();
       if (queue && typeof queue.close === 'function') {
         // Wait for active jobs to finish; pass true to not wait if you want faster exits
@@ -257,6 +283,28 @@ const shutdown = async () => {
       }
     } catch (queueError) {
       logger.error('Error closing email queue:', queueError);
+    }
+
+    // Close queue pubsub
+    try {
+      const { pubsub } = await import('./services/queuePubSub.js');
+      if (pubsub?.close) {
+        await pubsub.close();
+        logger.info('Queue pubsub closed');
+      }
+    } catch (e) {
+      logger.error('Error closing queue pubsub:', e.message);
+    }
+
+    // Close DLQ
+    try {
+      const { deadLetterQueue } = await import('./services/emailQueueService.js');
+      if (deadLetterQueue?.close) {
+        await deadLetterQueue.close();
+        logger.info('Dead letter queue closed');
+      }
+    } catch (e) {
+      logger.error('Error closing DLQ:', e.message);
     }
 
     // Close shared Redis client (used by rate limiter)

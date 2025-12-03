@@ -1,5 +1,5 @@
 import zxcvbn from 'zxcvbn';
-import { addToQueue } from '../services/emailQueue.js';
+import { addToQueue } from '../services/emailQueueService.js';
 import logger from '../utils/logger.js';
 import { env, validateEnv } from '../config/env.js';
 import { generateAccessToken, generateRefreshToken } from '../services/tokenService.js';

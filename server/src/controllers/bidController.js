@@ -5,7 +5,7 @@ import { acquireLock } from '../utils/lock.js';
 import {
   listAllBidsPrisma, findOutbidCandidates, findCurrentHighestBid, getBidWithAuction,
 } from '../repositories/bidRepo.prisma.js';
-import { addToQueue } from '../services/emailQueue.js';
+import { addToQueue } from '../services/emailQueueService.js';
 import { formatCurrency, formatDateTime } from '../utils/format.js';
 import { env, validateEnv } from '../config/env.js';
 import { AppError } from '../middleware/errorHandler.js';

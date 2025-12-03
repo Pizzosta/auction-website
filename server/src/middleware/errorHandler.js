@@ -63,6 +63,49 @@ const handleValidationError = err => {
   return new AppError('VALIDATION_ERROR', validationMessages, 400, null, err);
 };
 
+const handleGenericError = (err) => {
+  // Extract meaningful information from common error types
+  let details = null;
+  
+  if (err.name === 'TypeError') {
+    const match = err.message.match(/(\w+)\.(\w+) is not a function/);
+    if (match) {
+      details = {
+        objectType: match[1],
+        missingMethod: match[2],
+        suggestion: `Check if ${match[1]} is properly initialized or if ${match[2]} method exists`
+      };
+    } else if (err.message.includes('Cannot read properties')) {
+      const match = err.message.match(/Cannot read properties of (null|undefined) \(reading '(\w+)'\)/);
+      if (match) {
+        details = {
+          issue: 'null_or_undefined_access',
+          property: match[2],
+          suggestion: 'Check variable initialization before accessing properties'
+        };
+      }
+    }
+  }
+  
+  if (err.name === 'ReferenceError') {
+    const match = err.message.match(/(\w+) is not defined/);
+    if (match) {
+      details = {
+        undefinedVariable: match[1],
+        suggestion: `Check if ${match[1]} is imported/declared properly`
+      };
+    }
+  }
+  
+  return new AppError(
+    err.name?.toUpperCase().replace(/\s+/g, '_') || 'UNKNOWN_ERROR',
+    err.message || 'An unexpected error occurred',
+    500,
+    details,
+    err
+  );
+};
+
 /**
  * Global error handling middleware
  */
@@ -86,25 +129,7 @@ const globalErrorHandler = (err, req, res, _next) => {
 
   // Handle generic errors (like TypeError, ReferenceError, etc.)
   if (!error.isOperational && error instanceof Error) {
-    error = new AppError(
-      error.name?.toUpperCase() || 'UNKNOWN_ERROR',
-      error.message || 'An unexpected error occurred',
-      error.statusCode || 500,
-      {
-        // Include specific error details
-        type: error.name,
-        // For TypeErrors, include what property was missing
-        ...(error.name === 'TypeError' && error.message.includes('is not a function') && {
-          missingMethod: error.message.match(/(\w+)\.(\w+) is not a function/)?.[2],
-          objectType: error.message.match(/(\w+)\.(\w+) is not a function/)?.[1]
-        }),
-        // For ReferenceErrors
-        ...(error.name === 'ReferenceError' && {
-          undefinedVariable: error.message.match(/(\w+) is not defined/)?.[1]
-        })
-      },
-      error // Original error for logging
-    );
+    error = handleGenericError(error);
   }
 
   // Determine log level based on error type

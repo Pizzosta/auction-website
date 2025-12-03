@@ -1,5 +1,5 @@
 import prisma from '../config/prisma.js';
-import { addToQueue } from '../services/emailQueue.js';
+import { addToQueue } from '../services/emailQueueService.js';
 import logger from '../utils/logger.js';
 import { formatDateTime, formatTimeRemaining } from '../utils/format.js'; 
 /**
