@@ -13,6 +13,9 @@ import { requestContextMiddleware } from './middleware/requestContext.js';
 import { env, validateEnv } from './config/env.js';
 import { closeRedisClient } from './config/redis.js';
 import { pubsub } from './services/queuePubSub.js';
+import { getEmailQueue, closeQueues } from './services/emailQueueService.js';
+import initializeCloudinary from './config/cloudinary.js';
+import { getRedisClient } from './config/redis.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -23,20 +26,6 @@ const missingVars = validateEnv();
 if (missingVars.length > 0) {
   logger.error(`Missing required environment variables: ${missingVars.join(', ')}`);
   process.exit(1);
-}
-
-// Then import and initialize Cloudinary
-import initializeCloudinary from './config/cloudinary.js';
-import { getRedisClient } from './config/redis.js';
-// Initialize Cloudinary
-try {
-  await initializeCloudinary();
-  logger.info('Cloudinary initialized successfully');
-} catch (error) {
-  logger.error('Failed to initialize Cloudinary. Image uploads will not work.');
-  if (env.isProd) {
-    process.exit(1); // Fail fast in production
-  }
 }
 
 // Log initial memory usage
@@ -52,6 +41,17 @@ const logMemoryUsage = (label = 'Memory usage') => {
 
 // Log initial memory usage
 logMemoryUsage('Initial memory usage');
+
+// Initialize Cloudinary
+try {
+  await initializeCloudinary();
+  logger.info('Cloudinary initialized successfully');
+} catch (error) {
+  logger.error('Failed to initialize Cloudinary. Image uploads will not work.');
+  if (env.isProd) {
+    process.exit(1); // Fail fast in production
+  }
+}
 
 // Eagerly connect Redis (used by rate limiting and queues) BEFORE middleware/routes
 try {
@@ -92,7 +92,7 @@ if (env.isProd) {
 app.use(securityMiddleware);
 
 // Serve API documentation
-app.use('/api-docs', apiDocsRouter);
+app.use('/api/v1/docs', apiDocsRouter);
 
 // Enhanced API request/response logging
 app.use(apiLogger);
@@ -143,17 +143,17 @@ app.get('/health/queue', async (req, res, next) => {
 app.use(errorLogger);
 
 // API Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/auctions', auctionRoutes);
-app.use('/api/bids', bidRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/stats', statsRoutes);
+app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/auctions', auctionRoutes);
+app.use('/api/v1/bids', bidRoutes);
+app.use('/api/v1/users', userRoutes);
+app.use('/api/v1/admin', adminRoutes);
+app.use('/api/v1/stats', statsRoutes);
 app.use('/api/v1/webhook', webhookRoutes);
-app.use('/api/watchlist', watchlistRoutes);
-app.use('/api/featured-auctions', featuredAuctionRoutes);
-app.use('/api/feedback', feedbackRoutes);
-app.use('/api/email', emailRoutes);
+app.use('/api/v1/watchlist', watchlistRoutes);
+app.use('/api/v1/featured-auctions', featuredAuctionRoutes);
+app.use('/api/v1/feedback', feedbackRoutes);
+app.use('/api/v1/email', emailRoutes);
 
 // Create HTTP server and initialize Socket.IO
 const server = http.createServer(app);
@@ -224,7 +224,6 @@ process.on('warning', warning => {
 
 // Health-check: ensure Redis/Bull queue connectivity
 try {
-  const { getEmailQueue } = await import('./services/emailQueueService.js');
   const queue = await getEmailQueue();
   await queue.isReady();
   logger.info('Redis (Bull) connected', {
@@ -243,7 +242,7 @@ const PORT = env.port || 5001;
 const HOST = env.host || 'localhost';
 server.listen(PORT, HOST, () => {
   logger.info(`Server running in ${env.nodeEnv} mode on port ${PORT}`);
-  logger.info(`API Documentation available at: http://${HOST}:${PORT}/api-docs`);
+  logger.info(`API Documentation available at: http://${HOST}:${PORT}/api/v1/docs`);
   logMemoryUsage('After server start');
 });
 

@@ -18,7 +18,14 @@ const router = express.Router();
 
 /**
  * @swagger
- * /api/auctions:
+ * tags:
+ *   name: Auctions
+ *   description: Auction management
+ */
+
+/**
+ * @swagger
+ * /api/v1/auctions:
  *   get:
  *     tags: [Auctions]
  *     summary: Retrieve a paginated list of public auctions
@@ -108,7 +115,7 @@ router.get('/', validate(auctionQuerySchema.search, 'query'), getPublicAuctions)
 
 /**
  * @swagger
- * /api/auctions/admin:
+ * /api/v1/auctions/admin:
  *   get:
  *     tags: [Auctions]
  *     summary: Retrieve a paginated list of auctions (admin view)
@@ -206,7 +213,7 @@ router.get(
 
 /**
  * @swagger
- * /api/auctions/create-auction:
+ * /api/v1/auctions/create-auction:
  *   post:
  *     tags: [Auctions]
  *     summary: Create a new auction
@@ -294,7 +301,7 @@ router.post(
 
 /**
  * @swagger
- * /api/auctions/{auctionId}:
+ * /api/v1/auctions/{auctionId}:
  *   get:
  *     tags: [Auctions]
  *     summary: Get an auction by ID
@@ -321,7 +328,7 @@ router.get(
 
 /**
  * @swagger
- * /api/auctions/{auctionId}:
+ * /api/v1/auctions/{auctionId}:
  *   patch:
  *     tags: [Auctions]
  *     security:
@@ -393,7 +400,7 @@ router.patch(
 
 /**
  * @swagger
- * /api/auctions/{auctionId}:
+ * /api/v1/auctions/{auctionId}:
  *   delete:
  *     tags: [Auctions]
  *     security:
@@ -430,7 +437,7 @@ router.delete(
 
 /**
  * @swagger
- * /api/auctions/{auctionId}/confirm-payment:
+ * /api/v1/auctions/{auctionId}/confirm-payment:
  *   patch:
  *     tags: [Auctions]
  *     security:
@@ -463,7 +470,7 @@ router.patch(
 
 /**
  * @swagger
- * /api/auctions/{auctionId}/confirm-delivery:
+ * /api/v1/auctions/{auctionId}/confirm-delivery:
  *   patch:
  *     tags: [Auctions]
  *     security:

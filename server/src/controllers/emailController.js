@@ -84,9 +84,3 @@ export const resumeQueue = async (req, res, next) => {
     next(error);
   }
 };
-
-// In your code, temporarily add a test endpoint
-export async function testDLQ(req, res) {
-  await addToQueue('non-existent-template', 'test@example.com', {});
-  res.json({ message: 'Sent test job that will fail' });
-}

@@ -15,7 +15,14 @@ const router = express.Router();
 
 /**
  * @swagger
- * /api/stats/system:
+ * tags:
+ *   name: Statistics
+ *   description: Statistics management
+ */
+
+/**
+ * @swagger
+ * /api/v1/stats/system:
  *   get:
  *     tags: [Statistics]
  *     summary: Get system-wide statistics
@@ -95,7 +102,7 @@ router.get('/', protect, admin, validate(statsQuerySchema), getSystemStats);
 
 /**
  * @swagger
- * /api/stats/auctions:
+ * /api/v1/stats/auctions:
  *   get:
  *     tags: [Statistics]
  *     summary: Get auction statistics
@@ -157,7 +164,7 @@ router.get('/auctions', protect, admin, validate(statsQuerySchema), getAuctionSt
 
 /**
  * @swagger
- * /api/stats/users:
+ * /api/v1/stats/users:
  *   get:
  *     tags: [Statistics]
  *     summary: Get user statistics
@@ -243,7 +250,7 @@ router.get('/users', protect, admin, validate(statsQuerySchema), getUserStats);
 
 /**
  * @swagger
- * /api/stats/bids:
+ * /api/v1/stats/bids:
  *   get:
  *     tags: [Statistics]
  *     summary: Get bid statistics
@@ -322,7 +329,7 @@ router.get('/bids', protect, admin, validate(statsQuerySchema), getBidStats);
 
 /**
  * @swagger
- * /api/stats/socket:
+ * /api/v1/stats/socket:
  *   get:
  *     tags: [Statistics]
  *     summary: Get WebSocket connection statistics
@@ -396,7 +403,7 @@ router.get('/socket', protect, admin, getSocketStatsController);
 
 /**
  * @swagger
- * /api/stats/socket-rooms:
+ * /api/v1/stats/socket-rooms:
  *   get:
  *     tags: [Statistics]
  *     summary: Get WebSocket rooms information

@@ -14,7 +14,14 @@ const router = express.Router();
 
 /**
  * @swagger
- * /api/watchlist/add:
+ * tags:
+ *   name: Watchlist
+ *   description: Watchlist management
+ */
+
+/**
+ * @swagger
+ * /api/v1/watchlist/add:
  *   post:
  *     tags: [Watchlist]
  *     summary: Add an auction to watchlist
@@ -51,7 +58,7 @@ router.post('/add', protect, validate(watchlistSchema.add, 'body'), addToWatchli
 
 /**
  * @swagger
- * /api/watchlist/remove:
+ * /api/v1/watchlist/remove:
  *   delete:
  *     tags: [Watchlist]
  *     summary: Remove an auction from watchlist
@@ -86,7 +93,7 @@ router.delete('/remove', protect, validate(watchlistSchema.remove, 'body'), remo
 
 /**
  * @swagger
- * /api/watchlist/toggle:
+ * /api/v1/watchlist/toggle:
  *   post:
  *     tags: [Watchlist]
  *     summary: Toggle auction in watchlist
@@ -121,7 +128,7 @@ router.post('/toggle', protect, validate(watchlistSchema.toggle, 'body'), toggle
 
 /**
  * @swagger
- * /api/watchlist:
+ * /api/v1/watchlist:
  *   get:
  *     tags: [Watchlist]
  *     summary: Get user's watchlist
@@ -170,7 +177,7 @@ router.get('/', protect, validate(watchlistQuerySchema, 'query'), getWatchlist);
 
 /**
  * @swagger
- * /api/watchlist/check/{auctionId}:
+ * /api/v1/watchlist/check/{auctionId}:
  *   get:
  *     tags: [Watchlist]
  *     summary: Check auction watchlist status

@@ -5,7 +5,7 @@ import { protect, admin } from '../middleware/authMiddleware.js';
 const router = express.Router();
 
 /**
- * @route GET /api/admin/hot-auctions
+ * @route GET /api/v1/admin/hot-auctions
  * @group Admin - administration
  * @description List the top contended auctions by lock timeout count. Admin only.
  * @returns {object} 200 - List of hot auctions
@@ -14,7 +14,7 @@ const router = express.Router();
 router.get('/hot-auctions', protect, admin, getHotAuctions);
 
 /**
- * @route GET /api/admin/metrics
+ * @route GET /api/v1/admin/metrics
  * @group Admin - administration
  * @description Prometheus metrics endpoint. Typically scraped by monitoring systems.
  * @returns {string} 200 - Prometheus metrics (text/plain; version=0.0.4)

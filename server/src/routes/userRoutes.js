@@ -18,7 +18,14 @@ const router = express.Router();
 
 /**
  * @swagger
- * /api/users:
+ * tags:
+ *   name: Users
+ *   description: User management
+ */
+
+/**
+ * @swagger
+ * /api/v1/users:
  *   get:
  *     tags: [Users]
  *     summary: Retrieve all users (Admin only)
@@ -144,7 +151,7 @@ router.get('/', protect, admin, validate(userQuerySchema.search, 'query'), getAl
 
 /**
  * @swagger
- * /api/users/me:
+ * /api/v1/users/me:
  *   get:
  *     tags: [Users]
  *     summary: Get current user profile
@@ -203,7 +210,7 @@ router.get('/me', protect, getMe);
 
 /**
  * @swagger
- * /api/users/{id}:
+ * /api/v1/users/{id}:
  *   patch:
  *     tags: [Users]
  *     summary: Update user details
@@ -324,7 +331,7 @@ router.patch(
 
 /**
  * @swagger
- * /api/users/{id}:
+ * /api/v1/users/{id}:
  *   delete:
  *     tags: [Users]
  *     summary: Delete or deactivate a user
@@ -390,7 +397,7 @@ router.delete(
 
 /**
  * @swagger
- * /api/users/{id}/restore:
+ * /api/v1/users/{id}/restore:
  *   post:
  *     tags: [Users]
  *     summary: Restore a soft-deleted user
@@ -443,7 +450,7 @@ router.post('/:id/restore', protect, admin, validate(idSchema('id'), 'params'), 
 
 /**
  * @swagger
- * /api/users/me/upload-picture:
+ * /api/v1/users/me/upload-picture:
  *   post:
  *     tags: [Users]
  *     summary: Upload profile picture
@@ -505,7 +512,7 @@ router.post(
 
 /**
  * @swagger
- * /api/users/me/remove-picture:
+ * /api/v1/users/me/remove-picture:
  *   delete:
  *     tags: [Users]
  *     summary: Remove profile picture
@@ -549,7 +556,7 @@ router.delete(
 
 /**
  * @swagger
- * /api/users/{id}:
+ * /api/v1/users/{id}:
  *   get:
  *     tags: [Users]
  *     summary: Get user by ID (Admin only)

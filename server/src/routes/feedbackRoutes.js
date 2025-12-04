@@ -14,7 +14,14 @@ const router = express.Router();
 
 /**
  * @swagger
- * /api/feedback:
+ * tags:
+ *   name: Feedback
+ *   description: Feedback management
+ */
+
+/**
+ * @swagger
+ * /api/v1/feedback:
  *   post:
  *     tags: [Feedback]
  *     summary: Create feedback for an auction
@@ -98,7 +105,7 @@ router.post('/', protect, validate(feedbackSchema.create, 'body'), createFeedbac
 
 /**
  * @swagger
- * /api/feedback/received:
+ * /api/v1/feedback/received:
  *   get:
  *     tags: [Feedback]
  *     summary: Get feedback received by user
@@ -244,7 +251,7 @@ router.get(
 
 /**
  * @swagger
- * /api/feedback/summary:
+ * /api/v1/feedback/summary:
  *   get:
  *     tags: [Feedback]
  *     summary: Get feedback summary for user
@@ -305,7 +312,7 @@ router.get('/summary', protect, getFeedbackSummary);
 
 /**
  * @swagger
- * /api/feedback/{feedbackId}/respond:
+ * /api/v1/feedback/{feedbackId}/respond:
  *   post:
  *     tags: [Feedback]
  *     summary: Respond to feedback
@@ -386,7 +393,7 @@ router.post(
 
 /**
  * @swagger
- * /api/feedback/sent:
+ * /api/v1/feedback/sent:
  *   get:
  *     tags: [Feedback]
  *     summary: Get feedback sent by user

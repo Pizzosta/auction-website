@@ -17,7 +17,14 @@ const router = express.Router();
 
 /**
  * @swagger
- * /api/auth/register:
+ * tags:
+ *   name: Auth
+ *   description: Authentication and authorization
+ */
+
+/**
+ * @swagger
+ * /api/v1/auth/register:
  *   post:
  *     tags: [Auth]
  *     summary: Register a new user account
@@ -83,7 +90,7 @@ router.post('/register', validate(authSchema.register, 'body'), register);
 
 /**
  * @swagger
- * /api/auth/login:
+ * /api/v1/auth/login:
  *   post:
  *     tags: [Auth]
  *     summary: Authenticate user
@@ -125,7 +132,7 @@ router.post('/login', loginLimiter, validate(authSchema.login, 'body'), login);
 
 /**
  * @swagger
- * /api/auth/forgot-password:
+ * /api/v1/auth/forgot-password:
  *   post:
  *     tags: [Auth]
  *     summary: Request password reset
@@ -163,7 +170,7 @@ router.post(
 
 /**
  * @swagger
- * /api/auth/reset-password/{token}:
+ * /api/v1/auth/reset-password/{token}:
  *   post:
  *     tags: [Auth]
  *     summary: Reset password
@@ -214,7 +221,7 @@ router.post(
 
 /**
  * @swagger
- * /api/auth/refresh-token:
+ * /api/v1/auth/refresh-token:
  *   post:
  *     tags: [Auth]
  *     summary: Refresh access token
@@ -257,7 +264,7 @@ router.post('/refresh-token', verifyRefreshToken, refreshToken);
 
 /**
  * @swagger
- * /api/auth/logout:
+ * /api/v1/auth/logout:
  *   post:
  *     tags: [Auth]
  *     summary: Log out current session
@@ -287,7 +294,7 @@ router.post('/logout', verifyRefreshToken, logout);
 
 /**
  * @swagger
- * /api/auth/logout-all:
+ * /api/v1/auth/logout-all:
  *   post:
  *     tags: [Auth]
  *     summary: Log out from all devices
@@ -306,7 +313,7 @@ router.post('/logout-all', protect, logoutAllDevices);
 
 /**
  * @swagger
- * /api/auth/request-verification:
+ * /api/v1/auth/request-verification:
  *   post:
  *     tags: [Auth]
  *     summary: Request email verification
@@ -348,7 +355,7 @@ router.post(
 
 /**
  * @swagger
- * /api/auth/verify-email/{token}:
+ * /api/v1/auth/verify-email/{token}:
  *   get:
  *     tags: [Auth]
  *     summary: Verify email

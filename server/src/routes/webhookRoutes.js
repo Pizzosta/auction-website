@@ -9,6 +9,13 @@ router.use(rawBodyParser);
 
 /**
  * @swagger
+ * tags:
+ *   name: Webhooks
+ *   description: Webhook management
+ */
+
+/**
+ * @swagger
  * /api/v1/webhook:
  *   post:
  *     tags: [Webhooks]

@@ -15,7 +15,14 @@ const router = express.Router();
 
 /**
  * @swagger
- * /api/bids:
+ * tags:
+ *   name: Bids
+ *   description: Bids management
+ */
+
+/**
+ * @swagger
+ * /api/v1/bids:
  *   post:
  *     tags: [Bids]
  *     summary: Place a bid on an auction
@@ -100,7 +107,7 @@ router.post('/', protect, bidLimiter, validate(bidSchema.create, 'body'), placeB
 
 /**
  * @swagger
- * /api/bids/{auctionId}:
+ * /api/v1/bids/{auctionId}:
  *   get:
  *     tags: [Bids]
  *     summary: Get bids for a specific auction
@@ -256,7 +263,7 @@ router.get(
 
 /**
  * @swagger
- * /api/bids/me:
+ * /api/v1/bids/me:
  *   get:
  *     tags: [Bids]
  *     summary: Get my bids
@@ -401,7 +408,7 @@ router.get('/me', protect, validate(bidQuerySchema.personalBidSort, 'query'), ge
 
 /**
  * @swagger
- * /api/bids/{bidId}:
+ * /api/v1/bids/{bidId}:
  *   delete:
  *     tags: [Bids]
  *     summary: Delete a bid
@@ -466,7 +473,7 @@ router.delete(
 
 /**
  * @swagger
- * /api/bids:
+ * /api/v1/bids:
  *   get:
  *     tags: [Bids]
  *     summary: Get all bids (Admin only)

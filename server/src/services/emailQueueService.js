@@ -63,34 +63,39 @@ export async function getEmailQueue() {
         try {
             await sendTemplateEmail(type, recipientEmail, { ...context, ...(typeof to === 'object' ? to : {}) });
             logger.info(`Email sent: ${job.id}`);
+
+            // Publish completed event
+            pubsub.publishQueueEvent('email:completed', {
+                jobId: job.id,
+                type: job.data.type,
+                recipient: job.data.to,
+                duration: Date.now() - job.timestamp
+            });
         } catch (error) {
             logger.error(`Email failed: ${job.id}`, { error: error.message });
+
+            // Publish failed event
+            pubsub.publishQueueEvent('email:failed', {
+                jobId: job.id,
+                type: job.data.type,
+                recipient: job.data.to,
+                error: error.message
+            });
             throw error;
         }
+    });
+
+    // Event handlers
+    emailQueue.on('waiting', (jobId) => {
+        logger.debug(`Email job ${jobId} waiting`);
     });
 
     emailQueue.on('active', (job) => {
         pubsub.publishQueueEvent('email:started', {
             jobId: job.id,
             type: job.data.type,
-            recipient: job.data.to
-        });
-    });
-
-    emailQueue.on('completed', (job) => {
-        pubsub.publishQueueEvent('email:completed', {
-            jobId: job.id,
-            type: job.data.type,
-            recipient: job.data.to
-        });
-    });
-
-    emailQueue.on('failed', (job, err) => {
-        pubsub.publishQueueEvent('email:failed', {
-            jobId: job.id,
-            type: job.data.type,
             recipient: job.data.to,
-            error: err?.message
+            queueTime: Date.now() - job.timestamp
         });
     });
 
@@ -124,10 +129,14 @@ async function moveToDeadLetterQueue(job, error) {
         jobId: job.id,
         type: job.data.type,
         recipient: job.data.to,
-        reason: error?.message
+        reason: error?.message,
+        attempts: job.attemptsMade
     });
 
-    if (!deadLetterQueue) return;
+    if (!deadLetterQueue) {
+        logger.error('DLQ not initialized when trying to move job', { jobId: job.id });
+        return;
+    }
 
     try {
         await deadLetterQueue.add({
@@ -185,11 +194,24 @@ async function monitorQueueHealth() {
     const metrics = { waiting, active, completed, failed, delayed, paused, deadLetter: dlqCount };
     logger.info('Email queue metrics', metrics);
 
+    // Publish metrics for external systems
+    await pubsub.publishQueueEvent('email:metrics', metrics);
+
     // Alerts
     if (waiting > 1000 || dlqCount > 100) {
-        logger.error('QUEUE ALERT', metrics);
+        logger.error('QUEUE ALERT: High backlog', metrics);
+        await pubsub.publishQueueEvent('email:alert', {
+            type: 'high_backlog',
+            level: 'error',
+            ...metrics
+        });
     } else if (waiting > 500 || dlqCount > 50) {
-        logger.warn('Queue warning', metrics);
+        logger.warn('QUEUE ALERT: Moderate backlog', metrics);
+        await pubsub.publishQueueEvent('email:alert', {
+            type: 'moderate_backlog',
+            level: 'warning',
+            ...metrics
+        });
     }
 
     return metrics;
@@ -207,7 +229,16 @@ async function logFinalQueueMetrics() {
 // Public API
 export const addToQueue = async (type, to, context = {}) => {
     const queue = await getEmailQueue();
-    return queue.add({ type, to, context, timestamp: Date.now() });
+    const job = await queue.add({ type, to, context, timestamp: Date.now() });
+    
+    // Publish job added event
+    await pubsub.publishQueueEvent('email:added', {
+        jobId: job.id,
+        type,
+        recipient: typeof to === 'object' && to.email ? to.email : to
+    });
+    
+    return job;
 };
 
 export async function getQueueMetrics() {
@@ -246,13 +277,13 @@ export async function deleteDeadLetterJob(jobId) {
 }
 
 export async function closeQueues() {
-  clearInterval(monitoringInterval);
+    clearInterval(monitoringInterval);
 
-  const queues = [emailQueue, deadLetterQueue].filter(Boolean);
-  await Promise.all(queues.map(q => q.close()));
+    const queues = [emailQueue, deadLetterQueue].filter(Boolean);
+    await Promise.all(queues.map(q => q.close()));
 
-  emailQueue = null;
-  deadLetterQueue = null;
+    emailQueue = null;
+    deadLetterQueue = null;
 
-  logger.info('Email queues closed');
+    logger.info('Email queues closed');
 }

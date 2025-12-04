@@ -59,7 +59,7 @@ class QueuePubSub {
         }
     }
 
-    /*
+    // Optional: Subscribe to external events if needed
     async subscribe(channel, callback) {
         try {
             await this.subscriber.subscribe(channel);
@@ -79,7 +79,6 @@ class QueuePubSub {
             throw error;
         }
     }
-    */
 
     async close() {
         try {

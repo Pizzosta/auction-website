@@ -12,9 +12,17 @@ import { validate } from '../middleware/validationMiddleware.js';
 
 const router = express.Router();
 
+
 /**
  * @swagger
- * /api/featured-auctions/add:
+ * tags:
+ *   name: Featured Auctions
+ *   description: Featured Auctions management
+ */
+
+/**
+ * @swagger
+ * /api/v1/featured-auctions/add:
  *   post:
  *     tags: [Featured Auctions]
  *     summary: Add auction to featured list
@@ -78,7 +86,7 @@ router.post(
 
 /**
  * @swagger
- * /api/featured-auctions/remove:
+ * /api/v1/featured-auctions/remove:
  *   delete:
  *     tags: [Featured Auctions]
  *     summary: Remove auction from featured list
@@ -150,7 +158,7 @@ router.delete(
 
 /**
  * @swagger
- * /api/featured-auctions/admin:
+ * /api/v1/featured-auctions/admin:
  *   get:
  *     tags: [Featured Auctions]
  *     summary: Get all featured auctions (Admin view)
@@ -252,7 +260,7 @@ router.get(
 
 /**
  * @swagger
- * /api/featured-auctions:
+ * /api/v1/featured-auctions:
  *   get:
  *     tags: [Featured Auctions]
  *     summary: Get public featured auctions
@@ -324,7 +332,7 @@ router.get('/', getPublicFeaturedAuctions);
 
 /**
  * @swagger
- * /api/featured-auctions/restore:
+ * /api/v1/featured-auctions/restore:
  *   patch:
  *     tags: [Featured Auctions]
  *     summary: Restore featured auction
