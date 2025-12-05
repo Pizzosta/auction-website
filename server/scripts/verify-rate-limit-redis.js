@@ -1,6 +1,6 @@
 // Verify limiter uses Redis as primary and observe decreasing Retry-After
 import axios from 'axios';
-import { getRedisClient } from '../src/config/redis.js';
+import { getRedisClient } from '../src/config/redisAdapter.js';
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:5001';
 const ENDPOINT = `${BASE_URL}/api/auth/forgot-password`;

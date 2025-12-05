@@ -7,7 +7,7 @@ import cookieParser from 'cookie-parser';
 import csrf from 'csurf';
 import { env, validateEnv } from '../config/env.js';
 import logger from '../utils/logger.js';
-import { getRedisClient } from '../config/redis.js';
+import { getRedisClient } from '../config/redisAdapter.js';
 import { apiLogger, errorLogger } from './apiLogger.js';
 
 // Validate required environment variables

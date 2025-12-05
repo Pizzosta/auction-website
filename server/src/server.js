@@ -11,11 +11,11 @@ import { globalErrorHandler, AppError } from './middleware/errorHandler.js';
 import './jobs/index.js'; // Import jobs to start the scheduler
 import { requestContextMiddleware } from './middleware/requestContext.js';
 import { env, validateEnv } from './config/env.js';
-import { closeRedisClient } from './config/redis.js';
+import { closeRedisClient } from './config/redisAdapter.js';
 import { pubsub } from './services/queuePubSub.js';
 import { getEmailQueue, closeQueues } from './services/emailQueueService.js';
 import initializeCloudinary from './config/cloudinary.js';
-import { getRedisClient } from './config/redis.js';
+import { getRedisClient } from './config/redisAdapter.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

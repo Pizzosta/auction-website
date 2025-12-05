@@ -15,7 +15,7 @@ export const userQuerySchema = {
       .default('desc')
       .optional(),
     fields: Joi.string()
-      .pattern(/^[a-zA-Z0-9_, ]*$/)
+      .pattern(/^[a-zA-Z0-9_,. ]*$/)
       .optional(),
     search: Joi.string().optional(),
     role: Joi.string().valid('user', 'admin').optional(),

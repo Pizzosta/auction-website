@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { getRedisClient } from '../config/redis.js';
+import { getRedisClient } from '../config/redisAdapter.js';
 import { AppError } from '../middleware/errorHandler.js';
 
 // Acquire a distributed lock using Redis SET NX PX
@@ -52,7 +52,7 @@ export async function releaseLock(key, token) {
     end
   `;
   try {
-    await client.eval(lua, 1, key, token);
+    await client.eval(lua, { keys: [key], arguments: [token] });
   } catch (e) {
     // Swallow release errors; lock will expire by TTL
   }

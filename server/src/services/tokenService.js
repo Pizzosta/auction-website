@@ -1,6 +1,6 @@
 import jwt from 'jsonwebtoken';
 import { env } from '../config/env.js';
-import { getRedisClient } from '../config/redis.js';
+import { getRedisClient } from '../config/redisAdapter.js';
 import logger from '../utils/logger.js';
 import { AppError } from '../middleware/errorHandler.js';
 
@@ -25,7 +25,7 @@ const generateRefreshToken = async (userId, email, role) => {
   try {
     const redis = await getRedisClient();
     if (redis) {
-      await redis.setex(`refresh_token:${userId}:${refreshToken}`, expiresIn, 'valid');
+      await redis.setEx(`refresh_token:${userId}:${refreshToken}`, expiresIn, 'valid');
     } else {
       throw new AppError('REDIS_CLIENT_NOT_AVAILABLE', 'Redis client not available', 500);
     }
@@ -71,9 +71,10 @@ async function scanAllKeys(client, pattern, count = 200) {
   const keys = [];
   let cursor = '0';
   do {
-    const [newCursor, scanKeys] = await client.scan(cursor, 'MATCH', pattern, 'COUNT', count);
-    cursor = newCursor;
-    keys.push(...scanKeys);
+    // adapter.scan returns { cursor, keys }
+    const res = await client.scan(cursor, { MATCH: pattern, COUNT: count });
+    cursor = res.cursor;
+    keys.push(...res.keys);
   } while (cursor !== '0');
   return keys;
 }

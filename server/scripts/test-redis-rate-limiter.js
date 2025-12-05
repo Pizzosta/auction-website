@@ -1,4 +1,4 @@
-import { getRedisClient } from '../src/config/redis.js';
+import { getRedisClient } from '../src/config/redisAdapter.js';
 import { rateLimit } from 'express-rate-limit';
 import RedisStore from 'rate-limit-redis';
 import express from 'express';

@@ -1,4 +1,4 @@
-import { getRedisClient } from '../config/redis.js';
+import { getRedisClient } from '../config/redisAdapter.js';
 import logger from '../utils/logger.js';
 import * as statsRepo from '../repositories/statsRepo.prisma.js';
 
@@ -7,9 +7,10 @@ async function scanKeys(client, pattern, count = 100) {
   const keys = [];
   let cursor = '0';
   do {
-    const [newCursor, scanKeys] = await client.scan(cursor, 'MATCH', pattern, 'COUNT', count);
-    cursor = newCursor;
-    keys.push(...scanKeys);
+    // adapter.scan returns { cursor, keys }
+    const res = await client.scan(cursor, { MATCH: pattern, COUNT: count });
+    cursor = res.cursor;
+    keys.push(...res.keys);
   } while (cursor !== '0');
   return keys;
 }
@@ -80,11 +81,11 @@ export async function getPrometheusMetrics(req, res, next) {
     // Global 429 totals
     const rl429Total = Number.parseInt(
       (await client.get('metrics:rate_limit_429_total')) || '0',
-      10,
+      10
     );
     const lock429Total = Number.parseInt(
       (await client.get('metrics:bid_lock_timeout_429_total')) || '0',
-      10,
+      10
     );
 
     // Use repository functions for auction counts/groupings
@@ -102,7 +103,7 @@ export async function getPrometheusMetrics(req, res, next) {
       const m = k.match(/^metrics:auction:(.+):lock_timeouts$/);
       const auctionId = m ? m[1] : 'unknown';
       lines.push(
-        `auction_lock_timeouts_total{auction_id="${auctionId}"} ${Number.parseInt(timeoutVals[i] || '0', 10)}`,
+        `auction_lock_timeouts_total{auction_id="${auctionId}"} ${Number.parseInt(timeoutVals[i] || '0', 10)}`
       );
     });
 
@@ -115,7 +116,7 @@ export async function getPrometheusMetrics(req, res, next) {
       const auctionId = m[1];
       const le = m[2] === 'inf' ? '+Inf' : m[2];
       lines.push(
-        `auction_lock_wait_ms_bucket{auction_id="${auctionId}",le="${le}"} ${Number.parseInt(bucketVals[i] || '0', 10)}`,
+        `auction_lock_wait_ms_bucket{auction_id="${auctionId}",le="${le}"} ${Number.parseInt(bucketVals[i] || '0', 10)}`
       );
     });
 
@@ -124,7 +125,7 @@ export async function getPrometheusMetrics(req, res, next) {
       const m = k.match(/^metrics:auction:(.+):lock_wait_sum$/);
       const auctionId = m ? m[1] : 'unknown';
       lines.push(
-        `auction_lock_wait_ms_sum{auction_id="${auctionId}"} ${Number.parseInt(waitSumVals[i] || '0', 10)}`,
+        `auction_lock_wait_ms_sum{auction_id="${auctionId}"} ${Number.parseInt(waitSumVals[i] || '0', 10)}`
       );
     });
 
@@ -133,7 +134,7 @@ export async function getPrometheusMetrics(req, res, next) {
       const m = k.match(/^metrics:auction:(.+):lock_wait_count$/);
       const auctionId = m ? m[1] : 'unknown';
       lines.push(
-        `auction_lock_wait_ms_count{auction_id="${auctionId}"} ${Number.parseInt(waitCntVals[i] || '0', 10)}`,
+        `auction_lock_wait_ms_count{auction_id="${auctionId}"} ${Number.parseInt(waitCntVals[i] || '0', 10)}`
       );
     });
 
@@ -152,7 +153,9 @@ export async function getPrometheusMetrics(req, res, next) {
     lines.push(`auction_active_total ${activeAuctionsCount}`);
 
     // Active auctions per category gauge
-    lines.push('# HELP auction_active_by_category_total Current number of active auctions per category');
+    lines.push(
+      '# HELP auction_active_by_category_total Current number of active auctions per category'
+    );
     lines.push('# TYPE auction_active_by_category_total gauge');
     activeByCategory.forEach(entry => {
       const category = entry.category || 'uncategorized';
@@ -165,7 +168,9 @@ export async function getPrometheusMetrics(req, res, next) {
     lines.push(`auction_ended_total ${endedAuctionsCount}`);
 
     // Ended auctions per category gauge
-    lines.push('# HELP auction_ended_by_category_total Current number of ended auctions per category');
+    lines.push(
+      '# HELP auction_ended_by_category_total Current number of ended auctions per category'
+    );
     lines.push('# TYPE auction_ended_by_category_total gauge');
     endedByCategory.forEach(entry => {
       const category = entry.category || 'uncategorized';

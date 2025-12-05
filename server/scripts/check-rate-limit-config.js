@@ -50,7 +50,7 @@ try {
 }
 
 // Check Redis connection
-import { getRedisClient } from '../src/config/redis.js';
+import { getRedisClient } from '../src/config/redisAdapter.js';
 
 async function testRedisConnection() {
   try {
