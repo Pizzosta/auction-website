@@ -17,6 +17,8 @@ export async function listAuctionsPrisma({
   limit = 10,
   sort = 'createdAt',
   order = 'desc',
+  fields,
+  role,
 }) {
   const pageNum = Math.max(1, parseInt(page));
   const take = Math.min(Math.max(1, parseInt(limit)), 100);
@@ -64,6 +66,7 @@ export async function listAuctionsPrisma({
   if (category) where.category = { equals: category, mode: 'insensitive' };
   if (seller) where.sellerId = seller;
   if (winner) where.winnerId = winner;
+  if (role) where.seller = { role: role, isDeleted: false };
   if (minPrice) where.currentPrice = { gte: parseFloat(minPrice) };
   if (maxPrice) where.currentPrice = { ...where.currentPrice, lte: parseFloat(maxPrice) };
   if (startDate) where.startDate = { gte: new Date(startDate) };
@@ -84,56 +87,143 @@ export async function listAuctionsPrisma({
   }
 
   // Sort
-  const allowedSortFields = new Set([
-    'title',
-    'description',
-    'startingPrice',
-    'currentPrice',
-    'startDate',
-    'endDate',
-    'createdAt',
-    'bidCount',
-  ]);
-
-  // Validate and set default sort field
-  const field = allowedSortFields.has(sort) ? sort : 'createdAt';
-
-  // Validate and set default order direction
+  const allowedSortFields = new Set(['currentPrice', 'startDate', 'endDate', 'createdAt']);
+  const sortField = allowedSortFields.has(sort) ? sort : 'createdAt';
   const orderDirection = order === 'asc' ? 'asc' : 'desc';
+  const orderBy = { [sortField]: orderDirection };
 
-  const orderBy = { [field]: orderDirection };
+  // Build default include relations
+  const includeRelations = {
+    seller: {
+      select: {
+        id: true,
+        firstname: true,
+        middlename: true,
+        lastname: true,
+        username: true,
+        email: true,
+        role: true,
+        isDeleted: true,
+      },
+    },
+    winner: {
+      select: {
+        id: true,
+        firstname: true,
+        middlename: true,
+        lastname: true,
+        username: true,
+        email: true,
+        isDeleted: true,
+      },
+    },
+  };
 
+  // Build query options
+  const queryOptions = {
+    where,
+    orderBy,
+    skip,
+    take,
+    include: includeRelations
+  };
+
+  // Handle field selection
+  if (fields && fields.length > 0) {
+    const fieldSet = new Set(fields.map(f => f.trim()));
+
+    delete queryOptions.include;
+    queryOptions.select = { id: true };
+
+    const mainFields = ['title', 'description', 'startingPrice', 'currentPrice', 'startDate', 'endDate', 'createdAt', 'updatedAt', 'isDeleted', 'deletedBy', 'deletedAt'];
+    const relationFields = ['seller', 'winner'];
+
+    // Process Main Fields (simple inclusion)
+    mainFields.forEach(field => {
+      if (fieldSet.has(field)) {
+        queryOptions.select[field] = true;
+      }
+    });
+
+    // Process Relationships (must check for both parent field and specific nested fields)
+    relationFields.forEach(parentField => {
+      // Find all fields requested for this relationship (e.g., 'seller', 'seller.id', 'seller.username')
+      const requestedNestedFields = fields.filter(f => f.startsWith(parentField));
+
+      if (requestedNestedFields.length > 0) {
+        // Get the default select structure for this relation
+        const defaultRelationSelect = includeRelations[parentField].select;
+
+        // Check if the full parent object was requested (e.g., fields=seller)
+        const parentRequested = fieldSet.has(parentField);
+
+        if (parentRequested) {
+          // If parent requested, use the full default select
+          queryOptions.select[parentField] = includeRelations[parentField];
+        } else {
+          // Initialize the nested select object
+          const nestedSelect = { id: true }; // Always include nested ID for context
+
+          // Fields to check inside the nested model (excluding the parent field name)
+          const nestedKeys = Object.keys(defaultRelationSelect).filter(k => k !== 'id' && k !== 'isDeleted');
+
+          requestedNestedFields.forEach(fullKey => {
+            const nestedKey = fullKey.split('.')[1]; // e.g., 'id' from 'seller.id'
+
+            if (nestedKey && nestedKeys.includes(nestedKey)) {
+              nestedSelect[nestedKey] = true;
+            }
+          });
+
+          queryOptions.select[parentField] = { select: nestedSelect };
+        }
+      }
+    });
+  }
 
   // Execute queries
-  const [count, auctions] = await Promise.all([
+  const [auctions, count] = await Promise.all([
+    prisma.auction.findMany(queryOptions),
     prisma.auction.count({ where }),
-    prisma.auction.findMany({
-      where,
-      orderBy,
-      skip,
-      take,
-      include: {
-        seller: {
-          select: {
-            id: true,
-            firstname: true,
-            lastname: true,
-            email: true,
-          },
-        },
-        winner: {
-          select: {
-            id: true,
-            firstname: true,
-            lastname: true,
-            email: true,
-          },
-        },
-      },
-    }),
   ]);
 
-  return { auctions, count, page: pageNum, limit: take, totalPages: Math.ceil(count / take) };
+  // Attach bidCount and sort if requested (virtual field)
+  if (sort === 'bidCount' && auctions.length > 0) {
+    const auctionIds = auctions.map(a => a.id);
+    const bidCounts = await prisma.bid.groupBy({
+      by: ['auctionId'],
+      where: { auctionId: { in: auctionIds } },
+      _count: { auctionId: true },
+    });
+    const bidCountMap = Object.fromEntries(
+      bidCounts.map(bc => [bc.auctionId, bc._count.auctionId])
+    );
+    // Attach bidCount to each auction
+    auctions.forEach(a => { a.bidCount = bidCountMap[a.id] || 0; });
+
+    // Sort auctions by bidCount in memory
+    auctions.sort((a, b) => {
+      const countA = a.bidCount || 0;
+      const countB = b.bidCount || 0;
+      return orderDirection === 'asc'
+        ? countA - countB
+        : countB - countA;
+    });
+  }
+
+  const totalPages = Math.ceil(count / take);
+
+  return {
+    data: auctions,
+    pagination: {
+      currentPage: pageNum,
+      total: count,
+      totalPages,
+      itemsPerPage: take,
+      hasNext: pageNum < totalPages,
+      hasPrev: pageNum > 1,
+    },
+  };
 }
 
 /**
@@ -153,7 +243,7 @@ export const createAuctionPrisma = async (data) => {
       endDate: new Date(data.endDate),
     },
     include: {
-      seller: { select: { username: true, email: true, role: true } },
+      seller: { select: { username: true, email: true, isDeleted: true, role: true } },
     },
   });
 };
@@ -172,8 +262,8 @@ export const findAuctionById = async (id, options = {}) => {
   return prisma.auction.findUnique({
     where: { id },
     include: {
-      ...(includeSeller && { seller: { select: { id: true, username: true } } }),
-      ...(includeWinner && { winner: { select: { id: true, username: true } } }),
+      ...(includeSeller && { seller: { select: { id: true, username: true, isDeleted: true, role: true } } }),
+      ...(includeWinner && { winner: { select: { id: true, username: true, isDeleted: true, role: true } } }),
     },
   });
 };
@@ -246,6 +336,7 @@ export const findAuctionPrisma = async (id) => {
       startDate: true,
       images: true,
       version: true,
+      isDeleted: true,
     },
   });
 };
@@ -335,3 +426,4 @@ export const completeAuctionPrisma = async (auctionId, version) => {
     },
   });
 };
+

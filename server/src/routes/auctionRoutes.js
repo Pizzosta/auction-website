@@ -5,6 +5,8 @@ import {
   createAuction,
   getPublicAuctions,
   getAuctions,
+  getAdminAuctions,
+  getMyAuctions,
   getAuctionById,
   updateAuction,
   deleteAuction,
@@ -111,7 +113,138 @@ const router = express.Router();
  *       403:
  *         description: Forbidden (non-admin users)
  */
-router.get('/', validate(auctionQuerySchema.search, 'query'), getPublicAuctions);
+router.get('/', validate(auctionQuerySchema.allAuctionSearch, 'query'), getPublicAuctions);
+
+
+/**
+ * @swagger
+ * /api/v1/auctions/admin-auctions:
+ *   get:
+ *     tags: [Auctions]
+ *     summary: List all auctions created by admin users
+ *     description: Retrieve a paginated list of auctions where the seller is an admin. Supports all auction filters and bidCount sorting.
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [upcoming, active, ended, sold, completed, cancelled, all]
+ *         description: Filter auctions by status
+ *       - in: query
+ *         name: category
+ *         schema:
+ *           type: string
+ *           enum: [Electronics, Fashion, Home & Garden, Collectibles, Sports, Automotive, Art, Books, Jewelry, Toys]
+ *         description: Filter auctions by category
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search auctions by title or description
+ *       - in: query
+ *         name: sort
+ *         schema:
+ *           type: string
+ *           enum: [createdAt, currentPrice, endDate, bidCount]
+ *         description: Sort by field (supports bidCount)
+ *       - in: query
+ *         name: order
+ *         schema:
+ *           type: string
+ *           enum: [asc, desc]
+ *         description: Sort order
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *         description: Results per page
+ *       - in: query
+ *         name: fields
+ *         schema:
+ *           type: string
+ *         description: Comma-separated fields to include
+ *     responses:
+ *       200:
+ *         description: List of admin-created auctions
+ *       400:
+ *         description: Invalid query parameters
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden (non-admin users)
+ */
+router.get('/admin-auctions', validate(auctionQuerySchema.auctionSearch, 'query'), getAdminAuctions);
+
+
+/**
+ * @swagger
+ * /api/v1/auctions/me:
+ *   get:
+ *     tags: [Auctions]
+ *     summary: List auctions created by the current user
+ *     security:
+ *       - bearerAuth: []
+ *     description: Retrieve a paginated list of auctions where the authenticated user is the seller. Supports all auction filters and bidCount sorting.
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [upcoming, active, ended, sold, completed, cancelled, all]
+ *         description: Filter auctions by status
+ *       - in: query
+ *         name: category
+ *         schema:
+ *           type: string
+ *           enum: [Electronics, Fashion, Home & Garden, Collectibles, Sports, Automotive, Art, Books, Jewelry, Toys]
+ *         description: Filter auctions by category
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search auctions by title or description
+ *       - in: query
+ *         name: sort
+ *         schema:
+ *           type: string
+ *           enum: [createdAt, currentPrice, endDate, bidCount]
+ *         description: Sort by field (supports bidCount)
+ *       - in: query
+ *         name: order
+ *         schema:
+ *           type: string
+ *           enum: [asc, desc]
+ *         description: Sort order
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *         description: Results per page
+ *       - in: query
+ *         name: fields
+ *         schema:
+ *           type: string
+ *         description: Comma-separated fields to include
+ *     responses:
+ *       200:
+ *         description: List of user's auctions
+ *       400:
+ *         description: Invalid query parameters
+ *       401:
+ *         description: Unauthorized
+ */
+router.get('/me', protect, validate(auctionQuerySchema.auctionSearch, 'query'), getMyAuctions);
+
 
 /**
  * @swagger
@@ -210,6 +343,7 @@ router.get(
   validate(auctionQuerySchema.search, 'query'),
   getAuctions
 );
+
 
 /**
  * @swagger

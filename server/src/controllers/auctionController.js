@@ -126,7 +126,7 @@ export const getAuctions = async (req, res, next) => {
     }
 
     // Use the repository to get paginated and filtered auctions
-    const { auctions, count, pageNum, take } = await listAuctionsPrisma({
+    const { data: auctions, pagination } = await listAuctionsPrisma({
       status,
       category,
       search,
@@ -137,45 +137,17 @@ export const getAuctions = async (req, res, next) => {
       startDate,
       endDate,
       endingSoon,
-      fields,
+      fields: fields?.split(',').map(f => f.trim()),
       page,
       limit,
       sort,
       order,
     });
 
-    // Field selection
-    let resultAuctions = auctions;
-    if (fields) {
-      const fieldList = fields.split(',').map(f => f.trim());
-      resultAuctions = auctions.map(auction => {
-        const filtered = {};
-        fieldList.forEach(field => {
-          if (auction[field] !== undefined) {
-            filtered[field] = auction[field];
-          }
-        });
-        return filtered;
-      });
-    }
-
-    const totalPages = Math.ceil(count / take);
-    const hasNext = pageNum < totalPages;
-    const hasPrev = pageNum > 1;
-
     res.status(200).json({
       status: 'success',
-      results: resultAuctions.length,
-      pagination: {
-        currentPage: pageNum,
-        total: count,
-        totalPages,
-        hasNext,
-        hasPrev,
-      },
-      data: {
-        auctions: resultAuctions,
-      },
+      pagination,
+      data: auctions,
     });
   } catch (error) {
     logger.error('Error fetching auctions:', {
@@ -183,6 +155,108 @@ export const getAuctions = async (req, res, next) => {
       stack: error.stack,
       query: req.query,
     });
+    next(error);
+  }
+};
+
+// @desc    Get my auctions
+// @route   GET /api/v1/auctions/me
+// @access  Private
+export const getMyAuctions = async (req, res, next) => {
+  try {
+    const sellerId = req.user?.id;
+    if (!sellerId) {
+      throw new AppError('AUTH_REQUIRED', 'Authentication required', 401);
+    }
+    const {
+      status,
+      category,
+      search,
+      minPrice,
+      maxPrice,
+      startDate,
+      endDate,
+      endingSoon,
+      fields,
+      page = 1,
+      limit = 10,
+      sort = 'createdAt',
+      order = 'desc',
+    } = req.query;
+    const { data: auctions, pagination } = await listAuctionsPrisma({
+      status,
+      category,
+      search,
+      seller: sellerId,
+      minPrice,
+      maxPrice,
+      startDate,
+      endDate,
+      endingSoon,
+      fields: fields?.split(',').map(f => f.trim()),
+      page,
+      limit,
+      sort,
+      order,
+    });
+    res.status(200).json({ status: 'success', pagination, data: auctions });
+  } catch (error) {
+    logger.error('Error fetching my auctions:', { error: error.message, stack: error.stack, userId: req.user?.id });
+    next(error);
+  }
+};
+
+// @desc    Get all auctions created by admins
+// @route   GET /api/v1/auctions/admin-auctions
+// @access  public
+export const getAdminAuctions = async (req, res, next) => {
+  try {    
+    const {
+      status,
+      category,
+      search,
+      minPrice,
+      maxPrice,
+      startDate,
+      endDate,
+      endingSoon,
+      fields,
+      page = 1,
+      limit = 10,
+      sort = 'createdAt',
+      order = 'desc',
+    } = req.query;
+
+    const isAdmin = req.user?.role === 'admin';
+
+    // Only admins can see soft-deleted auctions
+    if ((status === 'cancelled' || status === 'all') && !isAdmin) {
+      throw new AppError('ONLY_ADMINS_CAN_VIEW_DELETED_AUCTIONS', 'Only admins can view deleted auctions', 403);
+    }
+
+    if ((status === 'completed') && !isAdmin) {
+      throw new AppError('ONLY_ADMINS_CAN_VIEW_COMPLETED_AUCTIONS', 'Only admins can view completed auctions', 403);
+    }
+
+    // Only auctions where the seller is an admin
+    const { data: auctions, pagination } = await listAuctionsPrisma({
+      status,
+      category,
+      search,
+      role: isAdmin,
+      minPrice,
+      maxPrice,
+      startDate,
+      endDate,
+      endingSoon,
+      fields: fields?.split(',').map(f => f.trim()),
+      page,
+      limit,
+      sort,
+      order,
+    });
+    res.status(200).json({ status: 'success', pagination, data: auctions });
+  } catch (error) {
     next(error);
   }
 };
