@@ -26,12 +26,7 @@ Create global async error wrapper (catchAsync) so you don’t need try/catch blo
 Expose a /health endpoint that includes Cloudinary status:
 
 npm test
-npm test:watch //development
-npm test:coverage //production generate coverage report
-npm test:debug //debugger
-npx mocha test/integration/userController.test.js
-npx mocha test/integration/authController.test.js
-NODE_OPTIONS='--experimental-vm-modules --no-warnings' npx mocha test/integration/userController.test.js
+
 
 load default image before real image
 
@@ -119,8 +114,6 @@ Block account deletion if the user has won any auctions that haven't been comple
 // Soft-deleted bids are ignored in this unique constraint
 @@index([auctionId, bidderId, amount], name: "Bid_auctionId_bidderId_amount_active_key")
 
-Implement bidCount for sorting
-
 check swagger for any implicating statements. .. correct all 500 status to Internal Server Error
 
 Check for Memory Leaks:
@@ -133,4 +126,4 @@ Disable Swagger in production if not needed ...
 
 check on edge cases
 
-adopt a streamlined repo.prisma like bidRepo.prisma
+adopt a streamlined repo.prisma like bidRepo.prisma, listAuctionsPrisma/ listUsersPrisma

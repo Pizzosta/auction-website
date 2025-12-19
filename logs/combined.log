@@ -1,2 +1,0 @@
-{"level":"info","message":"Redis client connecting","service":"auction-website","timestamp":"2025-09-17 12:39:44"}
-{"auth":"disabled","level":"info","message":"Redis client ready","service":"auction-website","timestamp":"2025-09-17 12:39:44","tls":"disabled"}
