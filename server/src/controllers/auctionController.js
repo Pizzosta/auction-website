@@ -27,6 +27,7 @@ export const createAuction = async (req, res, next) => {
     const {
       title,
       description,
+      location,
       category,
       startingPrice,
       startDate,
@@ -39,6 +40,7 @@ export const createAuction = async (req, res, next) => {
     const auctionData = {
       title,
       description,
+      location,
       category,
       startingPrice,
       bidIncrement,
@@ -99,6 +101,7 @@ export const getAuctions = async (req, res, next) => {
     const {
       status,
       category,
+      location,
       search,
       seller,
       winner,
@@ -129,6 +132,7 @@ export const getAuctions = async (req, res, next) => {
     const { data: auctions, pagination } = await listAuctionsPrisma({
       status,
       category,
+      location,
       search,
       seller,
       winner,
@@ -171,6 +175,7 @@ export const getMyAuctions = async (req, res, next) => {
     const {
       status,
       category,
+      location,
       search,
       minPrice,
       maxPrice,
@@ -186,6 +191,7 @@ export const getMyAuctions = async (req, res, next) => {
     const { data: auctions, pagination } = await listAuctionsPrisma({
       status,
       category,
+      location,
       search,
       seller: sellerId,
       minPrice,
@@ -210,10 +216,11 @@ export const getMyAuctions = async (req, res, next) => {
 // @route   GET /api/v1/auctions/admin-auctions
 // @access  public
 export const getAdminAuctions = async (req, res, next) => {
-  try {    
+  try {
     const {
       status,
       category,
+      location,
       search,
       minPrice,
       maxPrice,
@@ -242,6 +249,7 @@ export const getAdminAuctions = async (req, res, next) => {
     const { data: auctions, pagination } = await listAuctionsPrisma({
       status,
       category,
+      location,
       search,
       role: isAdmin,
       minPrice,
@@ -311,7 +319,7 @@ export const getAuctionById = async (req, res, next) => {
 // @access  Private/Owner or Admin
 export const updateAuction = async (req, res, next) => {
   try {
-    const { title, description, startingPrice, bidIncrement, startDate, endDate, images, category } = req.body;
+    const { title, description, startingPrice, bidIncrement, startDate, endDate, images, category, location } = req.body;
     const { auctionId } = req.params;
 
     // Find the auction
@@ -338,6 +346,7 @@ export const updateAuction = async (req, res, next) => {
 
     // Update fields if provided
     const updateData = {};
+
     if (title) updateData.title = title;
     if (description) updateData.description = description;
     if (startingPrice !== undefined) {
@@ -349,6 +358,7 @@ export const updateAuction = async (req, res, next) => {
     if (startDate) updateData.startDate = new Date(startDate);
     if (endDate) updateData.endDate = new Date(endDate);
     if (category) updateData.category = category;
+    if (location) updateData.location = location;
 
     // Handle images if provided (delete old images)
     if (images && Array.isArray(images)) {
@@ -373,6 +383,18 @@ export const updateAuction = async (req, res, next) => {
         }
       }
       updateData.images = images;
+    }
+
+    // Remove any undefined, null, or empty string values
+    Object.keys(updateData).forEach(key => {
+      if (updateData[key] === undefined || updateData[key] === null || updateData[key] === '') {
+        delete updateData[key];
+      }
+    });
+
+    // If no valid fields remain after cleanup
+    if (Object.keys(updateData).length === 0) {
+      throw new AppError('NO_UPDATE_DATA', 'No updates provided. Please specify the fields you want to update.', 400);
     }
 
     const updatedAuction = await updateAuctionPrisma(auctionId, updateData, auction.version);

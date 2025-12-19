@@ -70,6 +70,28 @@ export const auctionQuerySchema = {
         ]
       )
       .optional(),
+    location: Joi.string()
+      .valid(
+        ...[
+          'Ahafo',
+          'Ashanti',
+          'Bono',
+          'Bono East',
+          'Central',
+          'Eastern',
+          'Greater Accra',
+          'North East',
+          'Northern',
+          'Oti',
+          'Savannah',
+          'Upper East',
+          'Upper West',
+          'Volta',
+          'Western',
+          'Western North',
+        ]
+      )
+      .optional(),
     search: Joi.string().optional(),
     endingSoon: Joi.boolean()
       .optional()
@@ -123,6 +145,28 @@ export const auctionQuerySchema = {
           'Books',
           'Jewelry',
           'Toys',
+        ]
+      )
+      .optional(),
+    location: Joi.string()
+      .valid(
+        ...[
+          'Ahafo',
+          'Ashanti',
+          'Bono',
+          'Bono East',
+          'Central',
+          'Eastern',
+          'Greater Accra',
+          'North East',
+          'Northern',
+          'Oti',
+          'Savannah',
+          'Upper East',
+          'Upper West',
+          'Volta',
+          'Western',
+          'Western North',
         ]
       )
       .optional(),
@@ -405,7 +449,6 @@ export const auctionSchema = {
       'date.greater': 'End date must be after the start date',
     }),
     category: Joi.string()
-      .required()
       .valid(
         ...[
           'Electronics',
@@ -418,6 +461,28 @@ export const auctionSchema = {
           'Books',
           'Jewelry',
           'Toys',
+        ]
+      )
+      .required(),
+    location: Joi.string()
+      .valid(
+        ...[
+          'Ahafo',
+          'Ashanti',
+          'Bono',
+          'Bono East',
+          'Central',
+          'Eastern',
+          'Greater Accra',
+          'North East',
+          'Northern',
+          'Oti',
+          'Savannah',
+          'Upper East',
+          'Upper West',
+          'Volta',
+          'Western',
+          'Western North',
         ]
       )
       .required(),
@@ -466,6 +531,28 @@ export const auctionSchema = {
           'Toys',
         ]
       ),
+    location: Joi.string()
+      .valid(
+        ...[
+          'Ahafo',
+          'Ashanti',
+          'Bono',
+          'Bono East',
+          'Central',
+          'Eastern',
+          'Greater Accra',
+          'North East',
+          'Northern',
+          'Oti',
+          'Savannah',
+          'Upper East',
+          'Upper West',
+          'Volta',
+          'Western',
+          'Western North',
+        ]
+      )
+      .optional(),
     images: Joi.array()
       .items(
         Joi.object({
@@ -482,7 +569,8 @@ export const auctionSchema = {
         'array.base': 'Images must be an array',
         'any.required': 'Images are required',
       }),
-  }).min(1), // At least one field required for update
+  }).min(1).messages({
+    'object.min': 'At least one field is required to update this auction'}), // At least one field required for update
 };
 
 // Bid schema validation
@@ -659,7 +747,7 @@ export const userSchema = {
   })
     .min(1)
     .messages({
-      'object.min': 'At least one field must be provided to update',
+      'object.min': 'At least one field must be provided to update user profile',
     }),
 
   // Profile picture validation

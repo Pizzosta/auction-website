@@ -5,6 +5,7 @@ import prisma from '../config/prisma.js';
 export async function listAuctionsPrisma({
   status,
   category,
+  location,
   search,
   seller,
   winner,
@@ -64,6 +65,7 @@ export async function listAuctionsPrisma({
 
   // Other filters
   if (category) where.category = { equals: category, mode: 'insensitive' };
+  if (location) where.location = { equals: location, mode: 'insensitive' };
   if (seller) where.sellerId = seller;
   if (winner) where.winnerId = winner;
   if (role) where.seller = { role: role, isDeleted: false };
@@ -135,7 +137,7 @@ export async function listAuctionsPrisma({
     delete queryOptions.include;
     queryOptions.select = { id: true };
 
-    const mainFields = ['title', 'description', 'startingPrice', 'currentPrice', 'startDate', 'endDate', 'createdAt', 'updatedAt', 'isDeleted', 'deletedBy', 'deletedAt'];
+    const mainFields = ['title', 'description', 'startingPrice', 'currentPrice', 'startDate', 'endDate', 'createdAt', 'updatedAt', 'isDeleted', 'deletedBy', 'deletedAt', 'location', 'category'];
     const relationFields = ['seller', 'winner'];
 
     // Process Main Fields (simple inclusion)

@@ -44,7 +44,13 @@ const router = express.Router();
  *         schema:
  *           type: string
  *           enum: [Electronics, Fashion, Home & Garden, Collectibles, Sports, Automotive, Art, Books, Jewelry, Toys]
- *         description: Filter auctions by category ID
+ *         description: Filter auctions by category
+ *       - in: query
+ *         name: location
+ *         schema:
+ *           type: string
+ *           enum: [Ahafo, Ashanti, Bono, Bono East, Central, Eastern, Greater Accra, North East, Northern, Oti, Savannah, Upper East, Upper West, Volta, Western, Western North]
+ *         description: Filter auctions by location
  *       - in: query
  *         name: search
  *         schema:
@@ -136,6 +142,12 @@ router.get('/', validate(auctionQuerySchema.allAuctionSearch, 'query'), getPubli
  *           type: string
  *           enum: [Electronics, Fashion, Home & Garden, Collectibles, Sports, Automotive, Art, Books, Jewelry, Toys]
  *         description: Filter auctions by category
+*       - in: query
+ *         name: location
+ *         schema:
+ *           type: string
+ *           enum: [Ahafo, Ashanti, Bono, Bono East, Central, Eastern, Greater Accra, North East, Northern, Oti, Savannah, Upper East, Upper West, Volta, Western, Western North]
+ *         description: Filter auctions by location
  *       - in: query
  *         name: search
  *         schema:
@@ -204,6 +216,12 @@ router.get('/admin-auctions', validate(auctionQuerySchema.auctionSearch, 'query'
  *           enum: [Electronics, Fashion, Home & Garden, Collectibles, Sports, Automotive, Art, Books, Jewelry, Toys]
  *         description: Filter auctions by category
  *       - in: query
+ *         name: location
+ *         schema:
+ *           type: string
+ *           enum: [Ahafo, Ashanti, Bono, Bono East, Central, Eastern, Greater Accra, North East, Northern, Oti, Savannah, Upper East, Upper West, Volta, Western, Western North]
+ *         description: Filter auctions by location
+ *       - in: query
  *         name: search
  *         schema:
  *           type: string
@@ -268,6 +286,12 @@ router.get('/me', protect, validate(auctionQuerySchema.auctionSearch, 'query'), 
  *           type: string
  *           enum: [Electronics, Fashion, Home & Garden, Collectibles, Sports, Automotive, Art, Books, Jewelry, Toys]
  *         description: Filter auctions by Category
+ *       - in: query
+ *         name: location
+ *         schema:
+ *           type: string
+ *           enum: [Ahafo, Ashanti, Bono, Bono East, Central, Eastern, Greater Accra, North East, Northern, Oti, Savannah, Upper East, Upper West, Volta, Western, Western North]
+ *         description: Filter auctions by location
  *       - in: query
  *         name: search
  *         schema:
@@ -340,7 +364,7 @@ router.get(
   '/admin',
   protect,
   admin,
-  validate(auctionQuerySchema.search, 'query'),
+  validate(auctionQuerySchema.allAuctionSearch, 'query'),
   getAuctions
 );
 
@@ -370,6 +394,7 @@ router.get(
  *               - startDate
  *               - endDate
  *               - category
+ *               - location
  *               - images
  *             properties:
  *               title:
@@ -403,6 +428,9 @@ router.get(
  *               category:
  *                 type: string
  *                 enum: [Electronics, Fashion, Home & Garden, Collectibles, Sports, Automotive, Art, Books, Jewelry, Toys]
+ *               location:
+ *                 type: string
+ *                 enum: [Ahafo, Ashanti, Bono, Bono East, Central, Eastern, Greater Accra, North East, Northern, Oti, Savannah, Upper East, Upper West, Volta, Western, Western North]
  *               images:
  *                 type: array
  *                 items:
@@ -482,32 +510,59 @@ router.get(
  *         multipart/form-data:
  *           schema:
  *             type: object
+ *             required:
+ *               - title
+ *               - description
+ *               - startingPrice
+ *               - bidIncrement
+ *               - startDate
+ *               - endDate
+ *               - category
+ *               - location
+ *               - images
  *             properties:
  *               title:
  *                 type: string
+ *                 minLength: 3
+ *                 maxLength: 100
+ *                 example: "Premium Smart Watch"
  *               description:
  *                 type: string
+ *                 minLength: 10
+ *                 maxLength: 5000
+ *                 example: "Brand new smart watch with all the latest features..."
  *               startingPrice:
  *                 type: number
+ *                 minimum: 1
+ *                 example: 100
  *               bidIncrement:
  *                 type: number
+ *                 minimum: 0.01
+ *                 example: 5
  *               startDate:
  *                 type: string
  *                 format: date-time
+ *                 example: "2025-11-15T10:00:00Z"
+ *                 description: Must be in the future
  *               endDate:
  *                 type: string
  *                 format: date-time
+ *                 example: "2025-11-20T10:00:00Z"
+ *                 description: Must be after startDate
  *               category:
  *                 type: string
+ *                 enum: [Electronics, Fashion, Home & Garden, Collectibles, Sports, Automotive, Art, Books, Jewelry, Toys]
+ *               location:
+ *                 type: string
+ *                 enum: [Ahafo, Ashanti, Bono, Bono East, Central, Eastern, Greater Accra, North East, Northern, Oti, Savannah, Upper East, Upper West, Volta, Western, Western North]
  *               images:
  *                 type: array
  *                 items:
  *                   type: string
  *                   format: binary
- *               imagesToRemove:
- *                 type: array
- *                 items:
- *                   type: string
+ *                 minItems: 1
+ *                 maxItems: 5
+ *                 description: Images for the auction
  *     responses:
  *       200:
  *         description: Auction updated
