@@ -1,4 +1,5 @@
 import express from 'express';
+import compression from 'compression';
 import apiDocsRouter from './swagger.js';
 import http from 'http';
 import { fileURLToPath } from 'url';
@@ -6,6 +7,8 @@ import { dirname, join } from 'path';
 import logger, { httpLogger, loggerClose } from './utils/logger.js';
 import requestLogger from './middleware/requestLogger.js';
 import securityMiddleware from './middleware/security.js';
+import cacheHeaders from './middleware/cacheHeaders.js';
+import cacheMiddleware from './middleware/cacheMiddleware.js';
 import { apiLogger, errorLogger } from './middleware/apiLogger.js';
 import { globalErrorHandler, AppError } from './middleware/errorHandler.js';
 import './jobs/index.js'; // Import jobs to start the scheduler
@@ -79,6 +82,9 @@ import { initSocketIO } from './middleware/socketMiddleware.js';
 
 const app = express();
 
+// Enable response compression early to reduce payload sizes for all responses
+app.use(compression());
+
 // Configure trust proxy for production
 if (env.isProd) {
   // Trust first proxy in production (for secure cookies)
@@ -90,6 +96,12 @@ if (env.isProd) {
 
 // Apply security middleware (includes cookie parsing, CORS, etc.)
 app.use(securityMiddleware);
+
+// Add cache-related headers for GET responses
+app.use(cacheHeaders(60));
+
+// Redis-backed cache middleware for GET responses. Skips caching when Authorization header is present.
+app.use(cacheMiddleware({ ttlSeconds: 60, skipWhenAuth: true }));
 
 // Serve API documentation
 app.use('/api/v1/docs', apiDocsRouter);
