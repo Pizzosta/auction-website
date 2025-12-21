@@ -100,9 +100,6 @@ app.use(securityMiddleware);
 // Add cache-related headers for GET responses
 app.use(cacheHeaders(60));
 
-// Redis-backed cache middleware for GET responses. Skips caching when Authorization header is present.
-app.use(cacheMiddleware({ ttlSeconds: 60, skipWhenAuth: true }));
-
 // Serve API documentation
 app.use('/api/v1/docs', apiDocsRouter);
 
@@ -143,8 +140,8 @@ app.get('/health/queue', async (req, res, next) => {
       metrics: {
         waiting: metrics.waiting,
         deadLetter: metrics.deadLetter,
-        isOverloaded: metrics.waiting > 1000
-      }
+        isOverloaded: metrics.waiting > 1000,
+      },
     });
   } catch (error) {
     next(error);
@@ -186,13 +183,15 @@ if (env.isProd) {
 
 // 404 handler
 app.use((req, res, next) => {
-  next(
-    new AppError('ROUTE_NOT_FOUND', `Can't find ${req.originalUrl} on this server!`, 404)
-  );
+  next(new AppError('ROUTE_NOT_FOUND', `Can't find ${req.originalUrl} on this server!`, 404));
 });
 
 // Global error handler
 app.use(globalErrorHandler);
+
+// Apply cache middleware AFTER routes are mounted
+// Redis-backed cache middleware for GET responses. Skips caching when Authorization header is present.
+app.use(cacheMiddleware({ ttlSeconds: 60, skipWhenAuth: true }));
 
 // Error handling for uncaught exceptions and unhandled rejections
 process.on('uncaughtException', error => {
@@ -274,7 +273,7 @@ const shutdown = async () => {
     // Close Bull queues (waits for active jobs to finish)
     logger.info('Closing Bull queues...');
     await closeQueues();
-    
+
     // Close queue pubsub
     logger.info('Closing QueuePubSub connections...');
     await pubsub.close();
