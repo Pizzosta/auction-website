@@ -10,6 +10,7 @@ import {
   getAuctionById,
   updateAuction,
   deleteAuction,
+  restoreAuction,
   confirmPayment,
   confirmDelivery,
 } from '../controllers/auctionController.js';
@@ -121,7 +122,6 @@ const router = express.Router();
  */
 router.get('/', validate(auctionQuerySchema.allAuctionSearch, 'query'), getPublicAuctions);
 
-
 /**
  * @swagger
  * /api/v1/auctions/admin-auctions:
@@ -142,7 +142,7 @@ router.get('/', validate(auctionQuerySchema.allAuctionSearch, 'query'), getPubli
  *           type: string
  *           enum: [Electronics, Fashion, Home & Garden, Collectibles, Sports, Automotive, Art, Books, Jewelry, Toys]
  *         description: Filter auctions by category
-*       - in: query
+ *       - in: query
  *         name: location
  *         schema:
  *           type: string
@@ -190,8 +190,11 @@ router.get('/', validate(auctionQuerySchema.allAuctionSearch, 'query'), getPubli
  *       403:
  *         description: Forbidden (non-admin users)
  */
-router.get('/admin-auctions', validate(auctionQuerySchema.auctionSearch, 'query'), getAdminAuctions);
-
+router.get(
+  '/admin-auctions',
+  validate(auctionQuerySchema.auctionSearch, 'query'),
+  getAdminAuctions
+);
 
 /**
  * @swagger
@@ -262,7 +265,6 @@ router.get('/admin-auctions', validate(auctionQuerySchema.auctionSearch, 'query'
  *         description: Unauthorized
  */
 router.get('/me', protect, validate(auctionQuerySchema.auctionSearch, 'query'), getMyAuctions);
-
 
 /**
  * @swagger
@@ -367,7 +369,6 @@ router.get(
   validate(auctionQuerySchema.allAuctionSearch, 'query'),
   getAuctions
 );
-
 
 /**
  * @swagger
@@ -482,11 +483,7 @@ router.post(
  *       410:
  *         description: Auction deleted
  */
-router.get(
-  '/:auctionId',
-  validate(idSchema('auctionId'), 'params'),
-  getAuctionById
-);
+router.get('/:auctionId', validate(idSchema('auctionId'), 'params'), getAuctionById);
 
 /**
  * @swagger
@@ -622,6 +619,39 @@ router.delete(
   validate(idSchema('auctionId'), 'params'),
   validate(auctionQuerySchema.delete, 'query'),
   deleteAuction
+);
+
+/**
+ * @swagger
+ * /api/v1/auctions/{auctionId}/restore:
+ *   patch:
+ *     tags: [Auctions]
+ *     security:
+ *       - bearerAuth: []
+ *     summary: Restore a deleted auction
+ *     parameters:
+ *       - in: path
+ *         name: auctionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Unique auction ID
+ *     responses:
+ *       200:
+ *         description: Auction restored
+ *       400:
+ *         description: Auction is not deleted
+ *       403:
+ *         description: Not Authorized
+ *       404:
+ *         description: Auction not found
+ */
+router.patch(
+  '/:auctionId/restore',
+  protect,
+  admin,
+  validate(idSchema('auctionId'), 'params'),
+  restoreAuction
 );
 
 /**
