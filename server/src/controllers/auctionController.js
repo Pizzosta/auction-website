@@ -15,6 +15,7 @@ import {
   completeAuctionPrisma,
   checkAuctionConfirmationStatusPrisma,
 } from '../repositories/auctionRepo.prisma.js';
+import cacheService from '../services/cacheService.js';
 import { findUserByIdPrisma } from '../repositories/userRepo.prisma.js';
 import { Prisma } from '@prisma/client';
 import { AppError } from '../middleware/errorHandler.js';
@@ -58,6 +59,18 @@ export const createAuction = async (req, res, next) => {
       message: 'Auction created successfully',
       data: createdAuction,
     });
+
+    // Invalidate ALL auction listings + per-user
+    try {
+      await Promise.all([
+        cacheService.delByPrefix('GET:/api/v1/auctions'),
+        cacheService.delByPrefix('GET:/api/v1/auctions/me'),
+        cacheService.delByPrefix('GET:/api/v1/auctions/admin-auctions'),
+        cacheService.delByPrefix('GET:/api/v1/auctions/admin'),
+      ]);
+    } catch (err) {
+      logger.warn('Cache invalidation failed after create', { error: err.message });
+    }
   } catch (error) {
     logger.error('Error creating auction:', {
       error: error.message,
@@ -98,6 +111,18 @@ export const createAuction = async (req, res, next) => {
 // @access  Admin
 export const getAuctions = async (req, res, next) => {
   try {
+    // Try to serve from cache for public listing
+    try {
+      const cached = await cacheService.get(req);
+      if (cached) {
+        res.setHeader('X-Cache', 'HIT');
+        res.locals.cacheTtl = typeof cached._meta?.ttl === 'number' ? cached._meta.ttl : undefined;
+        return res.status(cached.status || 200).json(cached.body);
+      }
+    } catch (error) {
+      logger.warn('Cache retrieval error in getAuctions:', { error: error.message });
+    }
+
     const {
       status,
       category,
@@ -153,6 +178,12 @@ export const getAuctions = async (req, res, next) => {
       pagination,
       data: auctions,
     });
+
+    // Cache the successful response (best-effort)
+    try {
+      const payload = { status: 200, body: { status: 'success', pagination, data: auctions } };
+      await cacheService.set(req, payload, 60);
+    } catch (err) {}
   } catch (error) {
     logger.error('Error fetching auctions:', {
       error: error.message,
@@ -171,6 +202,18 @@ export const getMyAuctions = async (req, res, next) => {
     const sellerId = req.user?.id;
     if (!sellerId) {
       throw new AppError('AUTH_REQUIRED', 'Authentication required', 401);
+    }
+
+    // Try per-user cache first
+    try {
+      const cached = await cacheService.cacheGetPerUser(req);
+      if (cached) {
+        res.setHeader('X-Cache', 'HIT');
+        res.locals.cacheTtl = typeof cached._meta?.ttl === 'number' ? cached._meta.ttl : undefined;
+        return res.status(cached.status || 200).json(cached.body);
+      }
+    } catch (error) {
+      logger.warn('Per-user cache retrieval error in getMyAuctions:', { error: error.message });
     }
 
     const {
@@ -208,6 +251,16 @@ export const getMyAuctions = async (req, res, next) => {
     });
 
     res.status(200).json({ status: 'success', pagination, data: auctions });
+
+    // Cache per-user auctions list (user-specific key)
+    try {
+      const payload = {
+        status: 200,
+        body: { status: 'success', pagination, data: auctions },
+        _meta: { ttl: 120 },
+      };
+      await cacheService.cacheSetPerUser(req, payload, 120);
+    } catch (err) {}
   } catch (error) {
     logger.error('Error fetching my auctions:', {
       error: error.message,
@@ -223,6 +276,18 @@ export const getMyAuctions = async (req, res, next) => {
 // @access  public
 export const getAdminAuctions = async (req, res, next) => {
   try {
+    // Try cached response for admin-auctions (public listing variation)
+    try {
+      const cached = await cacheService.get(req);
+      if (cached) {
+        res.setHeader('X-Cache', 'HIT');
+        res.locals.cacheTtl = typeof cached._meta?.ttl === 'number' ? cached._meta.ttl : undefined;
+        return res.status(cached.status || 200).json(cached.body);
+      }
+    } catch (error) {
+      logger.warn('Cache retrieval error in getAdminAuctions:', { error: error.message });
+    }
+
     const {
       status,
       category,
@@ -270,6 +335,11 @@ export const getAdminAuctions = async (req, res, next) => {
       order,
     });
     res.status(200).json({ status: 'success', pagination, data: auctions });
+
+    try {
+      const payload = { status: 200, body: { status: 'success', pagination, data: auctions } };
+      await cacheService.set(req, payload, 60);
+    } catch (err) {}
   } catch (error) {
     next(error);
   }
@@ -296,6 +366,16 @@ export const getAuctionById = async (req, res, next) => {
   try {
     const { auctionId } = req.params;
 
+    // Try cache first
+    try {
+      const cached = await cacheService.get(req);
+      if (cached) {
+        res.setHeader('X-Cache', 'HIT');
+        res.locals.cacheTtl = typeof cached._meta?.ttl === 'number' ? cached._meta.ttl : undefined;
+        return res.status(cached.status || 200).json(cached.body);
+      }
+    } catch (err) {}
+
     const auction = await findAuctionById(auctionId, {
       includeSeller: true,
       includeWinner: true,
@@ -306,6 +386,11 @@ export const getAuctionById = async (req, res, next) => {
     }
 
     res.status(200).json({ status: 'success', data: { ...auction } });
+    // Cache the auction detail (longer TTL)
+    try {
+      const payload = { status: 200, body: { status: 'success', data: { ...auction } } };
+      await cacheService.set(req, payload, 300);
+    } catch (err) {}
   } catch (error) {
     logger.error('Get auction by id error:', {
       error: error.message,
@@ -432,6 +517,18 @@ export const updateAuction = async (req, res, next) => {
       message: 'Auction updated successfully',
       data: updatedAuction,
     });
+    // Invalidate: specific auction + all listings + user's my auctions
+    try {
+      await Promise.all([
+        cacheService.del(`GET:/api/v1/auctions/${auctionId}`),
+        cacheService.delByPrefix('GET:/api/v1/auctions'),
+        cacheService.delByPrefix(`GET:/api/v1/auctions/me:user:${actorId}`),
+        cacheService.delByPrefix('GET:/api/v1/auctions/admin-auctions'),
+        cacheService.delByPrefix('GET:/api/v1/auctions/admin'),
+      ]);
+    } catch (err) {
+      logger.warn('Cache invalidation failed after update', { error: err.message });
+    }
   } catch (error) {
     if (error.code === 'P2025') {
       throw new AppError(
@@ -527,6 +624,18 @@ export const deleteAuction = async (req, res, next) => {
         throw new AppError('CONFLICT', 'Failed to soft delete auction - version mismatch', 409);
       }
     }
+    // Invalidate cache for auctions after deletion
+    try {
+      await Promise.all([
+        cacheService.del(`GET:/api/v1/auctions/${auctionId}`),
+        cacheService.delByPrefix('GET:/api/v1/auctions'),
+        cacheService.delByPrefix('GET:/api/v1/auctions/me'),
+        cacheService.delByPrefix('GET:/api/v1/auctions/admin-auctions'),
+        cacheService.delByPrefix('GET:/api/v1/auctions/admin'),
+      ]);
+    } catch (err) {
+      logger.warn('Cache invalidation failed after delete', { error: err.message });
+    }
 
     res.status(200).json({
       status: 'success',
@@ -600,6 +709,17 @@ export const restoreAuction = async (req, res, next) => {
       message: 'Auction has been restored successfully',
       data: { id: auctionId },
     });
+
+    // Invalidate all listings (auction now visible again)
+    try {
+      await Promise.all([
+        cacheService.delByPrefix('GET:/api/v1/auctions'),
+        cacheService.delByPrefix('GET:/api/v1/auctions/me'),
+        cacheService.delByPrefix('GET:/api/v1/auctions/admin'),
+      ]);
+    } catch (err) {
+      logger.warn('Cache invalidation failed after restore', { error: err.message });
+    }
   } catch (error) {
     if (error.code === 'P2025') {
       throw new AppError(
@@ -678,6 +798,15 @@ export const confirmPayment = async (req, res, next) => {
       message: 'Payment confirmed successfully',
       data: { id: auctionId },
     });
+
+    // Invalidate detail + listings (status/visual may change)
+    try {
+      await Promise.all([
+        cacheService.del(`GET:/api/v1/auctions/${auctionId}`),
+        cacheService.delByPrefix('GET:/api/v1/auctions'),
+        cacheService.delByPrefix('GET:/api/v1/auctions/me'),
+      ]);
+    } catch (err) {}
   } catch (error) {
     if (error.code === 'P2025') {
       throw new AppError(
@@ -774,6 +903,16 @@ export const confirmDelivery = async (req, res, next) => {
       message: 'Delivery confirmed successfully',
       data: { id: auctionId },
     });
+
+    // Invalidate heavily — status changed to completed
+    try {
+      await Promise.all([
+        cacheService.del(`GET:/api/v1/auctions/${auctionId}`),
+        cacheService.delByPrefix('GET:/api/v1/auctions'),
+        cacheService.delByPrefix('GET:/api/v1/auctions/me'),
+        cacheService.delByPrefix('GET:/api/v1/auctions/admin'),
+      ]);
+    } catch (err) {}
   } catch (error) {
     if (error.code === 'P2025') {
       throw new AppError(

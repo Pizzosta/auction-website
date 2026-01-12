@@ -9,6 +9,7 @@ import {
 } from '../repositories/featuredAuctionRepo.prisma.js';
 import { findAuctionById } from '../repositories/auctionRepo.prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
+import cacheService from '../services/cacheService.js';
 
 // Only admin users can add/remove featured auctions
 /**
@@ -61,6 +62,15 @@ export const addFeaturedAuction = async (req, res, next) => {
       addedBy: actorId,
       featuredId: featured.id,
     });
+
+    // Invalidate featured and auction listing caches
+    try {
+      await cacheService.delByPrefix('GET:/api/v1/featured');
+      await cacheService.delByPrefix('GET:/api/v1/auctions');
+      await cacheService.delByPrefix(`GET:/api/v1/auctions/${auctionId}`);
+    } catch (err) {
+      logger.warn('Cache invalidation failed after addFeaturedAuction', { error: err?.message });
+    }
 
     return res.status(201).json({
       status: 'success',
@@ -139,6 +149,15 @@ export const removeFeaturedAuction = async (req, res, next) => {
       deletedById: actorId,
       timestamp: new Date().toISOString(),
     });
+
+    // Invalidate caches for featured and auctions
+    try {
+      await cacheService.delByPrefix('GET:/api/v1/featured');
+      await cacheService.delByPrefix('GET:/api/v1/auctions');
+      await cacheService.delByPrefix(`GET:/api/v1/auctions/${auctionId}`);
+    } catch (err) {
+      logger.warn('Cache invalidation failed after removeFeaturedAuction', { error: err?.message });
+    }
 
     res.status(200).json({
       status: 'success',
@@ -287,6 +306,15 @@ export const restoreFeaturedAuction = async (req, res, next) => {
       restoredBy: actorId,
       restoredAt: new Date().toISOString(),
     });
+
+    // Invalidate caches after restore
+    try {
+      await cacheService.delByPrefix('GET:/api/v1/featured');
+      await cacheService.delByPrefix('GET:/api/v1/auctions');
+      await cacheService.delByPrefix(`GET:/api/v1/auctions/${auctionId}`);
+    } catch (err) {
+      logger.warn('Cache invalidation failed after restoreFeaturedAuction', { error: err?.message });
+    }
 
     // Return success response
     return res.status(200).json({

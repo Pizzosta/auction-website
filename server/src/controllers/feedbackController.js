@@ -12,6 +12,7 @@ import {
 import { findUserByIdPrisma } from '../repositories/userRepo.prisma.js';
 import { processFeedbackForDisplay } from '../utils/format.js';
 import { AppError } from '../middleware/errorHandler.js';
+import cacheService from '../services/cacheService.js';
 
 // Create feedback
 export const createFeedback = async (req, res, next) => {
@@ -68,7 +69,17 @@ export const createFeedback = async (req, res, next) => {
         // Update user's rating
         await updateUserRating(toUserId);
 
-        res.status(201).json(feedback);
+                // Invalidate caches affected by new feedback
+                try {
+                    await cacheService.delByPrefix('GET:/api/v1/auctions');
+                    await cacheService.delByPrefix('GET:/api/v1/users');
+                    await cacheService.delByPrefix(`GET:/api/v1/users/${toUserId}`);
+                    await cacheService.delByPrefix(`GET:/api/v1/auctions/${auctionId}`);
+                } catch (err) {
+                    logger.warn('Cache invalidation failed after createFeedback', { error: err?.message });
+                }
+
+                res.status(201).json(feedback);
     } catch (error) {
         logger.error('Error creating feedback', {
             error: error.message,
@@ -162,7 +173,15 @@ export const respondToFeedback = async (req, res, next) => {
         }
 
         const updatedFeedback = await respondToFeedbackPrisma(feedbackId, response);
-        res.json(updatedFeedback);
+                // Invalidate caches that may display feedback summaries or user info
+                try {
+                    await cacheService.delByPrefix('GET:/api/v1/users');
+                    await cacheService.delByPrefix(`GET:/api/v1/users/${feedback.toUserId}`);
+                } catch (err) {
+                    logger.warn('Cache invalidation failed after respondToFeedback', { error: err?.message });
+                }
+
+                res.json(updatedFeedback);
     } catch (error) {
         logger.error('Error responding to feedback', {
             error: error.message,

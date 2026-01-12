@@ -6,6 +6,7 @@ import {
   listAllBidsPrisma, findOutbidCandidates, findCurrentHighestBid, getBidWithAuction,
 } from '../repositories/bidRepo.prisma.js';
 import { addToQueue } from '../services/emailQueueService.js';
+import cacheService from '../services/cacheService.js';
 import { formatCurrency, formatDateTime } from '../utils/format.js';
 import { env, validateEnv } from '../config/env.js';
 import { AppError } from '../middleware/errorHandler.js';
@@ -349,6 +350,16 @@ export const placeBid = async (req, res, next) => {
     const io = req?.app?.get('io');
     const result = await placeBidCore({ auctionId, amount, actorId, io });
 
+    // Invalidate auction listing + detail caches on successful bid
+    if (result) {
+      try {
+        await cacheService.delByPrefix('GET:/api/v1/auctions');
+        await cacheService.delByPrefix(`GET:/api/v1/auctions/${auctionId}`);
+      } catch (err) {
+        logger.warn('Cache invalidation failed after placeBid', { error: err?.message });
+      }
+    }
+
     res.status(201).json(result);
   } catch (error) {
     next(error);
@@ -574,6 +585,14 @@ export const deleteBid = async (req, res, next) => {
         oldPrice: bid.auction.currentPrice,
         newPrice: result.newPrice,
       });
+    }
+
+    // Invalidate auction caches after a bid is deleted/cancelled
+    try {
+      await cacheService.delByPrefix('GET:/api/v1/auctions');
+      await cacheService.delByPrefix(`GET:/api/v1/auctions/${bid.auctionId}`);
+    } catch (err) {
+      logger.warn('Cache invalidation failed after deleteBid', { error: err?.message });
     }
 
     res.status(200).json({

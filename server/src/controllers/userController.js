@@ -17,9 +17,10 @@ import { getCloudinary } from '../config/cloudinary.js';
 import { normalizeToE164 } from '../utils/format.js';
 import logger from '../utils/logger.js';
 import { AppError } from '../middleware/errorHandler.js';
+import cacheService from '../services/cacheService.js';
 
 // @desc    Get a single user by ID (admin only)
-// @route   GET /api/users/:id
+// @route   GET /api/v1/users/:id
 // @access  Private/Admin
 // @param   {string} id - User ID
 // @returns {Promise<Object>} - User object or error response
@@ -48,7 +49,10 @@ export const getUserById = async (req, res, next) => {
 
     if (user.isDeleted) {
       logger.warn('Attempted to access deactivated user', { userId: id });
-      throw new AppError('USER_DEACTIVATED', 'User is deactivated', 410, { ...user, isActive: false });
+      throw new AppError('USER_DEACTIVATED', 'User is deactivated', 410, {
+        ...user,
+        isActive: false,
+      });
     }
 
     logger.info('User found', {
@@ -72,7 +76,7 @@ export const getUserById = async (req, res, next) => {
 };
 
 // @desc    Get all users (admin only)
-// @route   GET /api/users
+// @route   GET /api/v1/users
 // @access  Private/Admin
 // @desc    Get all users with filtering and pagination
 export const getAllUsers = async (req, res, next) => {
@@ -132,7 +136,7 @@ export const getAllUsers = async (req, res, next) => {
 };
 
 // @desc    Delete a user
-// @route   DELETE /api/users/:id
+// @route   DELETE /api/v1/users/:id
 // @access  Private/Admin
 export const deleteUser = async (req, res, next) => {
   try {
@@ -148,17 +152,11 @@ export const deleteUser = async (req, res, next) => {
       getPermanentValue(req.query?.permanent) || getPermanentValue(req.body?.permanent);
 
     // Get user with necessary fields for deletion
-    const user = await findUserByIdPrisma(req.params.id, [
-      'id',
-      'role',
-      'passwordHash',
-      'isDeleted',
-      'email',
-      'username',
-      'phone',
-      'version',
-    ],
-      { allowSensitive: true });
+    const user = await findUserByIdPrisma(
+      req.params.id,
+      ['id', 'role', 'passwordHash', 'isDeleted', 'email', 'username', 'phone', 'version'],
+      { allowSensitive: true }
+    );
 
     if (!user) {
       throw new AppError('USER_NOT_FOUND', 'User not found', 404);
@@ -173,7 +171,11 @@ export const deleteUser = async (req, res, next) => {
     // If user is deleting their own account, require password
     if (user.id.toString() === actorId) {
       if (!password) {
-        throw new AppError('PASSWORD_REQUIRED', 'Password is required to confirm account deletion', 400);
+        throw new AppError(
+          'PASSWORD_REQUIRED',
+          'Password is required to confirm account deletion',
+          400
+        );
       }
 
       const isMatch = user.passwordHash ? await bcrypt.compare(password, user.passwordHash) : false;
@@ -184,12 +186,20 @@ export const deleteUser = async (req, res, next) => {
 
     // Prevent admin from deleting themselves
     if (user.role === 'admin' && user.id.toString() === actorId) {
-      throw new AppError('ADMIN_SELF_DELETION', 'Admins cannot delete themselves. Please contact another admin for assistance.', 400);
+      throw new AppError(
+        'ADMIN_SELF_DELETION',
+        'Admins cannot delete themselves. Please contact another admin for assistance.',
+        400
+      );
     }
 
     // Only admins can perform permanent deletions
     if (permanent && req.user.role !== 'admin') {
-      throw new AppError('ONLY_ADMINS_CAN_PERMANENTLY_DELETE_USERS', 'Only admins can permanently delete users', 403);
+      throw new AppError(
+        'ONLY_ADMINS_CAN_PERMANENTLY_DELETE_USERS',
+        'Only admins can permanently delete users',
+        403
+      );
     }
 
     // Prevent soft deletion of already deleted users
@@ -213,7 +223,7 @@ export const deleteUser = async (req, res, next) => {
         action: 'deleteUser',
         timestamp: new Date().toISOString(),
         userRole: user.role,
-        permanentDeletion: permanent
+        permanentDeletion: permanent,
       });
       throw error; // Re-throw to be caught by the outer try-catch
     }
@@ -230,7 +240,7 @@ export const deleteUser = async (req, res, next) => {
               error: error.message,
               userId: user.id,
               publicId: user.profilePicture.publicId,
-              stack: error.stack
+              stack: error.stack,
             });
             // Continue even if Cloudinary deletion fails
           }
@@ -241,7 +251,7 @@ export const deleteUser = async (req, res, next) => {
           try {
             const cloudinary = await getCloudinary();
             await Promise.all(
-              auction.images.map(async (img) => {
+              auction.images.map(async img => {
                 if (img.publicId) {
                   await cloudinary.uploader.destroy(img.publicId);
                 }
@@ -269,7 +279,7 @@ export const deleteUser = async (req, res, next) => {
         error: error.message,
         userId: user.id,
         permanent,
-        stack: error.stack
+        stack: error.stack,
       });
       throw error;
     }
@@ -281,6 +291,18 @@ export const deleteUser = async (req, res, next) => {
       permanent,
       timestamp: new Date().toISOString(),
     });
+
+    // Invalidate related caches (users list, user detail, auctions)
+    try {
+      await Promise.all([
+        cacheService.delByPrefix('GET:/api/v1/users'),
+        cacheService.delByPrefix(`GET:/api/v1/users/${user.id}`),
+        cacheService.delByPrefix('GET:/api/v1/auctions'),
+        cacheService.delByPrefix(`GET:/api/v1/auctions/me:user:${user.id}`),
+      ]);
+    } catch (err) {
+      logger.warn('Cache invalidation failed after deleteUser', { error: err?.message });
+    }
 
     res.status(200).json({
       status: 'success',
@@ -299,7 +321,11 @@ export const deleteUser = async (req, res, next) => {
 
     // Override P2025 for concurrency conflicts only
     if (error.code === 'P2025') {
-      throw new AppError('CONFLICT', 'This user was modified by another user. Please refresh and try again.', 409);
+      throw new AppError(
+        'CONFLICT',
+        'This user was modified by another user. Please refresh and try again.',
+        409
+      );
     }
 
     next(error);
@@ -307,7 +333,7 @@ export const deleteUser = async (req, res, next) => {
 };
 
 // @desc    Get current user
-// @route   GET /api/users/me
+// @route   GET /api/v1/users/me
 // @access  Private
 export const getMe = async (req, res, next) => {
   try {
@@ -315,25 +341,29 @@ export const getMe = async (req, res, next) => {
     const userId = req.user.id;
 
     // Fetch the user with only necessary fields
-    const user = await findUserByIdPrisma(userId, [
-      'id',
-      'firstname',
-      'middlename',
-      'lastname',
-      'email',
-      'username',
-      'phone',
-      'role',
-      'profilePicture',
-      'bio',
-      'location',
-      'rating',
-      'ratingCount',
-      'isVerified',
-      'createdAt',
-      'updatedAt',
-      'lastActiveAt',
-    ], { allowSensitive: false });
+    const user = await findUserByIdPrisma(
+      userId,
+      [
+        'id',
+        'firstname',
+        'middlename',
+        'lastname',
+        'email',
+        'username',
+        'phone',
+        'role',
+        'profilePicture',
+        'bio',
+        'location',
+        'rating',
+        'ratingCount',
+        'isVerified',
+        'createdAt',
+        'updatedAt',
+        'lastActiveAt',
+      ],
+      { allowSensitive: false }
+    );
 
     if (!user) {
       throw new AppError('USER_NOT_FOUND', 'User not found', 404);
@@ -358,7 +388,7 @@ export const getMe = async (req, res, next) => {
 };
 
 // @desc    Restore a soft-deleted user
-// @route   POST /api/users/:id/restore
+// @route   POST /api/v1/users/:id/restore
 // @access  Private/Admin
 export const restoreUser = async (req, res, next) => {
   try {
@@ -374,17 +404,21 @@ export const restoreUser = async (req, res, next) => {
     }
 
     // Get user with minimal fields needed for restoration
-    const user = await findUserByIdPrisma(userId, [
-      'id',
-      'isDeleted',
-      'firstname',
-      'middlename',
-      'lastname',
-      'email',
-      'username',
-      'role',
-      'version',
-    ], { allowSensitive: true });
+    const user = await findUserByIdPrisma(
+      userId,
+      [
+        'id',
+        'isDeleted',
+        'firstname',
+        'middlename',
+        'lastname',
+        'email',
+        'username',
+        'role',
+        'version',
+      ],
+      { allowSensitive: true }
+    );
 
     if (!user) {
       throw new AppError('USER_NOT_FOUND', 'User not found', 404);
@@ -396,6 +430,17 @@ export const restoreUser = async (req, res, next) => {
 
     // Restore the user using repository function
     await restoreUserPrisma(user.id);
+
+    // Invalidate user caches after restoration
+    try {
+      await Promise.all([
+        cacheService.del(`GET:/api/v1/users/${user.id}`),
+        cacheService.del(`GET:/api/v1/users/me:user:${user.id}`),
+        cacheService.delByPrefix('GET:/api/v1/users'),
+      ]);
+    } catch (err) {
+      logger.warn('Cache invalidation failed after restoreUser', { error: err?.message });
+    }
 
     res.status(200).json({
       status: 'success',
@@ -415,7 +460,13 @@ export const restoreUser = async (req, res, next) => {
     });
   } catch (error) {
     if (error.code === 'P2025') {
-      return next(new AppError('CONFLICT', 'This user was modified by another user. Please refresh and try again.', 409));
+      return next(
+        new AppError(
+          'CONFLICT',
+          'This user was modified by another user. Please refresh and try again.',
+          409
+        )
+      );
     }
 
     logger.error('Restore user error:', {
@@ -427,9 +478,8 @@ export const restoreUser = async (req, res, next) => {
   }
 };
 
-
 // @desc    Upload profile picture
-// @route   POST /api/users/me/upload-picture
+// @route   POST /api/v1/users/me/upload-picture
 // @access  Private
 export const uploadProfilePicture = async (req, res, next) => {
   try {
@@ -474,6 +524,17 @@ export const uploadProfilePicture = async (req, res, next) => {
     // Update user with new profile picture
     await updateUserProfilePicturePrisma(actorId, profilePicture);
 
+    // Invalidate user caches after profile picture update
+    try {
+      await Promise.all([
+        cacheService.delByPrefix('GET:/api/v1/users'),
+        cacheService.del(`GET:/api/v1/users/${actorId}`),
+        cacheService.del(`GET:/api/v1/users/me:user:${actorId}`),
+      ]);
+    } catch (err) {
+      logger.warn('Cache invalidation failed after uploadProfilePicture', { error: err?.message });
+    }
+
     res.status(200).json({
       success: true,
       message: 'Profile picture uploaded successfully',
@@ -490,7 +551,7 @@ export const uploadProfilePicture = async (req, res, next) => {
 };
 
 // @desc    Delete profile picture
-// @route   DELETE /api/users/me/remove-picture
+// @route   DELETE /api/v1/users/me/remove-picture
 // @access  Private
 export const deleteProfilePicture = async (req, res, next) => {
   try {
@@ -523,6 +584,17 @@ export const deleteProfilePicture = async (req, res, next) => {
     // Remove profile picture URL using repository
     await removeUserProfilePicturePrisma(actorId);
 
+    // Invalidate user caches after profile picture removal
+    try {
+      await Promise.all([
+        cacheService.delByPrefix('GET:/api/v1/users'),
+        cacheService.delByPrefix(`GET:/api/v1/users/${actorId}`),
+        cacheService.delByPrefix(`GET:/api/v1/users/me:user:${actorId}`),
+      ]);
+    } catch (err) {
+      logger.warn('Cache invalidation failed after deleteProfilePicture', { error: err?.message });
+    }
+
     res.status(200).json({
       success: true,
       message: 'Profile picture deleted successfully',
@@ -538,7 +610,7 @@ export const deleteProfilePicture = async (req, res, next) => {
 };
 
 // @desc    Update a user
-// @route   PATCH /api/users/:id
+// @route   PATCH /api/v1/users/:id
 // @access  Private/Admin
 export const updateUser = async (req, res, next) => {
   try {
@@ -559,17 +631,11 @@ export const updateUser = async (req, res, next) => {
     }
 
     // Find the user and include the password hash for verification
-    const user = await findUserByIdPrisma(req.params.id, [
-      'id',
-      'role',
-      'passwordHash',
-      'isDeleted',
-      'email',
-      'username',
-      'phone',
-      'version',
-    ],
-      { allowSensitive: true });
+    const user = await findUserByIdPrisma(
+      req.params.id,
+      ['id', 'role', 'passwordHash', 'isDeleted', 'email', 'username', 'phone', 'version'],
+      { allowSensitive: true }
+    );
 
     if (!user) {
       throw new AppError('USER_NOT_FOUND', 'User not found', 404);
@@ -589,7 +655,11 @@ export const updateUser = async (req, res, next) => {
     // Handle password update with enhanced validation
     if (updateData.password) {
       if (!updateData.currentPassword) {
-        throw new AppError('CURRENT_PASSWORD_REQUIRED', 'Current password is required to update password', 400);
+        throw new AppError(
+          'CURRENT_PASSWORD_REQUIRED',
+          'Current password is required to update password',
+          400
+        );
       }
 
       const isPasswordValid = user.passwordHash
@@ -603,7 +673,11 @@ export const updateUser = async (req, res, next) => {
         ? await bcrypt.compare(updateData.password, user.passwordHash)
         : false;
       if (isSamePassword) {
-        throw new AppError('PASSWORD_SAME', 'New password must be different from current password', 400);
+        throw new AppError(
+          'PASSWORD_SAME',
+          'New password must be different from current password',
+          400
+        );
       }
 
       // Hash the new password
@@ -614,7 +688,9 @@ export const updateUser = async (req, res, next) => {
 
     // Check if the email is being updated and if it's already in use by another user
     if (updateData.email && updateData.email !== user.email) {
-      const existingUser = await findUserByEmailPrisma(updateData.email, ['id', 'isDeleted'], { allowSensitive: false });
+      const existingUser = await findUserByEmailPrisma(updateData.email, ['id', 'isDeleted'], {
+        allowSensitive: false,
+      });
 
       // Check if email exists and belongs to a different active user
       if (existingUser && existingUser.id !== user.id && !existingUser.isDeleted) {
@@ -623,13 +699,21 @@ export const updateUser = async (req, res, next) => {
 
       // Also check if the email belongs to a deleted user
       if (existingUser && existingUser.id !== user.id && existingUser.isDeleted) {
-        throw new AppError('EMAIL_PREVIOUSLY_USED', 'This email was previously used by another account', 400);
+        throw new AppError(
+          'EMAIL_PREVIOUSLY_USED',
+          'This email was previously used by another account',
+          400
+        );
       }
     }
 
     // Check if the username is being updated and if it's already in use by another user
     if (updateData.username && updateData.username !== user.username) {
-      const usernameExists = await findUserByUsernamePrisma(updateData.username, ['id', 'isDeleted'], { allowSensitive: false });
+      const usernameExists = await findUserByUsernamePrisma(
+        updateData.username,
+        ['id', 'isDeleted'],
+        { allowSensitive: false }
+      );
 
       // Check if username exists and belongs to a different active user
       if (usernameExists && usernameExists.id !== user.id && !usernameExists.isDeleted) {
@@ -638,7 +722,11 @@ export const updateUser = async (req, res, next) => {
 
       // Also check if the username belongs to a deleted user
       if (usernameExists && usernameExists.id !== user.id && usernameExists.isDeleted) {
-        throw new AppError('USERNAME_PREVIOUSLY_USED', 'This username was previously used by another account', 400);
+        throw new AppError(
+          'USERNAME_PREVIOUSLY_USED',
+          'This username was previously used by another account',
+          400
+        );
       }
     }
 
@@ -648,10 +736,16 @@ export const updateUser = async (req, res, next) => {
       const normalizedPhone = normalizeToE164(updateData.phone);
 
       if (!normalizedPhone) {
-        throw new AppError('INVALID_PHONE_NUMBER', 'Invalid phone number format. Please provide a valid phone number', 400);
+        throw new AppError(
+          'INVALID_PHONE_NUMBER',
+          'Invalid phone number format. Please provide a valid phone number',
+          400
+        );
       }
       // Check if normalized phone already exists
-      const phoneExists = await findUserByPhonePrisma(normalizedPhone, ['id', 'isDeleted'], { allowSensitive: false });
+      const phoneExists = await findUserByPhonePrisma(normalizedPhone, ['id', 'isDeleted'], {
+        allowSensitive: false,
+      });
 
       // Check if phone exists and belongs to a different active user
       if (phoneExists && phoneExists.id !== user.id && !phoneExists.isDeleted) {
@@ -660,7 +754,11 @@ export const updateUser = async (req, res, next) => {
 
       // Also check if the phone belongs to a deleted user
       if (phoneExists && phoneExists.id !== user.id && phoneExists.isDeleted) {
-        throw new AppError('PHONE_PREVIOUSLY_USED', 'This phone number was previously used by another account', 400);
+        throw new AppError(
+          'PHONE_PREVIOUSLY_USED',
+          'This phone number was previously used by another account',
+          400
+        );
       }
 
       // Update the phone number
@@ -683,26 +781,42 @@ export const updateUser = async (req, res, next) => {
     updateData.version = { increment: 1 };
 
     // Update user with version check using repository
-    const updatedUser = await updateUserDataPrisma(user.id, updateData, [
-      'id',
-      'firstname',
-      'middlename',
-      'lastname',
-      'username',
-      'email',
-      'phone',
-      'role',
-      'isVerified',
-      'profilePicture',
-      'rating',
-      'bio',
-      'location',
-      'createdAt',
-      'updatedAt',
-      'version'
-    ], { allowSensitive: true });
+    const updatedUser = await updateUserDataPrisma(
+      user.id,
+      updateData,
+      [
+        'id',
+        'firstname',
+        'middlename',
+        'lastname',
+        'username',
+        'email',
+        'phone',
+        'role',
+        'isVerified',
+        'profilePicture',
+        'rating',
+        'bio',
+        'location',
+        'createdAt',
+        'updatedAt',
+        'version',
+      ],
+      { allowSensitive: true }
+    );
 
-    return res.status(200).json({
+    // Invalidate caches that may be affected by user update
+    try {
+      await Promise.all([
+        cacheService.del(`GET:/api/v1/users/${user.id}`),
+        cacheService.del(`GET:/api/v1/users/me:user:${user.id}`),
+        cacheService.delByPrefix('GET:/api/v1/users'),
+      ]);
+    } catch (err) {
+      logger.warn('Cache invalidation failed after updateUser', { error: err?.message });
+    }
+
+    res.status(200).json({
       status: 'success',
       message: 'User updated successfully',
       data: {
@@ -718,7 +832,11 @@ export const updateUser = async (req, res, next) => {
     });
 
     if (error.code === 'P2025') {
-      throw new AppError('CONFLICT', 'This user was modified by another user. Please refresh and try again.', 409);
+      throw new AppError(
+        'CONFLICT',
+        'This user was modified by another user. Please refresh and try again.',
+        409
+      );
     }
     next(error);
   }

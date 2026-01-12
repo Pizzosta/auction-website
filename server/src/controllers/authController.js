@@ -8,6 +8,7 @@ import jwt from 'jsonwebtoken';
 import { findUserByEmailPrisma, findUserByUsernamePrisma, findUserByPhonePrisma } from '../repositories/userRepo.prisma.js';
 import { createUserWithPassword, findUserByCredentials, updateLastActiveAt, createPasswordResetToken, clearPasswordResetToken, resetUserPassword, createEmailVerificationToken, clearEmailVerificationToken, verifyUserEmail } from '../repositories/authRepo.prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
+import cacheService from '../services/cacheService.js';
 
 // Validate required environment variables
 const missingVars = validateEnv();
@@ -128,6 +129,14 @@ export const register = async (req, res, next) => {
         expiresIn: env.accessTokenExpiry,
       },
     });
+
+    // Invalidate users list cache after registration
+    try {
+      await cacheService.delByPrefix('GET:/api/v1/users');
+      await cacheService.delByPrefix(`GET:/api/v1/users/${user.id}`);
+    } catch (err) {
+      logger.warn('Cache invalidation failed after register', { error: err?.message });
+    }
   } catch (error) {
     logger.error('Registration error:', {
       error: error.message,
@@ -331,6 +340,14 @@ export const resetPassword = async (req, res, next) => {
       { expiresIn: env.jwtExpire }
     );
 
+    // Invalidate user caches after password reset
+    try {
+      await cacheService.delByPrefix('GET:/api/v1/users');
+      await cacheService.delByPrefix(`GET:/api/v1/users/${user.id}`);
+    } catch (err) {
+      logger.warn('Cache invalidation failed after resetPassword', { error: err?.message });
+    }
+
     res.status(200).json({
       status: 'success',
       message: 'Password reset successful',
@@ -472,6 +489,14 @@ export const verifyEmail = async (req, res, next) => {
 
     if (!user) {
       throw new AppError('INVALID_OR_EXPIRED_VERIFICATION_TOKEN', 'Invalid or expired verification token', 400);
+    }
+
+    // Invalidate user caches after email verification
+    try {
+      await cacheService.delByPrefix('GET:/api/v1/users');
+      await cacheService.delByPrefix(`GET:/api/v1/users/${user.id}`);
+    } catch (err) {
+      logger.warn('Cache invalidation failed after verifyEmail', { error: err?.message });
     }
 
     return res.status(200).json({
