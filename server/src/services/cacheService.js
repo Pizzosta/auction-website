@@ -334,21 +334,96 @@ export function getCacheStats() {
 
 // Per-user request-aware cache helpers (includes user id in key)
 export async function cacheGetPerUser(req) {
-  if (!req.user?.id) return null;
-  const key = getCacheKey(req, true); // includeUser=true
-  return await cacheGet(key);
+  try {
+    if (!req.user?.id) return null;
+    const key = getCacheKey(req, true); // includeUser=true
+    const redis = await getRedisClient();
+    if (!redis || redis.status !== 'ready') {
+      logger.warn('Redis not ready, skipping per-user cache get');
+      cacheStats.errors++;
+      return null;
+    }
+
+    const data = await redis.get(key);
+    if (!data) {
+      cacheStats.misses++;
+      return null;
+    }
+
+    cacheStats.hits++;
+    return JSON.parse(data, (k, value) => {
+      if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(value)) {
+        const date = new Date(value);
+        return isNaN(date.getTime()) ? value : date;
+      }
+      return value;
+    });
+  } catch (err) {
+    cacheStats.errors++;
+    logger.warn('Per-user cache get failed', {
+      key: getCacheKey(req, true),
+      error: err?.message,
+      stack: err?.stack,
+    });
+    return null;
+  }
 }
 
 export async function cacheSetPerUser(req, value, ttl = CONFIG.DEFAULT_TTL) {
-  if (!req.user?.id) return null;
-  const key = getCacheKey(req, true); // includeUser=true
-  return await cacheSet(key, value, ttl);
+  try {
+    if (!req.user?.id) return null;
+    const key = getCacheKey(req, true); // includeUser=true
+    const redis = await getRedisClient();
+    if (!redis || redis.status !== 'ready') {
+      logger.warn('Redis not ready, skipping per-user cache set');
+      cacheStats.errors++;
+      return null;
+    }
+
+    const str = JSON.stringify(value, (k, val) => {
+      if (typeof val === 'bigint') return val.toString();
+      if (val instanceof Date) return val.toISOString();
+      if (val === undefined) return null;
+      return val;
+    });
+
+    await redis.set(key, str, 'EX', Math.max(1, ttl));
+    cacheStats.sets++;
+    return null;
+  } catch (err) {
+    cacheStats.errors++;
+    logger.warn('Per-user cache set failed', {
+      key: getCacheKey(req, true),
+      error: err?.message,
+      stack: err?.stack,
+    });
+    return null;
+  }
 }
 
 export async function cacheDelPerUser(req) {
-  if (!req.user?.id) return null;
-  const key = getCacheKey(req, true); // includeUser=true
-  return await cacheDel(key);
+  try {
+    if (!req.user?.id) return null;
+    const key = getCacheKey(req, true); // includeUser=true
+    const redis = await getRedisClient();
+    if (!redis || redis.status !== 'ready') {
+      logger.warn('Redis not ready, skipping per-user cache del');
+      cacheStats.errors++;
+      return null;
+    }
+
+    const result = await redis.del(key);
+    cacheStats.deletes += result;
+    return null;
+  } catch (err) {
+    cacheStats.errors++;
+    logger.warn('Per-user cache del failed', {
+      key: getCacheKey(req, true),
+      error: err?.message,
+      stack: err?.stack,
+    });
+    return null;
+  }
 }
 
 export default {
