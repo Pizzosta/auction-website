@@ -190,8 +190,14 @@ app.use((req, res, next) => {
 app.use(globalErrorHandler);
 
 // Apply cache middleware AFTER routes are mounted
-// Redis-backed cache middleware for GET responses. Skips caching when Authorization header is present.
-app.use(cacheMiddleware({ ttlSeconds: 60, skipWhenAuth: true }));
+app.use(
+  cacheMiddleware({
+    ttlSeconds: 60,
+    skipWhenAuth: false,
+    includeUserInCacheKey: true,
+    excludePaths: ['/api/v1/auctions'], // Let controllers handle auction caching
+  })
+);
 
 // Error handling for uncaught exceptions and unhandled rejections
 process.on('uncaughtException', error => {
