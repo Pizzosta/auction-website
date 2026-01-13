@@ -100,6 +100,16 @@ app.use(securityMiddleware);
 // Add cache-related headers for GET responses
 app.use(cacheHeaders(60));
 
+// Apply cache middleware BEFORE routes are mounted so it can intercept responses
+app.use(
+  cacheMiddleware({
+    ttlSeconds: 60,
+    skipWhenAuth: false,
+    includeUserInCacheKey: true,
+    excludePaths: ['/api/v1/auctions'], // Let controllers handle auction caching
+  })
+);
+
 // Serve API documentation
 app.use('/api/v1/docs', apiDocsRouter);
 
@@ -188,16 +198,6 @@ app.use((req, res, next) => {
 
 // Global error handler
 app.use(globalErrorHandler);
-
-// Apply cache middleware AFTER routes are mounted
-app.use(
-  cacheMiddleware({
-    ttlSeconds: 60,
-    skipWhenAuth: false,
-    includeUserInCacheKey: true,
-    excludePaths: ['/api/v1/auctions'], // Let controllers handle auction caching
-  })
-);
 
 // Error handling for uncaught exceptions and unhandled rejections
 process.on('uncaughtException', error => {
