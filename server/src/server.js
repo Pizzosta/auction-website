@@ -100,7 +100,7 @@ app.use(securityMiddleware);
 // Add cache-related headers for GET responses
 app.use(cacheHeaders(60));
 
-// Apply cache middleware BEFORE routes are mounted so it can intercept responses
+/*// Apply cache middleware BEFORE routes are mounted so it can intercept responses
 app.use(
   cacheMiddleware({
     ttlSeconds: 60,
@@ -108,7 +108,8 @@ app.use(
     includeUserInCacheKey: true,
     excludePaths: ['/api/v1/auctions'], // Let controllers handle auction caching
   })
-);
+);*/
+//cache is applied within individual routes/controllers as needed so req.user is always available
 
 // Serve API documentation
 app.use('/api/v1/docs', apiDocsRouter);
