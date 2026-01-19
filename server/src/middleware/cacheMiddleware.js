@@ -1,5 +1,7 @@
 import cacheService from '../services/cacheService.js';
 import logger from '../utils/logger.js';
+import jwt from 'jsonwebtoken';
+import { env } from '../config/env.js';
 
 /**
  * Cache middleware for GET responses with Redis.
@@ -17,6 +19,21 @@ import logger from '../utils/logger.js';
  * @param {boolean} [options.includeUserInCacheKey=true]
  * @param {string[]} [options.excludePaths=[]]
  */
+
+function extractUserIdFromToken(authHeader) {
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return null;
+  }
+
+  const token = authHeader.split(' ')[1];
+
+  try {
+    const decoded = jwt.verify(token, env.jwtSecret);
+    return decoded.userId;
+  } catch (error) {
+    return null;
+  }
+}
 
 export default function cacheMiddleware(options = {}) {
   const {
@@ -49,26 +66,47 @@ export default function cacheMiddleware(options = {}) {
         return next();
       }
 
-      // Determine if request is authenticated
-      const isAuthenticated = !!req.headers.authorization;
+      // Determine if request is authenticated (use populated user when available)
+      const hasAuthHeader = !!req.headers.authorization;
 
       // Handle authenticated requests based on options
-      if (skipWhenAuth && isAuthenticated) {
+      if (skipWhenAuth && hasAuthHeader) {
         res.setHeader('X-Cache', 'SKIP-AUTH');
         return next();
       }
 
-      // Determine cache key strategy
-      const includeUser = includeUserInCacheKey && isAuthenticated;
+      // Extract user ID from JWT token if present
+      let userId = null;
+      if (hasAuthHeader) {
+        userId = extractUserIdFromToken(req.headers.authorization);
+      }
+
+      // Use extracted user ID or fall back to req.user
+      const effectiveUserId = userId || req.user?.id;
+
+      // Determine cache key strategy before auth populates user.
+      const includeUser = includeUserInCacheKey && !!effectiveUserId;
 
       // Use request-aware cache service to get consistent keys
-      const cached = includeUser
-        ? await cacheService.cacheGetPerUser(req)
-        : await cacheService.get(req);
+      let cached = null;
+      let usedCacheType = 'NONE';
+
+      // Try per-user cache first (most specific)
+      if (includeUser) {
+        cached = await cacheService.cacheGetPerUser(req);
+        if (cached) usedCacheType = 'PER-USER';
+      }
+
+      // Fallback to global cache if no per-user hit or user unknown
+      if (!cached) {
+        cached = await cacheService.get(req);
+        if (cached) usedCacheType = 'GLOBAL';
+      }
 
       if (cached) {
         // set a header indicating served from cache
         res.setHeader('X-Cache', 'HIT');
+        res.setHeader('X-Cache-Type', usedCacheType);
         res.setHeader('X-Cache-Key', cached._meta?.key || 'unknown');
 
         // Add cache metadata to response
@@ -161,6 +199,9 @@ export default function cacheMiddleware(options = {}) {
           const ttl = typeof res.locals.cacheTtl === 'number' ? res.locals.cacheTtl : ttlSeconds;
 
           // Prepare cache payload
+          // Re-evaluate whether to store as per-user at the time of caching
+          const storeAsPerUser = includeUserInCacheKey && !!effectiveUserId;
+
           const cachePayload = {
             status: responseStatusCode,
             body: finalBody,
@@ -170,17 +211,29 @@ export default function cacheMiddleware(options = {}) {
               expiresAt: new Date(Date.now() + ttl * 1000).toISOString(),
               size: responseSize,
               path: req.path,
-              key: includeUser
+              key: storeAsPerUser
                 ? cacheService.getCacheKey(req, true)
                 : cacheService.getCacheKey(req),
             },
           };
 
           // Cache the response
-          if (includeUser) {
-            await cacheService.cacheSetPerUser(req, cachePayload, ttl);
+          if (storeAsPerUser) {
+            const reqWithUser = { 
+              ...req, 
+              query: req.query,  // Explicitly copy query property
+              user: { id: effectiveUserId, ...req.user } 
+            };
+            await cacheService.cacheSetPerUser(reqWithUser, cachePayload, ttl);
           } else {
             await cacheService.set(req, cachePayload, ttl);
+          }
+
+          // Write secondary global key if we looked up as global but stored as per-user
+          if (!includeUser && storeAsPerUser) {
+            logger.debug('Writing secondary global cache key', { path: req.path });
+            const reqNoUser = { ...req, user: undefined };
+            await cacheService.set(reqNoUser, cachePayload, ttl);
           }
 
           logger.debug('Cached response', {
