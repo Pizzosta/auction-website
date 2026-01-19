@@ -28,10 +28,11 @@ export function getCacheKey(req, includeUser = false) {
   // Sort query params for consistent cache keys
   const normalizeValue = val => (Array.isArray(val) ? val.sort().join(',') : val);
 
-  const sortedQuery = Object.keys(req.query)
+  const query = req.query || {};
+  const sortedQuery = Object.keys(query)
     .sort()
     .reduce((acc, key) => {
-      acc[key] = normalizeValue(req.query[key]);
+      acc[key] = normalizeValue(query[key]);
       return acc;
     }, {});
 
