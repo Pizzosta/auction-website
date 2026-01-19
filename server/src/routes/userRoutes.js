@@ -13,6 +13,7 @@ import {
   getUserById,
 } from '../controllers/userController.js';
 import { uploadProfileImageMiddleware } from '../middleware/uploadMiddleware.js';
+import cacheMiddleware from '../middleware/cacheMiddleware.js';
 
 const router = express.Router();
 
@@ -147,7 +148,14 @@ const router = express.Router();
  *       500:
  *         description: Internal server error
  */
-router.get('/', protect, admin, validate(userQuerySchema.search, 'query'), getAllUsers);
+router.get(
+  '/',
+  protect,
+  admin,
+  cacheMiddleware({ includeUserInCacheKey: true }),
+  validate(userQuerySchema.search, 'query'),
+  getAllUsers
+);
 
 /**
  * @swagger

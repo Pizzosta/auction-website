@@ -9,9 +9,9 @@ import {
   restoreFeaturedAuction,
 } from '../controllers/featuredAuctionController.js';
 import { validate } from '../middleware/validationMiddleware.js';
+import cacheMiddleware from '../middleware/cacheMiddleware.js';
 
 const router = express.Router();
-
 
 /**
  * @swagger
@@ -254,6 +254,7 @@ router.get(
   '/admin',
   protect,
   admin,
+  cacheMiddleware({ includeUserInCacheKey: true }),
   validate(featuredAuctionQuerySchema.search, 'query'),
   getFeaturedAuctions
 );
