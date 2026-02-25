@@ -163,8 +163,6 @@ function Header() {
         <ul className="hidden md:flex items-center space-x-4" role="menubar">
           <NavItems user={user} />
 
-          {/* Real-time Notification Center */}
-
           {/* Profile dropdown */}
           {user && (
             <li ref={dropdownRef} role="menuitem" className="relative group">
@@ -346,7 +344,7 @@ function NavItems({ user, mobile = false, closeMenu }) {
     ? [
         { to: "/dashboard", label: "Dashboard" },
         { to: "/create-auction", label: "Create Auction" },
-        { to: "/my-bids", label: "My Bids" },
+       // { to: "/my-bids", label: "My Bids" },
         ...(user.role === "admin"
           ? [{ to: "/admin-dashboard", label: "Admin Dashboard" }]
           : []),

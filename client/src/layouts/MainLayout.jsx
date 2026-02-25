@@ -1,6 +1,7 @@
 import { Outlet } from "react-router-dom";
 import { Suspense } from "react";
 //import Navbar from "../components/Navbar";
+import OldFooter from "../components/OldFooter";
 import Footer from "../components/Footer";
 import Header from "../components/Header";
 import { useAuth } from "../context/AuthContext";
@@ -31,7 +32,8 @@ const MainLayout = () => {
           <Outlet />
         </Suspense>
       </main>
-      <Footer />
+      {/*<Footer />*/}
+      <OldFooter />
     </div>
   );
 };

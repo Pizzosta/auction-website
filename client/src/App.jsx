@@ -7,6 +7,7 @@ import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import ErrorBoundary from "./components/ErrorBoundary";
+import { BackToTop } from "./components/BackToTop";
 
 function App() {
   return (
@@ -47,6 +48,7 @@ function App() {
                 <Route path="register" element={<Register />} />
               </Route>
             </Routes>
+            <BackToTop />
           </ThemeProvider>
         </AuthProvider>
       </Router>
