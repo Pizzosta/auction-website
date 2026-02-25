@@ -5,8 +5,22 @@ import { env, validateEnv } from '../config/env.js';
 import { generateAccessToken, generateRefreshToken } from '../services/tokenService.js';
 import { checkPasswordStrength, normalizeToE164 } from '../utils/format.js';
 import jwt from 'jsonwebtoken';
-import { findUserByEmailPrisma, findUserByUsernamePrisma, findUserByPhonePrisma } from '../repositories/userRepo.prisma.js';
-import { createUserWithPassword, findUserByCredentials, updateLastActiveAt, createPasswordResetToken, clearPasswordResetToken, resetUserPassword, createEmailVerificationToken, clearEmailVerificationToken, verifyUserEmail } from '../repositories/authRepo.prisma.js';
+import {
+  findUserByEmailPrisma,
+  findUserByUsernamePrisma,
+  findUserByPhonePrisma,
+} from '../repositories/userRepo.prisma.js';
+import {
+  createUserWithPassword,
+  findUserByCredentials,
+  updateLastActiveAt,
+  createPasswordResetToken,
+  clearPasswordResetToken,
+  resetUserPassword,
+  createEmailVerificationToken,
+  clearEmailVerificationToken,
+  verifyUserEmail,
+} from '../repositories/authRepo.prisma.js';
 import { AppError } from '../middleware/errorHandler.js';
 import cacheService from '../services/cacheService.js';
 
@@ -30,12 +44,19 @@ export const register = async (req, res, next) => {
     // Check password strength
     const passwordCheck = checkPasswordStrength(password);
     if (!passwordCheck.isValid) {
-      throw new AppError('PASSWORD_DOES_NOT_MEET_REQUIREMENTS', 'Password does not meet requirements', 400, { issues: Object.values(passwordCheck.issues).filter(Boolean) });
+      throw new AppError(
+        'PASSWORD_DOES_NOT_MEET_REQUIREMENTS',
+        'Password does not meet requirements',
+        400,
+        { issues: Object.values(passwordCheck.issues).filter(Boolean) }
+      );
     }
 
     const strength = zxcvbn(password);
     if (strength.score < 3) {
-      throw new AppError('PASSWORD_IS_TOO_WEAK', 'Password is too weak', 400, { suggestions: strength.feedback?.suggestions || [] });
+      throw new AppError('PASSWORD_IS_TOO_WEAK', 'Password is too weak', 400, {
+        suggestions: strength.feedback?.suggestions || [],
+      });
     }
 
     const normalizedEmail = email?.trim().toLowerCase();
@@ -52,23 +73,43 @@ export const register = async (req, res, next) => {
       throw new AppError('EMAIL_ALREADY_IN_USE', 'Email is already in use by another user.', 400);
     }
     if (userByEmail && userByEmail.isDeleted) {
-      throw new AppError('EMAIL_PREVIOUSLY_USED', 'This email was previously used by another account', 400);
+      throw new AppError(
+        'EMAIL_PREVIOUSLY_USED',
+        'This email was previously used by another account',
+        400
+      );
     }
 
     const userByUsername = await findUserByUsernamePrisma(normalizedUsername, ['id', 'isDeleted']);
     if (userByUsername && !userByUsername.isDeleted) {
-      throw new AppError('USERNAME_ALREADY_IN_USE', 'Username is already in use by another user.', 400);
+      throw new AppError(
+        'USERNAME_ALREADY_IN_USE',
+        'Username is already in use by another user.',
+        400
+      );
     }
     if (userByUsername && userByUsername.isDeleted) {
-      throw new AppError('USERNAME_PREVIOUSLY_USED', 'This username was previously used by another account', 400);
+      throw new AppError(
+        'USERNAME_PREVIOUSLY_USED',
+        'This username was previously used by another account',
+        400
+      );
     }
 
     const userByPhone = await findUserByPhonePrisma(normalizedPhone, ['id', 'isDeleted']);
     if (userByPhone && !userByPhone.isDeleted) {
-      throw new AppError('PHONE_NUMBER_ALREADY_IN_USE', 'Phone number is already in use by another user.', 400);
+      throw new AppError(
+        'PHONE_NUMBER_ALREADY_IN_USE',
+        'Phone number is already in use by another user.',
+        400
+      );
     }
     if (userByPhone && userByPhone.isDeleted) {
-      throw new AppError('PHONE_NUMBER_PREVIOUSLY_USED', 'This phone number was previously used by another account', 400);
+      throw new AppError(
+        'PHONE_NUMBER_PREVIOUSLY_USED',
+        'This phone number was previously used by another account',
+        400
+      );
     }
 
     // Create user (hash password)
@@ -182,12 +223,9 @@ export const login = async (req, res, next) => {
       data: {
         user: {
           id: user.id,
-          firstname: user.firstname,
-          middlename: user.middlename,
-          lastname: user.lastname,
           username: user.username,
           email: user.email,
-          phone: user.phone,
+          profilePicture: user.profilePicture || null,
           role: user.role,
         },
         accessToken,
@@ -215,7 +253,11 @@ export const forgotPassword = async (req, res, next) => {
 
     // Don't reveal if user doesn't exist (security best practice)
     if (!user) {
-      throw new AppError('USER_NOT_FOUND', 'If an account with that email exists, a password reset link has been sent.', 404);
+      throw new AppError(
+        'USER_NOT_FOUND',
+        'If an account with that email exists, a password reset link has been sent.',
+        404
+      );
     }
 
     // Generate reset token and save hashed version to database
@@ -251,7 +293,6 @@ export const forgotPassword = async (req, res, next) => {
 
       // Don't fail the request if email fails
     }
-
   } catch (error) {
     logger.error('Forgot password error:', {
       error: error.message,
@@ -282,10 +323,12 @@ export const resetPassword = async (req, res, next) => {
         timestamp: new Date().toISOString(),
       });
 
-      return next(new AppError('INVALID_RESET_TOKEN', 'Invalid reset token format', 400, {
+      return next(
+        new AppError('INVALID_RESET_TOKEN', 'Invalid reset token format', 400, {
           expected: '64-character hex string',
           received: typeof token === 'string' ? token.length : 'N/A',
-        }));
+        })
+      );
     }
 
     // Log token details for debugging
@@ -303,12 +346,19 @@ export const resetPassword = async (req, res, next) => {
     // Check password strength
     const passwordCheck = checkPasswordStrength(password);
     if (!passwordCheck.isValid) {
-      throw new AppError('PASSWORD_DOES_NOT_MEET_REQUIREMENTS', 'Password does not meet requirements', 400, { issues: Object.values(passwordCheck.issues).filter(Boolean) });
+      throw new AppError(
+        'PASSWORD_DOES_NOT_MEET_REQUIREMENTS',
+        'Password does not meet requirements',
+        400,
+        { issues: Object.values(passwordCheck.issues).filter(Boolean) }
+      );
     }
 
     const strength = zxcvbn(password);
     if (strength.score < 3) {
-      throw new AppError('PASSWORD_IS_TOO_WEAK', 'Password is too weak', 400, { suggestions: strength.feedback?.suggestions || [] });
+      throw new AppError('PASSWORD_IS_TOO_WEAK', 'Password is too weak', 400, {
+        suggestions: strength.feedback?.suggestions || [],
+      });
     }
 
     // Reset password using repository
@@ -365,7 +415,7 @@ export const resetPassword = async (req, res, next) => {
   } catch (error) {
     if (error.code === 'SAME_PASSWORD') {
       throw new AppError('SAME_PASSWORD', 'New password must be different from old password', 400);
-    };
+    }
     logger.error('Reset password error:', {
       error: error.message,
       stack: error.stack,
@@ -391,7 +441,11 @@ export const requestVerification = async (req, res, next) => {
 
     // Find user using repository
     const user = await findUserByEmailPrisma(normalizedEmail, [
-      'id', 'firstname', 'email', 'isVerified', 'isDeleted'
+      'id',
+      'firstname',
+      'email',
+      'isVerified',
+      'isDeleted',
     ]);
 
     if (!user) {
@@ -438,7 +492,6 @@ export const requestVerification = async (req, res, next) => {
 
       // Don't fail the request if email fails
     }
-
   } catch (error) {
     logger.error('Error requesting verification:', {
       error: error.message,
@@ -488,7 +541,11 @@ export const verifyEmail = async (req, res, next) => {
     const user = await verifyUserEmail(token);
 
     if (!user) {
-      throw new AppError('INVALID_OR_EXPIRED_VERIFICATION_TOKEN', 'Invalid or expired verification token', 400);
+      throw new AppError(
+        'INVALID_OR_EXPIRED_VERIFICATION_TOKEN',
+        'Invalid or expired verification token',
+        400
+      );
     }
 
     // Invalidate user caches after email verification
@@ -507,8 +564,8 @@ export const verifyEmail = async (req, res, next) => {
           id: user.id,
           email: user.email,
           isVerified: user.isVerified,
-        }
-      }
+        },
+      },
     });
   } catch (error) {
     logger.error('Error verifying email:', {

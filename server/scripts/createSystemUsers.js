@@ -23,7 +23,7 @@ const SYSTEM_USERS = [
     username: 'SystemAdmin',
     email: 'test1@example.com',
     phone: '+233547654321',
-    password: process.env.SYSTEM_ADMIN_PASSWORD || 'System@1234',
+    password: process.env.SYSTEM_ADMIN_PASSWORD || 'Test1@example.com',
     role: 'admin',
     firstname: 'System',
     lastname: 'Admin',

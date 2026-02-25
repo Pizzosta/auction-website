@@ -1,389 +1,367 @@
-/*
-import swaggerJSDoc from 'swagger-jsdoc';
-import swaggerUi from 'swagger-ui-express';
-import express from 'express';
-import { env, validateEnv } from './config/env.js';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { dirname, resolve } from 'path';
-import logger from './utils/logger.js';
+/**
+ * Cache middleware for GET responses with Redis.
+ * Features:
+ * - Per-user or global caching
+ * - Safe deep cloning
+ * - Response size limit (1 MB default)
+ * - Vary header for correct CDN behavior
+ * - Bypass via header/query param
+ * - Optional skip for authenticated requests
+ *
+ * @param {Object} [options]
+ * @param {number} [options.ttlSeconds=60]
+ * @param {boolean} [options.skipWhenAuth=false]
+ * @param {boolean} [options.includeUserInCacheKey=true]
+ * @param {string[]} [options.excludePaths=[]]
+ */
+export default function cacheMiddleware(options = {}) {
+  const {
+    ttlSeconds = 60,
+    skipWhenAuth = false,
+    includeUserInCacheKey = true,
+    excludePaths = [],
+  } = options;
 
-// Validate required environment variables once at startup
-const missingVars = validateEnv();
+  return async (req, res, next) => {
+    if (req.method !== 'GET') return next();
 
-if (missingVars.length > 0) {
-    logger.error(`Missing required environment variables: ${missingVars.join(', ')}`);
-    process.exit(1);
-}
+    if (excludePaths.some((p) => req.path.startsWith(p))) return next();
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+    res.setHeader('Vary', 'Authorization, Accept-Encoding');
 
-const router = express.Router();
+    // Explicit bypass
+    const noCache =
+      (req.headers['cache-control'] || '').includes('no-cache') ||
+      req.query?.no_cache === '1' ||
+      req.query?.no_cache === 'true';
 
-// Define the API routes directory
-const routesDir = path.join(__dirname, 'routes');
-
-const swaggerOptions = {
-    definition: {
-        openapi: '3.0.0',
-        info: {
-            title: 'Kawodze Auction Website API',
-            version: '1.0.0',
-            description: 'Comprehensive API documentation for the Kawodze Auction Website',
-            contact: {
-                name: 'API Support',
-                url: 'https://kawodze.com/support',
-                email: 'support@kawodze.com'
-            },
-            license: {
-                name: 'Apache 2.0',
-                url: 'https://www.apache.org/licenses/LICENSE-2.0.html'
-            }
-        },
-        servers: [
-            {
-                url: env.isProd ? 'https://api.kawodze.com' : 'http://localhost:5001',
-                description: env.isProd ? 'Production Server' : 'Development Server',
-            },
-        ],
-        components: {
-            securitySchemes: {
-                bearerAuth: {
-                    type: 'http',
-                    scheme: 'bearer',
-                    bearerFormat: 'JWT',
-                    description: 'JWT Authorization header using the Bearer scheme. Example: "Authorization: Bearer {token}"'
-                },
-            },
-        },
-        security: [{
-            bearerAuth: []
-        }],
-        tags: [
-            { name: 'Feedback', description: 'Operations related to feedback and ratings' },
-            { name: 'User', description: 'User management endpoints' },
-            { name: 'Auction', description: 'Auction listing and bidding endpoints' },
-            { name: 'Admin', description: 'Admin management endpoints' },
-            { name: 'Stats', description: 'Stats management endpoints' },
-            { name: 'Webhook', description: 'Webhook management endpoints' },
-            { name: 'Watchlist', description: 'Watchlist management endpoints' },
-            { name: 'Featured Auction', description: 'Featured Auction management endpoints' },
-            { name: 'Auth', description: 'Authentication endpoints' },
-            { name: 'Bid', description: 'Bid management endpoints' },
-        ],
-    },
-    apis: [
-        `${routesDir}/*.js`,
-        `${__dirname}/models/*.js`,
-    ]
-};
-
-// Initialize swagger-jsdoc
-let swaggerSpec;
-try {
-    swaggerSpec = swaggerJSDoc(swaggerOptions);
-
-    // Generate and save the OpenAPI spec
-    const outputFile = path.join(__dirname, 'swagger-output.json');
-    fs.writeFileSync(outputFile, JSON.stringify(swaggerSpec, null, 2));
-    logger.info(`Swagger documentation generated at ${outputFile}`);
-
-    // Log available routes for debugging
-    if (swaggerSpec.paths) {
-        const routes = Object.keys(swaggerSpec.paths);
-        logger.info(`Documented ${routes.length} API endpoints`);
-    } else {
-        logger.warn('No API endpoints found in the documentation');
+    if (noCache) {
+      res.setHeader('X-Cache', 'BYPASS');
+      return next();
     }
-} catch (error) {
-    logger.error('Error generating Swagger documentation:', error);
-    throw error;
-}
 
-// Serve Swagger UI
-const swaggerUiOptions = {
-    explorer: true,
-    customCss: '.swagger-ui .topbar { display: none }',
-    swaggerOptions: {
-        docExpansion: 'list',
-        filter: true,
-        persistAuthorization: true,
-        displayRequestDuration: true,
-    },
-};
+    const isAuthenticated = !!req.headers.authorization;
+    if (skipWhenAuth && isAuthenticated) {
+      res.setHeader('X-Cache', 'SKIP-AUTH');
+      return next();
+    }
 
-router.use('/', swaggerUi.serve);
-router.get('/', swaggerUi.setup(swaggerSpec, swaggerUiOptions));
+    const perUser = includeUserInCacheKey && isAuthenticated;
 
-// Add a route to get the raw JSON spec
-router.get('/json', (req, res) => {
-    res.setHeader('Content-Type', 'application/json');
-    res.send(swaggerSpec);
-});
+    // ── Cache lookup ───────────────────────────────────────
+    let cached;
+    try {
+      cached = perUser
+        ? await cacheService.cacheGetPerUser(req)
+        : await cacheService.get(req);
+    } catch (err) {
+      logger.warn('Cache read failed', { path: req.path, error: err.message });
+      // continue → treat as miss
+    }
 
-export default router;
-*/
-
-
-import swaggerAutogen from 'swagger-autogen';
-import path, { dirname } from 'path';
-import { fileURLToPath } from 'url';
-import express from 'express';
-import swaggerUi from 'swagger-ui-express';
-import fs from 'fs';
-import logger from './utils/logger.js';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const outputFile = path.join(__dirname, 'swagger-output.json');
-const endpoints = [path.join(__dirname, 'server.js')];
-
-const router = express.Router();
-
-const swaggerOutputPath = path.resolve('src/swagger-output.json');
-
-const doc = {
-  info: {
-    title: 'Kawodze Auction Website API',
-    version: '1.0.0',
-    description: 'API documentation for the Kawodze Auction Website',
-  },
-  host: 'localhost:5001',
-  basePath: '/',
-  schemes: ['http', 'https'],
-  securityDefinitions: {
-    // will appear as “lock” icons in UI
-    bearerAuth: {
-      type: 'http',
-      scheme: 'bearer',
-      bearerFormat: 'JWT',
-    },
-  },
-};
-
-const generateAndLoadSwagger = async () => {
-  try {
-    await swaggerAutogen()(outputFile, endpoints, doc);
-    logger.info('Swagger spec generated at', { outputFile });
-    if (fs.existsSync(swaggerOutputPath)) {
-      const content = fs.readFileSync(swaggerOutputPath, 'utf8').trim();
-      if (content) {
-        const generated = JSON.parse(content);
-        return generated;
+    if (cached) {
+      res.setHeader('X-Cache', 'HIT');
+      if (cached._meta?.key) {
+        res.setHeader('X-Cache-Key', cached._meta.key);
       }
+
+      const bodyWithMeta = {
+        ...cached.body,
+        _meta: {
+          ...(cached.body._meta || {}),
+          cached: true,
+          cachedAt: cached._meta?.cachedAt,
+          expiresAt: cached._meta?.expiresAt,
+        },
+      };
+
+      return res.status(cached.status || 200).json(bodyWithMeta);
     }
-    return doc;
-  } catch (e) {
-    logger.error('Swagger generation failed, falling back to existing doc or minimal doc', {
-      error: e?.message,
-    });
-    if (fs.existsSync(swaggerOutputPath)) {
+
+    // ── Cache miss ─────────────────────────────────────────
+    res.setHeader('X-Cache', 'MISS');
+
+    // ── Response interception ──────────────────────────────
+    const original = {
+      json: res.json.bind(res),
+      send: res.send.bind(res),
+      end: res.end.bind(res),
+    };
+
+    let capturedBody = null;
+    let capturedStatus = 200;
+
+    res.json = (body) => {
+      capturedBody = body;
+      capturedStatus = res.statusCode;
+      return original.json(body);
+    };
+
+    res.send = (body) => {
+      capturedBody = body;
+      capturedStatus = res.statusCode;
+      return original.send(body);
+    };
+
+    res.end = (...args) => {
+      if (capturedBody == null && args.length > 0 && typeof args[0] !== 'function') {
+        capturedBody = args[0];
+        capturedStatus = res.statusCode;
+      }
+      return original.end(...args);
+    };
+
+    res.on('finish', async () => {
+      if (capturedStatus < 200 || capturedStatus >= 300) return;
+      if (capturedBody == null) return;
+
+      let bodyToCache = capturedBody;
+      if (typeof capturedBody === 'object' && capturedBody !== null) {
+        bodyToCache = JSON.parse(JSON.stringify(capturedBody));
+      }
+
+      const bodyStr = JSON.stringify(bodyToCache);
+      if (bodyStr.length > 1_000_000) {
+        logger.warn('Response too large to cache', {
+          path: req.path,
+          size: bodyStr.length,
+        });
+        return;
+      }
+
+      const ttl = Number.isInteger(res.locals.cacheTtl)
+        ? res.locals.cacheTtl
+        : ttlSeconds;
+
+      const payload = {
+        status: capturedStatus,
+        body: bodyToCache,
+        _meta: {
+          ttl,
+          cachedAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + ttl * 1000).toISOString(),
+          size: bodyStr.length,
+          path: req.path,
+          key: perUser
+            ? cacheService.getCacheKey(req, true)
+            : cacheService.getCacheKey(req),
+        },
+      };
+
       try {
-        const content = fs.readFileSync(swaggerOutputPath, 'utf8').trim();
-        if (content) return JSON.parse(content);
-      } catch (readErr) {
-        // ignore and fall through
+        if (perUser) {
+          await cacheService.cacheSetPerUser(req, payload, ttl);
+        } else {
+          await cacheService.set(req, payload, ttl);
+        }
+      } catch (err) {
+        logger.warn('Cache write failed', { path: req.path, error: err.message });
       }
-    }
-    return doc;
-  }
-};
+    });
 
-(async () => {
-  const swaggerDoc = await generateAndLoadSwagger();
-  router.use('/', swaggerUi.serve, swaggerUi.setup(swaggerDoc, { explorer: true }));
-})();
-
-export default router;
+    next();
+  };
+}
 
 
 
-import swaggerAutogen from 'swagger-autogen';
-import path, { dirname } from 'path';
-import { fileURLToPath } from 'url';
-import express from 'express';
-import swaggerUi from 'swagger-ui-express';
-import fs from 'fs';
-import logger from './utils/logger.js';
-import { env } from './config/env.js';
 
-// Configure paths
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const outputFile = path.join(__dirname, 'swagger-output.json');
-const endpoints = [
-  path.join(__dirname, 'routes/*.js'),
-  path.join(__dirname, 'routes/**/*.js')
-];
 
-const router = express.Router();
-const swaggerOutputPath = path.resolve('src/swagger-output.json');
 
-// Base Swagger configuration
-const doc = {
-  info: {
-    title: 'Kawodze Auction Website API',
-    version: '1.0.0',
-    description: 'Comprehensive API documentation for the Kawodze Auction Platform',
-    contact: {
-      name: 'API Support',
-      url: 'https://kawodze.com/support',
-      email: 'support@kawodze.com'
-    },
-    license: {
-      name: 'Apache 2.0',
-      url: 'https://www.apache.org/licenses/LICENSE-2.0.html'
-    }
-  },
-  host: env.isProd ? 'api.kawodze.com' : 'localhost:5001',
-  basePath: '/',
-  schemes: env.isProd ? ['https'] : ['http'],
-  consumes: ['application/json'],
-  produces: ['application/json'],
-  securityDefinitions: {
-    bearerAuth: {
-      type: 'http',
-      scheme: 'bearer',
-      bearerFormat: 'JWT',
-      description: 'JWT Authorization header using the Bearer scheme. Example: "Authorization: Bearer {token}"'
-    }
-  },
-  security: [{
-    bearerAuth: []
-  }],
-  tags: [
-    {
-      name: 'Authentication',
-      description: 'User authentication and authorization endpoints'
-    },
-    {
-      name: 'Auctions',
-      description: 'Auction management endpoints'
-    },
-    {
-      name: 'Users',
-      description: 'User management endpoints'
-    },
-    {
-      name: 'Bids',
-      description: 'Bid management endpoints'
-    },
-    {
-      name: 'Admin',
-      description: 'Administrative endpoints'
-    }
-  ]
-};
+
+import cacheService from '../utils/cache.js'; // Updated import path
+import logger from '../utils/logger.js';
 
 /**
- * Generates and loads the Swagger documentation
- * @returns {Promise<object>} The generated Swagger documentation
+ * Cache middleware that intercepts GET responses and caches them
+ * Options: 
+ * - ttlSeconds: Default TTL for cache (default: 60)
+ * - skipWhenAuth: Skip cache for authenticated requests (default: false)
+ * - includeUserInCacheKey: Include user ID in cache key for auth requests (default: true)
  */
-const generateAndLoadSwagger = async () => {
-  try {
-    logger.info('Generating Swagger documentation...');
-    
-    // Only generate in development or if file doesn't exist
-    if (!fs.existsSync(outputFile) || !env.isProd) {
-      const swaggerAutogenInstance = swaggerAutogen({
-        openapi: '3.0.0',
-        language: 'en-US',
-        autoHeaders: true,
-        autoQuery: true,
-        autoBody: true
-      });
+export default function cacheMiddleware(options = {}) {
+  const { 
+    ttlSeconds = 60, 
+    skipWhenAuth = false,
+    includeUserInCacheKey = true,
+    excludePaths = []
+  } = options;
+
+  return async (req, res, next) => {
+    try {
+      // Skip non-GET requests
+      if (req.method !== 'GET') {
+        return next();
+      }
+
+      // Skip excluded paths
+      if (excludePaths.some(path => req.path.startsWith(path))) {
+        return next();
+      }
+
+      // Check if client wants to bypass cache
+      const noCacheHeader = (req.headers['cache-control'] || '').includes('no-cache');
+      const noCacheQuery = req.query?.no_cache === '1' || req.query?.no_cache === 'true';
       
-      await swaggerAutogenInstance(outputFile, endpoints, doc);
-      logger.info(`Swagger documentation generated at: ${outputFile}`);
-    }
-
-    if (fs.existsSync(swaggerOutputPath)) {
-      const content = fs.readFileSync(swaggerOutputPath, 'utf8').trim();
-      if (content) {
-        return JSON.parse(content);
+      if (noCacheHeader || noCacheQuery) {
+        res.setHeader('X-Cache', 'BYPASS');
+        return next();
       }
-    }
-    
-    return doc;
-  } catch (error) {
-    logger.error('Failed to generate Swagger documentation:', {
-      error: error.message,
-      stack: error.stack
-    });
-    
-    // Fallback to existing doc or minimal doc
-    if (fs.existsSync(swaggerOutputPath)) {
-      try {
-        const content = fs.readFileSync(swaggerOutputPath, 'utf8').trim();
-        if (content) return JSON.parse(content);
-      } catch (readError) {
-        logger.error('Failed to read existing Swagger file:', {
-          error: readError.message
-        });
-      }
-    }
-    
-    return doc;
-  }
-};
 
-// Initialize Swagger UI
-let isSwaggerInitialized = false;
-
-const initializeSwagger = async () => {
-  if (isSwaggerInitialized) return;
-  
-  try {
-    const swaggerDoc = await generateAndLoadSwagger();
-    
-    // Configure Swagger UI options
-    const swaggerUiOptions = {
-      explorer: true,
-      customCss: '.swagger-ui .topbar { display: none }',
-      customSiteTitle: 'Kawodze API Documentation',
-      swaggerOptions: {
-        docExpansion: 'list',
-        filter: true,
-        persistAuthorization: true,
-        displayRequestDuration: true,
-        defaultModelsExpandDepth: -1, // Hide schemas by default
-        defaultModelExpandDepth: 3
+      // Determine if request is authenticated
+      const isAuthenticated = !!req.headers.authorization;
+      
+      // Handle authenticated requests based on options
+      if (skipWhenAuth && isAuthenticated) {
+        res.setHeader('X-Cache', 'SKIP-AUTH');
+        return next();
       }
-    };
-    
-    // Setup Swagger UI
-    router.use('/', swaggerUi.serve, swaggerUi.setup(swaggerDoc, swaggerUiOptions));
-    
-    // Add a route to get the raw JSON spec
-    router.get('/json', (req, res) => {
-      res.setHeader('Content-Type', 'application/json');
-      res.send(swaggerDoc);
-    });
-    
-    isSwaggerInitialized = true;
-    logger.info('Swagger UI initialized successfully');
-  } catch (error) {
-    logger.error('Failed to initialize Swagger UI:', {
-      error: error.message,
-      stack: error.stack
-    });
-    
-    // Fallback to error message
-    router.use('/', (req, res) => {
-      res.status(500).json({
-        error: 'Failed to load API documentation',
-        message: 'Please check the server logs for more information'
+
+      // Determine cache key strategy
+      const includeUser = includeUserInCacheKey && isAuthenticated;
+      
+      // Try to get from cache
+      const cached = includeUser 
+        ? await cacheService.cacheGetPerUser(req)
+        : await cacheService.get(req);
+
+      if (cached) {
+        // Serve from cache
+        res.setHeader('X-Cache', 'HIT');
+        res.setHeader('X-Cache-Key', cached._meta?.key || 'unknown');
+        
+        // Add cache metadata to response
+        const responseBody = {
+          ...cached.body,
+          _meta: {
+            ...cached.body._meta,
+            cached: true,
+            cachedAt: cached._meta?.cachedAt || new Date().toISOString(),
+            expiresAt: cached._meta?.expiresAt || new Date(Date.now() + (cached._meta?.ttl || ttlSeconds) * 1000).toISOString(),
+          }
+        };
+
+        return res.status(cached.status || 200).json(responseBody);
+      }
+
+      // Cache miss - proceed with request
+      res.setHeader('X-Cache', 'MISS');
+      
+      // Store original response methods
+      const originalJson = res.json.bind(res);
+      const originalSend = res.send.bind(res);
+      const originalEnd = res.end.bind(res);
+
+      // Response data collector
+      let responseBody = null;
+      let responseStatusCode = 200;
+
+      // Override json method to capture response
+      res.json = function(body) {
+        responseBody = body;
+        responseStatusCode = this.statusCode;
+        return originalJson(body);
+      };
+
+      // Override send method for non-JSON responses
+      res.send = function(body) {
+        responseBody = body;
+        responseStatusCode = this.statusCode;
+        return originalSend(body);
+      };
+
+      // Override end method to ensure we capture all responses
+      res.end = function(...args) {
+        // If we haven't captured body via json/send, try to capture
+        if (responseBody === null && args.length > 0 && typeof args[0] !== 'function') {
+          responseBody = args[0];
+          responseStatusCode = this.statusCode;
+        }
+        return originalEnd(...args);
+      };
+
+      // After response is sent, cache it if appropriate
+      res.on('finish', async () => {
+        try {
+          // Only cache successful responses (2xx)
+          if (responseStatusCode < 200 || responseStatusCode >= 300) {
+            logger.debug('Skipping cache for non-2xx response', { 
+              status: responseStatusCode,
+              path: req.path 
+            });
+            return;
+          }
+
+          // Only cache if we have a response body
+          if (responseBody === null || responseBody === undefined) {
+            return;
+          }
+
+          // Skip if response body is too large (optional)
+          const responseSize = JSON.stringify(responseBody).length;
+          if (responseSize > 1024 * 1024) { // 1MB limit
+            logger.warn('Response too large to cache', { 
+              size: responseSize,
+              path: req.path 
+            });
+            return;
+          }
+
+          // Determine TTL (allow override via res.locals)
+          const ttl = typeof res.locals.cacheTtl === 'number' 
+            ? res.locals.cacheTtl 
+            : ttlSeconds;
+
+          // Prepare cache payload
+          const cachePayload = {
+            status: responseStatusCode,
+            body: responseBody,
+            _meta: {
+              ttl,
+              cachedAt: new Date().toISOString(),
+              expiresAt: new Date(Date.now() + ttl * 1000).toISOString(),
+              size: responseSize,
+              path: req.path,
+              key: includeUser 
+                ? cacheService.getCacheKey(req, true)
+                : cacheService.getCacheKey(req),
+            }
+          };
+
+          // Cache the response
+          if (includeUser) {
+            await cacheService.cacheSetPerUser(req, cachePayload, ttl);
+          } else {
+            await cacheService.set(req, cachePayload, ttl);
+          }
+
+          logger.debug('Cached response', {
+            path: req.path,
+            status: responseStatusCode,
+            ttl,
+            size: responseSize,
+            userSpecific: includeUser,
+          });
+
+        } catch (cacheError) {
+          logger.warn('Failed to cache response', {
+            error: cacheError.message,
+            path: req.path,
+            status: responseStatusCode,
+          });
+          // Don't throw - caching failure shouldn't affect response
+        }
       });
-    });
-  }
-};
 
-// Initialize Swagger when the module loads
-initializeSwagger().catch(error => {
-  logger.error('Unhandled error during Swagger initialization:', error);
-});
-
-export default router;
+      next();
+    } catch (err) {
+      logger.warn('Cache middleware error', { 
+        error: err?.message,
+        path: req.path 
+      });
+      // Continue without caching
+      res.setHeader('X-Cache', 'ERROR');
+      next();
+    }
+  };
+}

@@ -37,7 +37,7 @@ const generateRefreshToken = async (userId, email, role) => {
   return refreshToken;
 };
 
-const verifyToken = (token) => {
+const verifyToken = token => {
   try {
     return jwt.verify(token, env.jwtSecret);
   } catch (error) {
@@ -99,8 +99,7 @@ const revokeAllRefreshTokens = async userId => {
         const slice = keys.slice(i, i + batchSize);
         await redis.del(slice);
       }
-    }
-    else {
+    } else {
       logger.info(`No refresh tokens found to revoke for user ${userId}.`);
     }
     return true;
@@ -132,7 +131,11 @@ const isRefreshTokenValid = async (userId, token) => {
 
     return isValid;
   } catch (error) {
-    logger.error('Failed to check refresh token validity:', { userId, token, error: error.message });
+    logger.error('Failed to check refresh token validity:', {
+      userId,
+      token,
+      error: error.message,
+    });
     throw new AppError('REDIS_CLIENT_NOT_AVAILABLE', 'Failed to check refresh token validity', 500);
   }
 };

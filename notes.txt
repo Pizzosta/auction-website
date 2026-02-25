@@ -112,7 +112,7 @@ add cleanup jobs for orphaned images, profile picture, featured auction, watchli
 Block account deletion if the user has won any auctions that haven't been completed (not yet paid or delivered)
 
 // Soft-deleted bids are ignored in this unique constraint
-@@index([auctionId, bidderId, amount], name: "Bid_auctionId_bidderId_amount_active_key")
+@@index([auctionId, bidderId, amount], name: "Bid_auctionId_bidderId_amount_active_key")22
 
 check swagger for any implicating statements. .. correct all 500 status to Internal Server Error
 

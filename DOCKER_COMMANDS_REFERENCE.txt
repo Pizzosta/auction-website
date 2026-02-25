@@ -1,0 +1,121 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                    DOCKER COMMANDS QUICK REFERENCE                          ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+📋 SETUP & START
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+cd server
+docker compose up -d --build              # Build and start all services
+docker compose ps                         # Show container status
+docker compose logs -f                    # Stream all logs
+docker compose logs server                # View server logs only
+
+
+🛑 STOP & CLEANUP
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+docker compose stop                       # Stop all containers (keep data)
+docker compose start                      # Start stopped containers
+docker compose restart                    # Restart all containers
+docker compose down                       # Stop and remove containers (keep volumes)
+docker compose down -v                    # Remove everything including data
+
+
+💾 DATABASE & MIGRATIONS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+docker compose exec server npm run prisma:migrate     # Run migrations
+docker compose exec server npm run create-users       # Create admin user
+docker compose exec postgres psql -U pizzosta -d auction_website  # SQL shell
+docker compose exec postgres psql -U pizzosta -d auction_website -c "SELECT * FROM \"User\";"
+
+
+🔧 DEVELOPMENT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+docker compose exec server npm install package-name  # Add dependencies
+docker compose exec server npm run lint              # Run linter
+docker compose exec server npm test                  # Run tests
+docker compose exec server /bin/sh                   # Access shell
+
+
+🔗 CONNECTIVITY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+curl http://localhost:5001                           # Test server
+docker compose exec server ping postgres             # Test postgres DNS
+docker compose exec server redis-cli -h redis ping   # Test redis DNS
+docker compose exec redis redis-cli ping             # Redis in container
+
+
+📊 MONITORING & DEBUGGING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+docker stats --no-stream                 # Show resource usage
+docker compose logs --tail 50            # Last 50 lines
+docker compose logs --follow             # Follow logs in real-time
+docker compose port server 5001          # Check exposed ports
+docker compose exec server env           # View environment variables
+
+
+🐛 TROUBLESHOOTING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+docker compose up -d --build --no-cache       # Rebuild without cache
+docker compose logs server | grep ERROR       # Find errors
+lsof -i :5001                                 # Find what's using port 5001
+docker system prune -a                        # Clean up unused images/containers
+
+
+✅ VERIFICATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# All should show "Up (healthy)"
+docker compose ps
+
+# Test each service
+curl http://localhost:5001                    # Server
+psql -h localhost -U pizzosta -d auction_website  # Postgres
+docker compose exec redis redis-cli ping      # Redis
+
+
+🚀 ONE-LINER SETUP
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+cd server && docker compose up -d --build && docker compose exec server npm run prisma:migrate
+
+
+📚 DOCUMENTATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+DOCKER_SETUP.md              ← Full step-by-step guide
+DOCKER_QUICK_START.md        ← Commands and tips
+DOCKER_ARCHITECTURE.md       ← Visual diagrams
+DOCKER_VERIFICATION.md       ← Checklist to verify
+DOCKER_IMPLEMENTATION.md     ← What was done and why
+
+
+📍 KEY URLS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Server API         → http://localhost:5001
+Swagger Docs       → http://localhost:5001/api-docs
+PostgreSQL (local) → psql -h localhost:5432
+Redis (local)      → localhost:6379
+
+
+⚙️ SERVICE DETAILS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Service          Container Name      Internal Host   Internal Port   Exposed Port
+────────────────────────────────────────────────────────────────────────────────
+Node.js          auction_server      server          5001            5001
+PostgreSQL       auction_postgres    postgres        5432            5432
+Redis            auction_redis       redis           6379            6379
+
+
+💡 COMMON SCENARIOS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Scenario                         Command
+────────────────────────────────────────────────────────────────────────────────
+Fresh start                      docker compose down -v && docker compose up -d --build
+Restart all services             docker compose restart
+View server errors               docker compose logs server | grep ERROR
+Connect to database from laptop  psql -h localhost -U pizzosta -d auction_website
+Test if server is running        curl -i http://localhost:5001
+Run all tests                    docker compose exec server npm test
+Install new npm package          docker compose exec server npm install express
+Wipe database and restart        docker compose down -v && docker compose up -d
+
+╔══════════════════════════════════════════════════════════════════════════════╗
+║  For more details, see DOCKER_SETUP.md and DOCKER_VERIFICATION.md           ║
+╚══════════════════════════════════════════════════════════════════════════════╝

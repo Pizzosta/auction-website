@@ -25,7 +25,7 @@ if (missingVars.length > 0) {
  * @param {string} [userData.role] - User role (default: 'user')
  * @returns {Promise<Object>} Created user object
  */
-export const createUserWithPassword = async (userData) => {
+export const createUserWithPassword = async userData => {
   try {
     const hashedPassword = await bcrypt.hash(userData.password, 10);
 
@@ -39,14 +39,14 @@ export const createUserWithPassword = async (userData) => {
         phone: userData.phone,
         username: userData.username,
         role: userData.role || 'user',
-        version: 1
-      }
+        version: 1,
+      },
     });
   } catch (error) {
     logger.error('Error creating user with password', {
       error: error.message,
       email: userData.email,
-      stack: error.stack
+      stack: error.stack,
     });
     throw error;
   }
@@ -65,12 +65,14 @@ export const findUserByCredentials = async (email, password) => {
       select: {
         id: true,
         email: true,
+        username: true,
+        profilePicture: true,
         passwordHash: true,
         role: true,
         isVerified: true,
         isDeleted: true,
-        version: true
-      }
+        version: true,
+      },
     });
 
     if (!user) {
@@ -89,7 +91,7 @@ export const findUserByCredentials = async (email, password) => {
     logger.error('Error finding user by credentials', {
       error: error.message,
       email: email,
-      stack: error.stack
+      stack: error.stack,
     });
     throw error;
   }
@@ -100,7 +102,7 @@ export const findUserByCredentials = async (email, password) => {
  * @param {string} email - User email
  * @returns {Promise<Object>} Reset token and user
  */
-export const createPasswordResetToken = async (email) => {
+export const createPasswordResetToken = async email => {
   try {
     // Generate reset token and save hashed version to database
     const resetToken = crypto.randomBytes(32).toString('hex');
@@ -116,13 +118,13 @@ export const createPasswordResetToken = async (email) => {
       data: {
         resetPasswordToken: resetTokenHash,
         resetPasswordExpire: resetTokenExpire,
-        version: { increment: 1 }
+        version: { increment: 1 },
       },
       select: {
         id: true,
         email: true,
         firstname: true,
-      }
+      },
     });
 
     return resetToken;
@@ -130,7 +132,7 @@ export const createPasswordResetToken = async (email) => {
     logger.error('Error creating password reset token', {
       error: error.message,
       email: email,
-      stack: error.stack
+      stack: error.stack,
     });
     throw error;
   }
@@ -141,7 +143,7 @@ export const createPasswordResetToken = async (email) => {
  * @param {string} userId - User ID
  * @returns {Promise<Object>} Updated user
  */
-export const clearPasswordResetToken = async (userId) => {
+export const clearPasswordResetToken = async userId => {
   try {
     return prisma.user.update({
       where: { id: userId },
@@ -154,7 +156,7 @@ export const clearPasswordResetToken = async (userId) => {
     logger.error('Error clearing password reset token', {
       error: error.message,
       userId: userId,
-      stack: error.stack
+      stack: error.stack,
     });
     throw error;
   }
@@ -165,7 +167,7 @@ export const clearPasswordResetToken = async (userId) => {
  * @param {string} userId - User ID
  * @returns {Promise<Object>} Updated user
  */
-export const clearEmailVerificationToken = async (userId) => {
+export const clearEmailVerificationToken = async userId => {
   try {
     return prisma.user.update({
       where: { id: userId },
@@ -178,7 +180,7 @@ export const clearEmailVerificationToken = async (userId) => {
     logger.error('Error clearing email verification token', {
       error: error.message,
       userId: userId,
-      stack: error.stack
+      stack: error.stack,
     });
     throw error;
   }
@@ -198,8 +200,8 @@ export const resetUserPassword = async (token, newPassword) => {
     const user = await prisma.user.findFirst({
       where: {
         resetPasswordToken,
-        resetPasswordExpire: { gt: new Date() }
-      }
+        resetPasswordExpire: { gt: new Date() },
+      },
     });
 
     if (!user) {
@@ -220,20 +222,20 @@ export const resetUserPassword = async (token, newPassword) => {
         passwordHash: hashedPassword,
         resetPasswordToken: null,
         resetPasswordExpire: null,
-        version: { increment: 1 }
+        version: { increment: 1 },
       },
       select: {
         id: true,
         email: true,
         firstname: true,
         role: true,
-      }
+      },
     });
   } catch (error) {
     logger.error('Error resetting user password', {
       error: error.message,
       token: token,
-      stack: error.stack
+      stack: error.stack,
     });
     throw error;
   }
@@ -244,10 +246,13 @@ export const resetUserPassword = async (token, newPassword) => {
  * @param {string} email - User email
  * @returns {Promise<Object>} Verification token and user
  */
-export const createEmailVerificationToken = async (email) => {
+export const createEmailVerificationToken = async email => {
   try {
     const verificationToken = crypto.randomBytes(32).toString('hex');
-    const verificationTokenHash = crypto.createHash('sha256').update(verificationToken).digest('hex');
+    const verificationTokenHash = crypto
+      .createHash('sha256')
+      .update(verificationToken)
+      .digest('hex');
 
     const expireAt = parseDuration(env.verificationTokenExpire, 24 * 60 * 60 * 1000);
     const verificationTokenExpire = new Date(Date.now() + expireAt);
@@ -257,13 +262,13 @@ export const createEmailVerificationToken = async (email) => {
       data: {
         emailVerificationToken: verificationTokenHash,
         emailVerificationExpire: verificationTokenExpire,
-        version: { increment: 1 }
+        version: { increment: 1 },
       },
       select: {
         id: true,
         email: true,
         firstname: true,
-      }
+      },
     });
 
     return verificationToken;
@@ -271,7 +276,7 @@ export const createEmailVerificationToken = async (email) => {
     logger.error('Error creating email verification token', {
       error: error.message,
       email: email,
-      stack: error.stack
+      stack: error.stack,
     });
     throw error;
   }
@@ -282,7 +287,7 @@ export const createEmailVerificationToken = async (email) => {
  * @param {string} token - Verification token
  * @returns {Promise<Object>} Updated user
  */
-export const verifyUserEmail = async (token) => {
+export const verifyUserEmail = async token => {
   try {
     const verificationToken = crypto.createHash('sha256').update(token).digest('hex');
 
@@ -291,8 +296,8 @@ export const verifyUserEmail = async (token) => {
       where: {
         emailVerificationToken: verificationToken,
         emailVerificationExpire: { gt: new Date() },
-        isVerified: false
-      }
+        isVerified: false,
+      },
     });
 
     if (!user) {
@@ -305,20 +310,20 @@ export const verifyUserEmail = async (token) => {
         isVerified: true,
         emailVerificationToken: null,
         emailVerificationExpire: null,
-        version: { increment: 1 }
+        version: { increment: 1 },
       },
       select: {
         id: true,
         email: true,
         firstname: true,
-        isVerified: true
-      }
+        isVerified: true,
+      },
     });
   } catch (error) {
     logger.error('Error verifying user email', {
       error: error.message,
       token: token,
-      stack: error.stack
+      stack: error.stack,
     });
     throw error;
   }
@@ -329,17 +334,17 @@ export const verifyUserEmail = async (token) => {
  * @param {string} userId - User ID
  * @returns {Promise<void>}
  */
-export const updateLastActiveAt = async (userId) => {
+export const updateLastActiveAt = async userId => {
   try {
     await prisma.user.update({
       where: { id: userId },
-      data: { lastActiveAt: new Date() }
+      data: { lastActiveAt: new Date() },
     });
   } catch (error) {
     logger.error('Error updating user last active at', {
       error: error.message,
       userId: userId,
-      stack: error.stack
+      stack: error.stack,
     });
     throw error;
   }

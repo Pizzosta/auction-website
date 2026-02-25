@@ -24,14 +24,7 @@ export const refreshToken = async (req, res, next) => {
     const { userId, refreshToken } = req;
 
     // Get user with only necessary fields for token generation
-    const user = await findUserByIdPrisma(userId, [
-      'id',
-      'firstname',
-      'middlename',
-      'lastname',
-      'email',
-      'role'
-    ]);
+    const user = await findUserByIdPrisma(userId, ['id', 'username', 'email', 'role']);
 
     if (!user) {
       throw new AppError('USER_NOT_FOUND', 'User not found', 404);
@@ -62,9 +55,7 @@ export const refreshToken = async (req, res, next) => {
         refreshToken: newRefreshToken,
         user: {
           id: user.id,
-          firstname: user.firstname,
-          middlename: user.middlename,
-          lastname: user.lastname,
+          username: user.username,
           email: user.email,
           role: user.role,
         },
