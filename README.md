@@ -13,11 +13,45 @@ This project is an online auction platform built with Node.js, Prisma, and Docke
 - Dockerized deployment
 
 ## Project Structure
+
+### Server (Backend)
 - `server/` - Backend code, scripts, and Prisma migrations
-- `src/` - Main server source code
-- `scripts/` - Utility and test scripts
-- `docs/` - Documentation guides
-- `test/` - Test files
+	- `src/` - Main server source code
+		- `controllers/` - API controllers
+		- `routes/` - API routes
+		- `services/` - Business logic
+		- `middleware/` - Express middleware
+		- `repositories/` - Database access logic
+		- `utils/` - Utility functions
+		- `templates/` - Email and other templates
+		- `jobs/` - Scheduled/background jobs
+		- `config/` - Configuration files
+	- `scripts/` - Utility and test scripts
+	- `docs/` - Documentation guides
+	- `test/` - Test files
+	- `prisma/` - Prisma schema and migrations
+
+### Client (Frontend)
+- `client/` - Frontend React app (Vite)
+	- `src/` - Main client source code
+		- `pages/` - Page components (Home, Login, Register, etc.)
+		- `components/` - Reusable UI components (Navbar, Footer, etc.)
+		- `layouts/` - Layout components
+		- `api/` - API utilities (e.g., axios setup)
+		- `assets/` - Static assets (images, icons)
+		- `context/` - React context providers (Auth, Theme)
+		- `hooks/` - Custom React hooks
+		- `utils/` - Utility functions
+		- `index.css` - Global styles
+		- `main.jsx` - App entry point
+		- `App.jsx` - Root component
+	- `public/` - Static public files
+	- `index.html` - Main HTML file
+	- `package.json` - Client dependencies and scripts
+	- `vite.config.js` - Vite configuration
+	- `tailwind.config.js` - Tailwind CSS configuration
+	- `eslint.config.js` - ESLint configuration
+	- `postcss.config.js` - PostCSS configuration
 
 ## Setup
 1. Clone the repository
