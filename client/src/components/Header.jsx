@@ -128,7 +128,7 @@ function Header() {
         <div className="flex items-center gap-4">
           {/* Only show on mobile */}
           <button
-            className="md:hidden p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-white"
+            className="md:hidden p-2 rounded-md bg-gray-200 dark:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-white"
             onClick={toggleMenu}
             aria-label="Toggle menu"
             aria-expanded={isMenuOpen}
@@ -167,19 +167,19 @@ function Header() {
           {user && (
             <li ref={dropdownRef} role="menuitem" className="relative group">
               <button
-                className="flex items-center focus:outline-none"
+                className="flex items-center focus:outline-none bg-white dark:bg-gray-900"
                 aria-label="User menu"
                 aria-haspopup="true"
                 onClick={toggleMenu}
               >
                 <img
                   src={getAvatarUrl(user)}
-                  alt={`${user.username}'s profile`}
+                  alt={`${user.username || "User"}'s profile`}
                   className="w-9 h-9 rounded-full object-cover border-2 border-white dark:border-gray-200"
                   onError={handleAvatarError(user.id)}
                   loading="lazy"
                 />
-                <p className="font-semibold text-gray-900 dark:text-gray-100">
+                <p className="pl-2 text-gray-900 dark:text-gray-100">
                   {user.username}
                 </p>
                 <svg
@@ -344,7 +344,7 @@ function NavItems({ user, mobile = false, closeMenu }) {
     ? [
         { to: "/dashboard", label: "Dashboard" },
         { to: "/create-auction", label: "Create Auction" },
-       // { to: "/my-bids", label: "My Bids" },
+        // { to: "/my-bids", label: "My Bids" },
         ...(user.role === "admin"
           ? [{ to: "/admin-dashboard", label: "Admin Dashboard" }]
           : []),
@@ -360,7 +360,7 @@ function NavItems({ user, mobile = false, closeMenu }) {
     : [];
 
   const navItems = [...publicItems, ...authItems, ...guestItems];
- 
+
   const handleLinkClick = useCallback(
     (e) => {
       e.stopPropagation();
