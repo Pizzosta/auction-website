@@ -7,13 +7,10 @@ export const userQuerySchema = {
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(100).default(10),
     sort: Joi.string()
-      .valid('firstname', 'lastname', 'email', 'phone', 'username', 'createdAt')
+      .valid('firstname', 'lastname', 'email', 'phone', 'username', 'createdAt', 'provider')
       .default('createdAt')
       .optional(),
-    order: Joi.string()
-      .valid('asc', 'desc')
-      .default('desc')
-      .optional(),
+    order: Joi.string().valid('asc', 'desc').default('desc').optional(),
     fields: Joi.string()
       .pattern(/^[a-zA-Z0-9_,. ]*$/)
       .optional(),
@@ -38,23 +35,17 @@ export const auctionQuerySchema = {
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(100).default(10),
     sort: Joi.string()
-      .valid(
-        'currentPrice',
-        'endDate',
-        'createdAt',
-        'bidCount'
-      )
+      .valid('currentPrice', 'endDate', 'createdAt', 'bidCount')
       .default('createdAt')
       .optional(),
-    order: Joi.string()
-      .valid('asc', 'desc')
-      .default('desc')
-      .optional(),
+    order: Joi.string().valid('asc', 'desc').default('desc').optional(),
     status: Joi.string()
       .valid('upcoming', 'active', 'ended', 'sold', 'completed', 'cancelled', 'all')
       .lowercase()
       .optional(),
-    category: Joi.string().trim().lowercase()
+    category: Joi.string()
+      .trim()
+      .lowercase()
       .valid(
         ...[
           'electronics',
@@ -70,7 +61,9 @@ export const auctionQuerySchema = {
         ]
       )
       .optional(),
-    location: Joi.string().trim().lowercase()
+    location: Joi.string()
+      .trim()
+      .lowercase()
       .valid(
         ...[
           'ahafo',
@@ -96,12 +89,8 @@ export const auctionQuerySchema = {
     endingSoon: Joi.boolean()
       .optional()
       .description('Filter for auctions ending in the next 24 hours'),
-    seller: Joi.string()
-      .uuid({ version: 'uuidv4' })
-      .optional(),
-    winner: Joi.string()
-      .uuid({ version: 'uuidv4' })
-      .optional(),
+    seller: Joi.string().uuid({ version: 'uuidv4' }).optional(),
+    winner: Joi.string().uuid({ version: 'uuidv4' }).optional(),
     fields: Joi.string()
       .pattern(/^[a-zA-Z0-9_,. ]*$/)
       .optional(),
@@ -116,23 +105,17 @@ export const auctionQuerySchema = {
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(100).default(10),
     sort: Joi.string()
-      .valid(
-        'currentPrice',
-        'endDate',
-        'createdAt',
-        'bidCount'
-      )
+      .valid('currentPrice', 'endDate', 'createdAt', 'bidCount')
       .default('createdAt')
       .optional(),
-    order: Joi.string()
-      .valid('asc', 'desc')
-      .default('desc')
-      .optional(),
+    order: Joi.string().valid('asc', 'desc').default('desc').optional(),
     status: Joi.string()
       .valid('upcoming', 'active', 'ended', 'sold', 'completed', 'cancelled', 'all')
       .lowercase()
       .optional(),
-    category: Joi.string().trim().lowercase()
+    category: Joi.string()
+      .trim()
+      .lowercase()
       .valid(
         ...[
           'electronics',
@@ -148,7 +131,9 @@ export const auctionQuerySchema = {
         ]
       )
       .optional(),
-    location: Joi.string().trim().lowercase()
+    location: Joi.string()
+      .trim()
+      .lowercase()
       .valid(
         ...[
           'ahafo',
@@ -195,14 +180,8 @@ export const bidQuerySchema = {
   adminBidSort: Joi.object({
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(100).default(10),
-    sort: Joi.string()
-      .valid('createdAt', 'amount', 'updatedAt')
-      .default('createdAt')
-      .optional(),
-    order: Joi.string()
-      .valid('asc', 'desc')
-      .default('desc')
-      .optional(),
+    sort: Joi.string().valid('createdAt', 'amount', 'updatedAt').default('createdAt').optional(),
+    order: Joi.string().valid('asc', 'desc').default('desc').optional(),
     status: Joi.string()
       .valid('active', 'won', 'lost', 'outbid', 'cancelled')
       .lowercase()
@@ -221,27 +200,15 @@ export const bidQuerySchema = {
   auctionBidSort: Joi.object({
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(100).default(10),
-    sort: Joi.string()
-      .valid('createdAt', 'amount', 'updatedAt')
-      .default('createdAt')
-      .optional(),
-    order: Joi.string()
-      .valid('asc', 'desc')
-      .default('desc')
-      .optional(),
+    sort: Joi.string().valid('createdAt', 'amount', 'updatedAt').default('createdAt').optional(),
+    order: Joi.string().valid('asc', 'desc').default('desc').optional(),
   }),
 
   personalBidSort: Joi.object({
     page: Joi.number().integer().min(1).default(1),
     limit: Joi.number().integer().min(1).max(100).default(10),
-    sort: Joi.string()
-      .valid('createdAt', 'amount', 'updatedAt')
-      .default('createdAt')
-      .optional(),
-    order: Joi.string()
-      .valid('asc', 'desc')
-      .default('desc')
-      .optional(),
+    sort: Joi.string().valid('createdAt', 'amount', 'updatedAt').default('createdAt').optional(),
+    order: Joi.string().valid('asc', 'desc').default('desc').optional(),
     highestBidderOnly: Joi.boolean().optional(),
     winningBidsOnly: Joi.boolean().optional(),
   }),
@@ -257,14 +224,8 @@ export const bidQuerySchema = {
 export const feedbackQuerySchema = Joi.object({
   page: Joi.number().integer().min(1).default(1),
   limit: Joi.number().integer().min(1).max(100).default(10),
-  sort: Joi.string()
-    .valid('rating', 'createdAt', 'updatedAt')
-    .default('createdAt')
-    .optional(),
-  order: Joi.string()
-    .valid('asc', 'desc')
-    .default('desc')
-    .optional(),
+  sort: Joi.string().valid('rating', 'createdAt', 'updatedAt').default('createdAt').optional(),
+  order: Joi.string().valid('asc', 'desc').default('desc').optional(),
   type: Joi.string().valid('seller', 'buyer').optional(),
   auctionId: Joi.string().uuid({ version: 'uuidv4' }).optional(),
   fromUserId: Joi.string().uuid({ version: 'uuidv4' }).optional(),
@@ -339,22 +300,42 @@ export const authSchema = {
   }),
 
   register: Joi.object({
-    firstname: Joi.string().trim().min(3).max(20).pattern(/^[a-zA-Z\s-']*$/).required().messages({
-      'string.pattern.base': 'First name should only contain letters, spaces, hyphens and apostrophes',
-      'string.empty': 'First name is required',
-      'string.min': 'First name must be at least 3 characters long',
-      'string.max': 'First name cannot be more than 20 characters',
-    }),
-    middlename: Joi.string().trim().max(20).pattern(/^[a-zA-Z\s-']*$/).allow('').messages({
-      'string.pattern.base': 'Middle name should only contain letters, spaces, hyphens and apostrophes',
-      'string.max': 'Middle name cannot be more than 20 characters',
-    }),
-    lastname: Joi.string().trim().min(3).max(20).pattern(/^[a-zA-Z\s-']*$/).required().messages({
-      'string.pattern.base': 'Last name should only contain letters, spaces, hyphens and apostrophes',
-      'string.empty': 'Last name is required',
-      'string.min': 'Last name must be at least 3 characters long',
-      'string.max': 'Last name cannot be more than 20 characters',
-    }),
+    firstname: Joi.string()
+      .trim()
+      .min(3)
+      .max(20)
+      .pattern(/^[a-zA-Z\s-']*$/)
+      .required()
+      .messages({
+        'string.pattern.base':
+          'First name should only contain letters, spaces, hyphens and apostrophes',
+        'string.empty': 'First name is required',
+        'string.min': 'First name must be at least 3 characters long',
+        'string.max': 'First name cannot be more than 20 characters',
+      }),
+    middlename: Joi.string()
+      .trim()
+      .max(20)
+      .pattern(/^[a-zA-Z\s-']*$/)
+      .allow('')
+      .messages({
+        'string.pattern.base':
+          'Middle name should only contain letters, spaces, hyphens and apostrophes',
+        'string.max': 'Middle name cannot be more than 20 characters',
+      }),
+    lastname: Joi.string()
+      .trim()
+      .min(3)
+      .max(20)
+      .pattern(/^[a-zA-Z\s-']*$/)
+      .required()
+      .messages({
+        'string.pattern.base':
+          'Last name should only contain letters, spaces, hyphens and apostrophes',
+        'string.empty': 'Last name is required',
+        'string.min': 'Last name must be at least 3 characters long',
+        'string.max': 'Last name cannot be more than 20 characters',
+      }),
     phone: Joi.string()
       .custom((value, helpers) => {
         const normalized = normalizeToE164(value);
@@ -445,12 +426,18 @@ export const authSchema = {
 // Auction schema validation
 export const auctionSchema = {
   create: Joi.object({
-    title: Joi.string().trim().min(3).max(50).pattern(/^[a-zA-Z0-9\-_' ]+$/)
-      .required().messages({
+    title: Joi.string()
+      .trim()
+      .min(3)
+      .max(50)
+      .pattern(/^[a-zA-Z0-9\-_' ]+$/)
+      .required()
+      .messages({
         'string.empty': 'Title is required',
         'string.min': 'Title must be at least 3 characters long',
         'string.max': 'Title cannot be more than 50 characters',
-        'string.pattern.base': 'Title should only contain letters, numbers, hyphens, underscores and apostrophes',
+        'string.pattern.base':
+          'Title should only contain letters, numbers, hyphens, underscores and apostrophes',
       }),
     description: Joi.string().trim().min(3).max(500).required().messages({
       'string.empty': 'Description is required',
@@ -471,7 +458,9 @@ export const auctionSchema = {
     endDate: Joi.date().iso().greater(Joi.ref('startDate')).required().messages({
       'date.greater': 'End date must be after the start date',
     }),
-    category: Joi.string().trim().lowercase()
+    category: Joi.string()
+      .trim()
+      .lowercase()
       .valid(
         ...[
           'electronics',
@@ -486,11 +475,14 @@ export const auctionSchema = {
           'toys',
         ]
       )
-      .required().messages({
+      .required()
+      .messages({
         'string.empty': 'Category is required',
         'any.only': 'Invalid category',
       }),
-    location: Joi.string().trim().lowercase()
+    location: Joi.string()
+      .trim()
+      .lowercase()
       .valid(
         ...[
           'ahafo',
@@ -511,7 +503,8 @@ export const auctionSchema = {
           'western north',
         ]
       )
-      .required().messages({
+      .required()
+      .messages({
         'string.empty': 'Location is required',
         'any.only': 'Invalid location',
       }),
@@ -534,12 +527,20 @@ export const auctionSchema = {
   }),
 
   update: Joi.object({
-    title: Joi.string().trim().invalid('').min(3).max(50).pattern(/^[a-zA-Z0-9\-_' ]+$/).optional().messages({
-      'string.empty': 'Title is required',
-      'string.min': 'Title must be at least 3 characters long',
-      'string.max': 'Title cannot be more than 50 characters',
-      'string.pattern.base': 'Title should only contain letters, numbers, hyphens, underscores and apostrophes',
-    }),
+    title: Joi.string()
+      .trim()
+      .invalid('')
+      .min(3)
+      .max(50)
+      .pattern(/^[a-zA-Z0-9\-_' ]+$/)
+      .optional()
+      .messages({
+        'string.empty': 'Title is required',
+        'string.min': 'Title must be at least 3 characters long',
+        'string.max': 'Title cannot be more than 50 characters',
+        'string.pattern.base':
+          'Title should only contain letters, numbers, hyphens, underscores and apostrophes',
+      }),
     description: Joi.string().trim().invalid('').min(3).max(500).optional().messages({
       'string.empty': 'Description is required',
       'string.min': 'Description must be at least 3 characters long',
@@ -559,7 +560,9 @@ export const auctionSchema = {
     endDate: Joi.date().iso().greater(Joi.ref('startDate')).optional().messages({
       'date.greater': 'End date must be after the start date',
     }),
-    category: Joi.string().trim().lowercase()
+    category: Joi.string()
+      .trim()
+      .lowercase()
       .optional()
       .valid(
         ...[
@@ -575,7 +578,9 @@ export const auctionSchema = {
           'toys',
         ]
       ),
-    location: Joi.string().trim().lowercase()
+    location: Joi.string()
+      .trim()
+      .lowercase()
       .valid(
         ...[
           'ahafo',
@@ -596,7 +601,8 @@ export const auctionSchema = {
           'western north',
         ]
       )
-      .optional().messages({
+      .optional()
+      .messages({
         'string.empty': 'Location is required',
         'any.only': 'Invalid location',
       }),
@@ -616,9 +622,11 @@ export const auctionSchema = {
         'array.base': 'Images must be an array',
         'any.required': 'Images are required',
       }),
-  }).min(1).messages({
-    'object.min': 'At least one field is required to update this auction'
-  }), // At least one field required for update
+  })
+    .min(1)
+    .messages({
+      'object.min': 'At least one field is required to update this auction',
+    }), // At least one field required for update
 };
 
 // Bid schema validation
@@ -862,21 +870,35 @@ export const feedbackSchema = {
       'number.max': 'Rating cannot exceed 5',
       'any.required': 'Rating is required',
     }),
-    comment: Joi.string().trim().min(3).max(500).pattern(/^[a-zA-Z0-9\-_' ]-+$/).required().messages({
-      'string.empty': 'Comment is required',
-      'string.min': 'Comment must be at least 3 characters long',
-      'string.max': 'Comment cannot exceed 500 characters',
-      'string.pattern.base': 'Comment should only contain letters, numbers, hyphens, underscores and apostrophes',
-    }),
+    comment: Joi.string()
+      .trim()
+      .min(3)
+      .max(500)
+      .pattern(/^[a-zA-Z0-9\-_' ]-+$/)
+      .required()
+      .messages({
+        'string.empty': 'Comment is required',
+        'string.min': 'Comment must be at least 3 characters long',
+        'string.max': 'Comment cannot exceed 500 characters',
+        'string.pattern.base':
+          'Comment should only contain letters, numbers, hyphens, underscores and apostrophes',
+      }),
     isAnonymous: Joi.boolean().default(false),
   }),
 
   respond: Joi.object({
-    response: Joi.string().trim().min(3).max(500).pattern(/^[a-zA-Z0-9\-_' ]-+$/).required().messages({
-      'string.empty': 'Response is required',
-      'string.min': 'Response must be at least 3 characters long',
-      'string.max': 'Response cannot exceed 500 characters',
-      'string.pattern.base': 'Response should only contain letters, numbers, hyphens, underscores and apostrophes',
-    }),
+    response: Joi.string()
+      .trim()
+      .min(3)
+      .max(500)
+      .pattern(/^[a-zA-Z0-9\-_' ]-+$/)
+      .required()
+      .messages({
+        'string.empty': 'Response is required',
+        'string.min': 'Response must be at least 3 characters long',
+        'string.max': 'Response cannot exceed 500 characters',
+        'string.pattern.base':
+          'Response should only contain letters, numbers, hyphens, underscores and apostrophes',
+      }),
   }),
 };

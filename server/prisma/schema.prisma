@@ -34,6 +34,7 @@ model User {
   profilePicture          Json?     @default("{}")
   rating                  Float?    @default(0)
   ratingCount             Int       @default(0)
+  provider                String    @default("local") // 'local', 'google', etc.
 
   // Relations - REMOVE onDelete from list sides
   auctions                 Auction[]         @relation("SellerAuctions")

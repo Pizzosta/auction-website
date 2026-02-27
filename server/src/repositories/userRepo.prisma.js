@@ -43,7 +43,8 @@ export const createUserSelect = (fields, options = {}) => {
       isDeleted: true,
       deletedAt: true,
       deletedById: true,
-      version: true
+      provider: true,
+      version: true,
     };
   }
 
@@ -58,7 +59,7 @@ export const createUserSelect = (fields, options = {}) => {
       requestedFields: fields,
       allowedFields: safeFields,
       sensitiveFieldsAttempted: fields.filter(field => SENSITIVE_FIELDS.includes(field)),
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
     });
   }
 
@@ -150,23 +151,24 @@ export const findUserByPhonePrisma = async (phone, fields, options = {}) => {
  * @param {string} userId - ID of the user to check
  * @returns {Promise<{canDelete: boolean, reason?: string}>} Object with canDelete status and optional reason
  */
-export const canDeleteUserPrisma = async (userId) => {
+export const canDeleteUserPrisma = async userId => {
   // Check if user has any active auctions
   const activeAuctions = await prisma.auction.count({
     where: {
       sellerId: userId,
       status: {
-        in: ['active']
+        in: ['active'],
       },
-      isDeleted: false
-    }
+      isDeleted: false,
+    },
   });
 
   if (activeAuctions > 0) {
     return {
       canDelete: false,
-      reason: `You have ${activeAuctions} active auction${activeAuctions === 1 ? '' : 's'
-        }. Please let ${activeAuctions === 1 ? 'it' : 'them'} end before deleting your account.`,
+      reason: `You have ${activeAuctions} active auction${
+        activeAuctions === 1 ? '' : 's'
+      }. Please let ${activeAuctions === 1 ? 'it' : 'them'} end before deleting your account.`,
     };
   }
 
@@ -175,17 +177,18 @@ export const canDeleteUserPrisma = async (userId) => {
     where: {
       sellerId: userId,
       status: {
-        in: ['upcoming']
+        in: ['upcoming'],
       },
-      isDeleted: false
-    }
+      isDeleted: false,
+    },
   });
 
   if (upcomingAuctions > 0) {
     return {
       canDelete: false,
-      reason: `You have ${upcomingAuctions} upcoming auction${upcomingAuctions === 1 ? '' : 's'
-        }. Please cancel ${upcomingAuctions === 1 ? 'it' : 'them'} before deleting your account.`,
+      reason: `You have ${upcomingAuctions} upcoming auction${
+        upcomingAuctions === 1 ? '' : 's'
+      }. Please cancel ${upcomingAuctions === 1 ? 'it' : 'them'} before deleting your account.`,
     };
   }
 
@@ -195,16 +198,17 @@ export const canDeleteUserPrisma = async (userId) => {
       status: 'active',
       isDeleted: false,
       highestBid: {
-        bidderId: userId
-      }
-    }
+        bidderId: userId,
+      },
+    },
   });
 
   if (highestBidAuctions > 0) {
     return {
       canDelete: false,
-      reason: `You are the highest bidder in ${highestBidAuctions} active auction${highestBidAuctions === 1 ? '' : 's'
-        }. Please complete the auction or cancel ${highestBidAuctions === 1 ? 'it' : 'them'} before deleting your account.`
+      reason: `You are the highest bidder in ${highestBidAuctions} active auction${
+        highestBidAuctions === 1 ? '' : 's'
+      }. Please complete the auction or cancel ${highestBidAuctions === 1 ? 'it' : 'them'} before deleting your account.`,
     };
   }
 
@@ -213,19 +217,17 @@ export const canDeleteUserPrisma = async (userId) => {
     where: {
       winnerId: userId,
       status: 'sold',
-      OR: [
-        { isPaymentConfirmed: false },
-        { isDeliveryConfirmed: false }
-      ],
-      isDeleted: false
-    }
+      OR: [{ isPaymentConfirmed: false }, { isDeliveryConfirmed: false }],
+      isDeleted: false,
+    },
   });
 
   if (incompleteWonAuctions > 0) {
     return {
       canDelete: false,
-      reason: `You have ${incompleteWonAuctions} won auction${incompleteWonAuctions === 1 ? '' : 's'} that ${incompleteWonAuctions === 1 ? 'has' : 'have'} not been completed. ` +
-        `Please complete the payment and delivery process before deleting your account.`
+      reason:
+        `You have ${incompleteWonAuctions} won auction${incompleteWonAuctions === 1 ? '' : 's'} that ${incompleteWonAuctions === 1 ? 'has' : 'have'} not been completed. ` +
+        `Please complete the payment and delivery process before deleting your account.`,
     };
   }
 
@@ -234,19 +236,17 @@ export const canDeleteUserPrisma = async (userId) => {
     where: {
       sellerId: userId,
       status: 'sold',
-      OR: [
-        { isPaymentConfirmed: false },
-        { isDeliveryConfirmed: false }
-      ],
-      isDeleted: false
-    }
+      OR: [{ isPaymentConfirmed: false }, { isDeliveryConfirmed: false }],
+      isDeleted: false,
+    },
   });
 
   if (incompleteSoldAuctions > 0) {
     return {
       canDelete: false,
-      reason: `You have ${incompleteSoldAuctions} sold auction${incompleteSoldAuctions === 1 ? '' : 's'} that ${incompleteSoldAuctions === 1 ? 'has' : 'have'} not been completed. ` +
-        `Please ensure all payment and delivery processes are complete before deleting your account.`
+      reason:
+        `You have ${incompleteSoldAuctions} sold auction${incompleteSoldAuctions === 1 ? '' : 's'} that ${incompleteSoldAuctions === 1 ? 'has' : 'have'} not been completed. ` +
+        `Please ensure all payment and delivery processes are complete before deleting your account.`,
     };
   }
 
@@ -261,48 +261,47 @@ export const canDeleteUserPrisma = async (userId) => {
  * @returns {Promise<Object>} Updated user object
  */
 export const softDeleteUserPrisma = async (userId, deletedById, version) => {
-  return await prisma.$transaction(async (tx) => {
-
+  return await prisma.$transaction(async tx => {
     // Soft delete user's active auctions
     await tx.auction.updateMany({
       where: {
         sellerId: userId,
-        isDeleted: false
+        isDeleted: false,
       },
       data: {
         isDeleted: true,
         deletedAt: new Date(),
         deletedById: deletedById,
         version: { increment: 1 },
-      }
+      },
     });
 
     // Soft delete user's active bids
     await tx.bid.updateMany({
       where: {
         bidderId: userId,
-        isDeleted: false
+        isDeleted: false,
       },
       data: {
         isDeleted: true,
         deletedAt: new Date(),
         deletedById: deletedById,
         version: { increment: 1 },
-      }
+      },
     });
 
     // Soft delete user's watchlist
     await tx.watchlist.updateMany({
       where: {
         userId,
-        isDeleted: false
+        isDeleted: false,
       },
       data: {
         isDeleted: true,
         deletedAt: new Date(),
         deletedById: deletedById,
         version: { increment: 1 },
-      }
+      },
     });
 
     // Soft delete user
@@ -323,9 +322,9 @@ export const softDeleteUserPrisma = async (userId, deletedById, version) => {
  * @param {string} userId - ID of the user to delete
  * @returns {Promise<Object>} Result of the deletion
  */
-export const hardDeleteUserWithRelatedDataPrisma = async (userId) => {
+export const hardDeleteUserWithRelatedDataPrisma = async userId => {
   return await prisma.user.delete({
-    where: { id: userId }
+    where: { id: userId },
   });
 };
 
@@ -334,13 +333,13 @@ export const hardDeleteUserWithRelatedDataPrisma = async (userId) => {
  * @param {string} userId - ID of the user to restore
  * @returns {Promise<Object>} Updated user object
  */
-export const restoreUserPrisma = async (userId) => {
-  return await prisma.$transaction(async (tx) => {
+export const restoreUserPrisma = async userId => {
+  return await prisma.$transaction(async tx => {
     // Restore user first
     const user = await tx.user.update({
       where: {
         id: userId,
-        isDeleted: true // Only restore if currently soft-deleted
+        isDeleted: true, // Only restore if currently soft-deleted
       },
       data: {
         isDeleted: false,
@@ -422,7 +421,7 @@ export const updateUserProfilePicturePrisma = async (userId, profilePicture) => 
  * @param {string} userId - ID of the user
  * @returns {Promise<Object>} Updated user object
  */
-export const removeUserProfilePicturePrisma = async (userId) => {
+export const removeUserProfilePicturePrisma = async userId => {
   return prisma.user.update({
     where: { id: userId },
     data: { profilePicture: null },
@@ -522,7 +521,8 @@ export const listUsersPrisma = async ({
   }
 
   if (role) where.role = role;
-  if (typeof isVerified !== 'undefined') where.isVerified = isVerified === 'true' || isVerified === true;
+  if (typeof isVerified !== 'undefined')
+    where.isVerified = isVerified === 'true' || isVerified === true;
   if (typeof rating !== 'undefined') where.rating = Number(rating);
 
   // Handle lastActiveAt filters
@@ -549,8 +549,16 @@ export const listUsersPrisma = async ({
     ];
   }
 
-  // Sort 
-  const allowedSortFields = new Set(['firstname', 'lastname', 'email', 'phone', 'username', 'createdAt']);
+  // Sort
+  const allowedSortFields = new Set([
+    'firstname',
+    'lastname',
+    'email',
+    'phone',
+    'username',
+    'createdAt',
+    'provider',
+  ]);
 
   // Validate and set default sort field
   const field = allowedSortFields.has(sort) ? sort : 'createdAt';
@@ -560,7 +568,6 @@ export const listUsersPrisma = async ({
 
   const orderBy = { [field]: orderDirection };
 
-
   const [count, users] = await Promise.all([
     prisma.user.count({ where }),
     prisma.user.findMany({
@@ -568,13 +575,13 @@ export const listUsersPrisma = async ({
       orderBy,
       skip,
       take,
-      select
+      select,
     }),
   ]);
 
   const shaped = users.map(u => ({
     ...u,
-    profilePicture: u.profilePicture || null
+    profilePicture: u.profilePicture || null,
   }));
 
   const totalPages = Math.ceil(count / take) || 1;
@@ -590,4 +597,4 @@ export const listUsersPrisma = async ({
       hasPrev: pageNum > 1,
     },
   };
-}
+};

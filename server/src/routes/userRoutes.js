@@ -61,7 +61,7 @@ const router = express.Router();
  *         name: sort
  *         schema:
  *           type: string
- *           enum: [firstname, lastname, createdAt, username, email, lastActiveAt]
+ *           enum: [firstname, lastname, createdAt, username, email, provider]
  *           default: createdAt
  *         description: Field to sort by
  *       - in: query
