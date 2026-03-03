@@ -6,6 +6,7 @@ import { handleApiError, handleError } from "../utils/errorHandler";
 import PhoneInput from "react-phone-input-2";
 import "react-phone-input-2/lib/style.css";
 import { showToast } from "../utils/toast";
+import { extractErrors, focusFirstErrorField } from "../utils/extractErrorsUtils";
 
 function RegisterPage() {
   const [firstname, setFirstname] = useState("");
@@ -203,24 +204,24 @@ function RegisterPage() {
           }),
         });
         const data = await res.json();
-        /*if (!res.ok) {
-          const error = handleApiError(data);
-          handleError(error, setError);
-          return;
-        }*/
+        
         if (!res.ok) {
-          // If the server returned the "errors" array from your logs
-          if (data.errors && Array.isArray(data.errors)) {
-            // Join the errors into a single string for the main error alert
-            const combinedMessage = data.errors.join(". ");
-            setError(combinedMessage);
-            showToast.error(data.errors[0]); // Show the first one in toast
+          const errors = extractErrors(data);
 
-            // Optional: If you want to highlight specific fields, you'd need the server
-            // to return an object like { firstname: "Too short" } instead of an array.
+          if (errors) {
+            //Highlight all specific fields at once
+            setFieldErrors(errors);
+
+            //Extract the first error message to show in a Toast or main Error alert
+            const firstErrorMessage = Object.values(errors)[0];
+            setError("Please correct the highlighted errors.");
+            showToast.error(firstErrorMessage);
+
+            focusFirstErrorField(errors);
           } else {
             const error = handleApiError(data);
             handleError(error, setError);
+            showToast.error(error.message);
           }
           return;
         }
@@ -234,18 +235,8 @@ function RegisterPage() {
         console.error("Registration error:", error);
 
         // Set default error message
-        let errorMessage =
+        const errorMessage =
           error.message || "Registration failed. Please try again.";
-
-        // Update field errors if available
-        if (error.details) {
-          setFieldErrors(error.details);
-          // Show the first field error in toast
-          const firstError = Object.values(error.details)[0];
-          if (firstError) {
-            errorMessage = firstError;
-          }
-        }
 
         // Set the error message
         setError(errorMessage);
